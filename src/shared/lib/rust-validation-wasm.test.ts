@@ -6,7 +6,7 @@ const wasm = vi.hoisted(() => ({
   initAgentCatalog: vi.fn(() => JSON.stringify({ success: true })),
 }));
 
-vi.mock('@/wasm/validation/runtara_validation.js', () => ({
+vi.mock('runtara-validation-wasm', () => ({
   default: wasm.init,
   agentCatalogLoaded: wasm.agentCatalogLoaded,
   initAgentCatalog: wasm.initAgentCatalog,
@@ -22,7 +22,7 @@ vi.mock('@/wasm/validation/runtara_validation.js', () => ({
   validateWorkflowStartInputsJson: vi.fn(),
 }));
 
-vi.mock('@/wasm/validation/runtara_validation_bg.wasm?url', () => ({
+vi.mock('runtara-validation-wasm/runtara_validation_bg.wasm?url', () => ({
   default: '/validation.wasm',
 }));
 vi.mock('@/shared/config/runtimeConfig', () => ({

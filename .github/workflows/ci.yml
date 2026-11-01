@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: ${{ matrix.check.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          # `lint` gates on ESLint errors only: most of today's warnings are
+          # react-refresh/only-export-components, an HMR-ergonomics rule.
+          - { name: lint, cmd: 'npm run lint' }
+          - { name: format, cmd: 'npm run format:check' }
+          - { name: typecheck, cmd: 'npx tsc -b --pretty' }
+          - { name: unit, cmd: 'npm test' }
+          - { name: knip, cmd: 'npm run knip' }
+          - { name: build, cmd: 'npm run build' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: ${{ matrix.check.name }}
+        run: ${{ matrix.check.cmd }}
+
+  e2e-mocked:
+    name: E2E (mocked)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Build app
+        run: npm run build
+
+      - name: Serve preview build
+        run: |
+          npm run preview -- --port 8081 &
+          npx wait-on http://localhost:8081 --timeout 60000
+
+      - name: Run mocked Playwright project
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:8081
+          CI: 'true'
+        run: npx playwright test --project=mocked
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-mocked-report
+          path: |
+            e2e-report/
+            e2e-results/
+          retention-days: 14

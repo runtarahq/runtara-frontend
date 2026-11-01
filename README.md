@@ -1,8 +1,9 @@
 # Runtara Frontend
 
-React + Vite + TypeScript SPA for the Runtara runtime. Built to be embedded
-into the `runtara-server` binary (via [`rust_embed`](../Cargo.toml)) and
-served at a runtime-configurable mount prefix.
+The Runtara console: a React + Vite + TypeScript SPA for the
+[Runtara](https://github.com/runtarahq/runtara) runtime. `runtara-server`
+embeds a release of it (`--features embed-ui`); it also runs from a plain
+static host (see [Static hosting](#static-hosting)).
 
 ## Quick start
 
@@ -13,58 +14,44 @@ cp .env.example .env
 npm run dev        # http://localhost:8081
 ```
 
-## Building for embed
+## Versions and releases
 
-```bash
-npm run build      # writes ./dist/
-```
+The console follows runtara's versions: console `X.Y.*` works with runtara
+`X.Y.*`, and with the minor on either side while a release rolls out. Patch
+releases are independent, so a console fix ships without a server release.
 
-That's what `cargo build -p runtara-server --features embed-ui` bundles.
-`npm run build` generates `src/wasm/validation/` first. That directory
-is ignored by Git and should not be edited or committed. During an embedded
-Cargo build, the server build script also regenerates it if the shared Rust
-validator changed. A running Vite dev/watch process will pick up those generated
-file changes.
+- **What it builds against.** The browser validation WASM comes from the
+  `runtara-validation-wasm` dependency, a tarball attached to a runtara release
+  (see `package.json`). `npm run generate-api-runtime-release` regenerates
+  `src/generated/RuntaraRuntimeApi.ts` from the same release's `openapi.json`.
+  Moving to a new runtara minor means bumping that URL and regenerating.
+- **Releasing.** Set `version` in `package.json`, merge, and push the tag
+  `vX.Y.Z`. The release workflow builds with `VITE_RUNTARA_VERSION` set and
+  publishes `runtara-frontend-X.Y.Z.tar.gz` (the contents of `dist/`) with its
+  `.sha256`.
+- **Embedding in runtara.** runtara pins a release by version and checksum in
+  `crates/runtara-server/frontend.lock`; its build fetches that tarball.
 
 ## Dev loops
 
-Pick by what you're changing. The thing to avoid is the fourth combination —
-`embed-ui` plus a running watcher — which costs a full Rust recompile and a
-~113MB relink per keystroke.
+**Console only** → `npm run dev` (:8081). HMR. Needs `.env.local` for the API
+base and auth mode (`VITE_RUNTARA_AUTH_MODE=local` against a local-auth
+server).
 
-**Frontend only** → `npm run dev` (:8081). HMR, no Rust in the loop. Needs
-`.env.local` for the API base and auth mode.
-
-**Frontend against the real server surface** — mount prefix, injected
-`<base href>`, CSP, single origin, no CORS — → run the server with
-`RUNTARA_UI_DIST_DIR` and keep a watcher going:
+**Console against the real server surface** — mount prefix, injected
+`<base href>`, CSP, single origin, no CORS — → keep a watcher going and point
+a runtara server at this checkout's `dist/`:
 
 ```bash
-RUNTARA_UI_DIST_DIR=$PWD/crates/runtara-server/frontend/dist cargo run -p runtara-server --release
+npm run build:watch
 ```
 
 ```bash
-cd crates/runtara-server/frontend && npm run build:watch
+RUNTARA_UI_DIST_DIR=/path/to/runtara-frontend/dist cargo run -p runtara-server --release
 ```
 
 The server reads `dist/` per request, so a save plus a browser reload is the
-whole loop — no cargo build, no restart. It works in any profile and takes
-precedence over an embedded copy, so `--features embed-ui` is unnecessary here
-(and leaving it off is what keeps the watcher from invalidating your Rust
-builds — see below). `build:watch` skips `prebuild`, so run
-`npm run build:wasm-validation` once if `src/wasm/validation/` is missing.
-
-**Rust only** → build without `embed-ui`. `build.rs` declares
-`rerun-if-changed=frontend/dist` only under that feature, so without it a
-running watcher can't touch your build cache. With it, every `dist` write reruns
-the build script, which recompiles `runtara-server` and relinks the binary — and
-if cargo catches `dist` mid-rebuild, the build fails outright on a missing
-`index.html`.
-
-**Shipping / verifying the real embedded bundle** → stop the watcher, then
-`npm run build && cargo build -p runtara-server --release --features embed-ui`.
-That's the only combination that needs the relink, and it should be a deliberate
-one-shot rather than something in your edit loop.
+whole loop, and it takes precedence over an embedded copy.
 
 ## Runtime configuration
 
@@ -126,7 +113,8 @@ to the console's `oauth-complete.html`.
 - `npm run lint` — ESLint
 - `npm test` — Vitest
 - `npm run test:e2e` — Playwright (see `e2e/README.md`)
-- `npm run generate-api-runtime-local` / `generate-api-management-local` — regenerate TypeScript API clients from live OpenAPI specs
+- `npm run generate-api-runtime-release` — regenerate the runtime API client from the pinned runtara release's `openapi.json`
+- `npm run generate-api-runtime-local` / `generate-api-management-local` — regenerate TypeScript API clients from a running server
 
 ## Project layout
 
