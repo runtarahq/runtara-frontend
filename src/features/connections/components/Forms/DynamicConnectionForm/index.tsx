@@ -313,7 +313,9 @@ export function DynamicConnectionForm({
     // On a platform app the connection names it and has no credentials of
     // its own to send.
     const submission =
-      mode === 'create' && platformApp ? onPlatformApp(kept, platformApp) : kept;
+      mode === 'create' && platformApp
+        ? onPlatformApp(kept, platformApp)
+        : kept;
     onSubmit(submission, {
       clearSecrets: [...clearedSecrets].sort(),
       dirtyFields: Object.entries(form.formState.dirtyFields)

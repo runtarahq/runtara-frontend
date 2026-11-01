@@ -1,10 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  PendingConfirmationNotice,
-  describeStarter,
-} from './PendingConfirmationNotice';
+import { describeStarter } from '@/features/connections/utils/pendingConfirmation';
+import { PendingConfirmationNotice } from './PendingConfirmationNotice';
 
 const inTenMinutes = () => new Date(Date.now() + 10 * 60_000).toISOString();
 

@@ -61,7 +61,10 @@ export function onPlatformApp(
   submission: Record<string, unknown>,
   appId: string
 ): Record<string, unknown> {
-  const next = { ...submission, [PLATFORM_APP_PARAM]: appId };
+  const next: Record<string, unknown> = {
+    ...submission,
+    [PLATFORM_APP_PARAM]: appId,
+  };
   for (const name of PLATFORM_APP_CREDENTIAL_FIELDS) delete next[name];
   return next;
 }
