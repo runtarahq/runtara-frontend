@@ -1,6 +1,7 @@
 // The OAuth consent popup's last stop. The OAuth callback, on the API server,
-// redirects here with the outcome in the query: `result=ok&connection=<id>`
-// or `result=error&error=<code>`. This page is on the console's origin, so it
+// redirects here with the outcome in the query: `result=ok&connection=<id>`,
+// `result=pending&connection=<id>` (authorized, waiting for a member to
+// confirm it in the console) or `result=error&error=<code>`. This page is on the console's origin, so it
 // can tell the console wherever the API is hosted: over a BroadcastChannel,
 // which needs no link to the opener (a provider's
 // Cross-Origin-Opener-Policy can sever it), and over window.opener when that
@@ -14,13 +15,17 @@
       'The authorization expired or was already used. Please try again.',
     invalid_request: "The provider's answer was incomplete. Please try again.",
     token_exchange_failed: 'The provider did not issue a token.',
+    browser_mismatch:
+      'Finish the authorization in the browser you started it in.',
   };
 
   var params = new URLSearchParams(window.location.search);
-  var success = params.get('result') === 'ok';
+  var pending = params.get('result') === 'pending';
+  var success = params.get('result') === 'ok' || pending;
   var message = {
     type: 'oauth-complete',
     success: success,
+    pending: pending,
     connectionId: params.get('connection') || '',
     error: success ? '' : params.get('error') || 'server_error',
   };
@@ -45,7 +50,16 @@
   var title = document.getElementById('title');
   var detail = document.getElementById('detail');
   var close = document.getElementById('close');
-  if (success) {
+  if (pending) {
+    title.textContent = 'Authorization received';
+    title.className = 'success';
+    detail.textContent =
+      'A member must confirm this connection in the console within 15 minutes. You can close this window.';
+    close.hidden = false;
+    close.addEventListener('click', function () {
+      window.close();
+    });
+  } else if (success) {
     title.textContent = 'Authorization successful';
     title.className = 'success';
     detail.textContent = 'You can close this window.';

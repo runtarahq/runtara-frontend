@@ -28,6 +28,13 @@ import { DangerZoneSection } from '../DangerZoneSection';
 import { ConnectionStatusCard } from '../../ConnectionStatusCard';
 import { DeleteConnectionDialog } from '../../DeleteConnectionDialog';
 import { patchStripsAuthorization } from '../../../utils/reauthorization';
+import {
+  managedAppsOf,
+  onPlatformApp,
+  platformAppOf,
+  withoutPlatformAppCredentials,
+} from '../../../utils/platformApps';
+import { PlatformAppChoice, PlatformAppNotice } from './PlatformAppChoice';
 import { DefaultForSection } from '../DefaultForSection';
 import { RateLimitSection } from '../RateLimitSection';
 import {
@@ -145,25 +152,36 @@ export function DynamicConnectionForm({
   const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(
     () => new Set()
   );
-  const baseDefinition = useMemo(
-    () =>
-      buildConnectionFormDefinition(
-        connectionType as ConnectionTypeWithForm,
-        mode,
-        secretState
-      ),
-    [connectionType, mode, secretState]
+  // A platform OAuth app stands in for the client credentials: offered first
+  // when creating, and named by an existing connection that uses one.
+  const managedApps = useMemo(
+    () => managedAppsOf(connectionType),
+    [connectionType]
   );
-  const definition = useMemo(
-    () =>
-      buildConnectionFormDefinition(
-        connectionType as ConnectionTypeWithForm,
-        mode,
-        secretState,
-        clearedSecrets
-      ),
-    [clearedSecrets, connectionType, mode, secretState]
+  const existingPlatformApp = platformAppOf(
+    editProjection?.values as Record<string, unknown> | undefined
   );
+  const [chosenPlatformApp, setChosenPlatformApp] = useState<string | null>(
+    () => managedApps[0]?.id ?? null
+  );
+  const platformApp = mode === 'edit' ? existingPlatformApp : chosenPlatformApp;
+  const baseDefinition = useMemo(() => {
+    const built = buildConnectionFormDefinition(
+      connectionType as ConnectionTypeWithForm,
+      mode,
+      secretState
+    );
+    return platformApp ? withoutPlatformAppCredentials(built) : built;
+  }, [connectionType, mode, secretState, platformApp]);
+  const definition = useMemo(() => {
+    const built = buildConnectionFormDefinition(
+      connectionType as ConnectionTypeWithForm,
+      mode,
+      secretState,
+      clearedSecrets
+    );
+    return platformApp ? withoutPlatformAppCredentials(built) : built;
+  }, [clearedSecrets, connectionType, mode, secretState, platformApp]);
   const canonicalDefaults = useMemo(
     () => buildConnectionParameterValues(baseDefinition, initValues, mode),
     [baseDefinition, initValues, mode]
@@ -287,11 +305,15 @@ export function DynamicConnectionForm({
     // Read-access fields are server-managed (e.g. OAuth-captured realm_id) and
     // must never be supplied — creation rejects them outright. Strip them from
     // the submission so the merge below can't reintroduce a displayed default.
-    const submission = Object.fromEntries(
+    const kept = Object.fromEntries(
       Object.entries({ ...values, ...parameters }).filter(
         ([name]) => descriptorFields[name]?.access !== 'read'
       )
     );
+    // On a platform app the connection names it and has no credentials of
+    // its own to send.
+    const submission =
+      mode === 'create' && platformApp ? onPlatformApp(kept, platformApp) : kept;
     onSubmit(submission, {
       clearSecrets: [...clearedSecrets].sort(),
       dirtyFields: Object.entries(form.formState.dirtyFields)
@@ -382,6 +404,23 @@ export function DynamicConnectionForm({
           <div className="space-y-6">
             {conflictNotice}
             {reconnectNotice}
+            {mode === 'create' && managedApps.length > 0 && (
+              <PlatformAppChoice
+                provider={connectionType.displayName || 'the provider'}
+                apps={managedApps}
+                chosen={chosenPlatformApp}
+                onChoose={setChosenPlatformApp}
+              />
+            )}
+            {mode === 'edit' && existingPlatformApp && (
+              <PlatformAppNotice
+                provider={connectionType.displayName || 'the provider'}
+                app={
+                  managedApps.find((app) => app.id === existingPlatformApp)
+                    ?.displayName ?? existingPlatformApp
+                }
+              />
+            )}
             {mode === 'create' && oauthCreateHint && (
               <div className="rounded-lg border border-info/40 bg-info/10 px-4 py-3 text-sm text-foreground">
                 After creating, a {connectionType.displayName || 'provider'}{' '}

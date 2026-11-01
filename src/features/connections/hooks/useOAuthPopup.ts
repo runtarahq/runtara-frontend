@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 interface OAuthResult {
   connectionId: string;
   success: boolean;
+  /** Authorized, but waiting for a member to confirm it in the console. */
+  pending?: boolean;
   error?: string;
 }
 
@@ -40,6 +42,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_state: 'the authorization expired or was already used',
   invalid_request: "the provider's answer was incomplete",
   token_exchange_failed: 'the provider did not issue a token',
+  browser_mismatch: 'finish the authorization in the browser you started it in',
 };
 
 function describeOAuthError(code: unknown): string {
@@ -112,6 +115,7 @@ export function useOAuthPopup() {
               resolve({
                 connectionId: result.connectionId ?? connectionId ?? '',
                 success: true,
+                ...(result.pending ? { pending: true } : {}),
               })
             );
           } else {

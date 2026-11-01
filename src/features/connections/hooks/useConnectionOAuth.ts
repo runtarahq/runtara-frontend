@@ -30,12 +30,16 @@ export function useConnectionOAuth() {
       setRunningId(connectionId);
       try {
         const authUrl = await getOAuthAuthorizeUrl(token, connectionId);
-        await openOAuthPopup(authUrl, connectionId);
+        const result = await openOAuthPopup(authUrl, connectionId);
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
         queryClient.invalidateQueries({
           queryKey: queryKeys.connections.byId(connectionId),
         });
-        toast.success('Connection reconnected successfully');
+        if (result.pending) {
+          toast.info('Authorized: confirm the connection on its page to use it.');
+        } else {
+          toast.success('Connection reconnected successfully');
+        }
         opts?.onSuccess?.();
       } catch (error) {
         toast.error(

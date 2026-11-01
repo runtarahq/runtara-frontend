@@ -14,13 +14,16 @@ export type ConnectionStatusPill = { tone: StatusTone; label: string };
 export function connectionStatusPill(
   status: ConnectionStatus
 ): ConnectionStatusPill {
-  switch (status) {
+  // PENDING_CONFIRMATION is newer than the generated API's status union.
+  switch (status as string) {
     case 'ACTIVE':
       return { tone: 'success', label: 'Connected' };
     case 'REQUIRES_RECONNECTION':
       return { tone: 'warning', label: 'Reconnect required' };
     case 'INVALID_CREDENTIALS':
       return { tone: 'error', label: 'Invalid credentials' };
+    case 'PENDING_CONFIRMATION':
+      return { tone: 'warning', label: 'Waiting for confirmation' };
     default:
       return { tone: 'neutral', label: 'Unknown' };
   }
