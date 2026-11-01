@@ -190,6 +190,60 @@ describe('useOAuthPopup', () => {
     });
   });
 
+  it('reports an authorization that waits for confirmation', async () => {
+    const popup = mockPopup();
+    openSpy = vi
+      .spyOn(window, 'open')
+      .mockReturnValue(popup as unknown as Window);
+
+    const { result } = renderHook(() => useOAuthPopup());
+    const promise = result.current.openOAuthPopup(
+      'https://provider.example/auth',
+      'conn-1'
+    );
+    const landing = new BroadcastChannel('runtara-oauth');
+    landing.postMessage({
+      type: 'oauth-complete',
+      success: true,
+      pending: true,
+      connectionId: 'conn-1',
+    });
+    landing.close();
+
+    await expect(promise).resolves.toEqual({
+      connectionId: 'conn-1',
+      success: true,
+      pending: true,
+    });
+  });
+
+  it('explains a flow finished in another browser', async () => {
+    const popup = mockPopup();
+    openSpy = vi
+      .spyOn(window, 'open')
+      .mockReturnValue(popup as unknown as Window);
+
+    const { result } = renderHook(() => useOAuthPopup());
+    const promise = result.current.openOAuthPopup(
+      'https://provider.example/auth',
+      'conn-1'
+    );
+    const assertion = expect(promise).rejects.toThrow(
+      'finish the authorization in the browser you started it in'
+    );
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: {
+          type: 'oauth-complete',
+          success: false,
+          error: 'browser_mismatch',
+        },
+      })
+    );
+    await assertion;
+  });
+
   it("ignores another connection's success and reports a failure's code", async () => {
     const popup = mockPopup();
     openSpy = vi

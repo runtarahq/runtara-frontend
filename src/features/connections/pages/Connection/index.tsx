@@ -13,8 +13,10 @@ import {
 } from '@/features/connections/components/Forms/DynamicConnectionForm';
 import { type EditProjection } from '@/features/connections/components/Forms/DynamicConnectionForm/adapter';
 import {
+  decidePendingConfirmation,
   getConnectionById,
   getConnectionTypes,
+  getPendingConfirmation,
   updateConnection,
   type UpdateConnectionInput,
   removeConnection,
@@ -32,6 +34,7 @@ import {
 import { buildConnectionUpdateInput } from './update-payload';
 import { ConnectionConflictNotice } from './ConnectionConflictNotice';
 import { ReconnectPromptNotice } from './ReconnectPromptNotice';
+import { PendingConfirmationNotice } from './PendingConfirmationNotice';
 
 type ConnectionRecord = Awaited<ReturnType<typeof getConnectionById>>;
 
@@ -95,6 +98,52 @@ export function Connection() {
     queryKey: queryKeys.connections.types(),
     queryFn: getConnectionTypes,
   });
+
+  // An authorization waiting for a member's confirmation, when the
+  // connection is pending one.
+  const isPendingConfirmation =
+    (connection.data as { status?: string } | undefined)?.status ===
+    'PENDING_CONFIRMATION';
+  const pendingQuery = useCustomQuery({
+    queryKey: [...queryKeys.connections.byId(id ?? ''), 'oauthPending'],
+    queryFn: (token: string) => getPendingConfirmation(token, id!),
+    enabled: !!id && isPendingConfirmation,
+  });
+  const [deciding, setDeciding] = useState<'confirm' | 'reject' | null>(null);
+  const decide = async (decision: 'confirm' | 'reject') => {
+    const pending = pendingQuery.data;
+    if (!id || !pending) return;
+    setDeciding(decision);
+    try {
+      await decidePendingConfirmation(
+        auth.user?.access_token,
+        id,
+        pending.id,
+        decision
+      );
+      toast.success(
+        decision === 'confirm'
+          ? 'Connection confirmed and ready.'
+          : 'Authorization rejected; its tokens were dropped.'
+      );
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      toast.error(
+        status === 409
+          ? 'The authorization changed since this page loaded; review it again.'
+          : status === 410
+            ? 'The time to confirm it is over; start the authorization again.'
+            : 'Could not record the decision; try again.'
+      );
+    } finally {
+      setDeciding(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections.byId(id),
+      });
+    }
+  };
 
   // Live rate-limit status for the honest protection badge in the form.
   const rateLimitStatusQuery = useConnectionRateLimitStatus(id);
@@ -303,8 +352,19 @@ export function Connection() {
   // Post-save handoff: a reauth-stripping save that the refetch confirms as
   // REQUIRES_RECONNECTION prompts a reconnect. Never auto-opens the popup —
   // "Reconnect now" is a fresh user gesture (popup blockers).
+  const pendingNotice =
+    isPendingConfirmation && pendingQuery.data ? (
+      <PendingConfirmationNotice
+        provider={currentConnectionType.displayName || 'the provider'}
+        pending={pendingQuery.data}
+        deciding={deciding}
+        onDecide={decide}
+      />
+    ) : undefined;
+
   const reconnectNotice =
-    pendingReauthLabels && needsReconnect && isOAuthAuthCode && id ? (
+    pendingNotice ??
+    (pendingReauthLabels && needsReconnect && isOAuthAuthCode && id ? (
       <ReconnectPromptNotice
         provider={currentConnectionType.displayName || 'the provider'}
         changedFieldLabels={pendingReauthLabels}
@@ -314,7 +374,7 @@ export function Connection() {
         }
         onLater={() => setPendingReauthLabels(null)}
       />
-    ) : undefined;
+    ) : undefined);
 
   return (
     <DynamicConnectionForm

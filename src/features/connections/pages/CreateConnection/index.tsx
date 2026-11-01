@@ -52,9 +52,16 @@ export function CreateConnection() {
       }
       try {
         const authUrl = await getOAuthAuthorizeUrl(token, connectionId);
-        await openOAuthPopup(authUrl, connectionId);
-        // Authorized: nothing left to do here, the list confirms completion.
+        const result = await openOAuthPopup(authUrl, connectionId);
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
+        if (result.pending) {
+          // Authorized, but it waits for a member's confirmation: its page
+          // shows the account to confirm.
+          navigate(`/connections/${connectionId}`);
+          toast.info('Authorized: confirm the connection to use it.');
+          return;
+        }
+        // Authorized: nothing left to do here, the list confirms completion.
         navigate('/connections');
         toast.success('Connection authorized and ready.');
       } catch (error) {

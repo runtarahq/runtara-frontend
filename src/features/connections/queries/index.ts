@@ -172,6 +172,42 @@ export async function getOAuthAuthorizeUrl(
   return result.data.authorizationUrl;
 }
 
+/** An authorization a flow started without a browser obtained, waiting for a
+ *  member to confirm it. No secrets. */
+export interface PendingConfirmation {
+  id: string;
+  account?: { id?: string; display?: string } | null;
+  startedBy: string;
+  authorizedAt?: string | null;
+  pendingUntil: string;
+}
+
+export async function getPendingConfirmation(
+  token: string | null | undefined,
+  connectionId: string
+): Promise<PendingConfirmation | null> {
+  const result = await RuntimeREST.instance.get(
+    `/api/runtime/connections/${connectionId}/oauth/pending`,
+    createAuthHeaders(token)
+  );
+  return (result.data?.pending as PendingConfirmation | null) ?? null;
+}
+
+/** Confirm (or reject) the pending authorization `pendingId`: the one the
+ *  member reviewed. A later one that replaced it is refused (409). */
+export async function decidePendingConfirmation(
+  token: string | null | undefined,
+  connectionId: string,
+  pendingId: string,
+  decision: 'confirm' | 'reject'
+): Promise<void> {
+  await RuntimeREST.instance.post(
+    `/api/runtime/connections/${connectionId}/oauth/${decision}`,
+    { pendingId },
+    createAuthHeaders(token)
+  );
+}
+
 export async function getConnectionTypes(token: string) {
   const result = await RuntimeREST.api.listConnectionTypesHandler(
     createAuthHeaders(token)
