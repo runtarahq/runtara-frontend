@@ -14,17 +14,42 @@ function mockPopup(): FakePopup {
   return { closed: false, close: vi.fn() };
 }
 
+// Delivers to the other channels of the same name at once. Node's own
+// BroadcastChannel, under jsdom, does not deliver here on every Node version.
+class FakeBroadcastChannel {
+  static open = new Set<FakeBroadcastChannel>();
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+
+  constructor(readonly name: string) {
+    FakeBroadcastChannel.open.add(this);
+  }
+
+  postMessage(data: unknown) {
+    for (const other of FakeBroadcastChannel.open) {
+      if (other !== this && other.name === this.name)
+        other.onmessage?.({ data });
+    }
+  }
+
+  close() {
+    FakeBroadcastChannel.open.delete(this);
+  }
+}
+
 describe('useOAuthPopup', () => {
   let openSpy: { mockRestore: () => void } | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
   });
 
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     openSpy?.mockRestore();
+    vi.unstubAllGlobals();
+    FakeBroadcastChannel.open.clear();
     vi.mocked(toast.loading).mockClear();
     vi.mocked(toast.dismiss).mockClear();
   });
