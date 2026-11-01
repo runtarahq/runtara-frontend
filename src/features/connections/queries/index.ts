@@ -165,9 +165,12 @@ export async function getOAuthAuthorizeUrl(
 ): Promise<string> {
   // Use the shared header builder: it omits Authorization when there is no
   // token (local / trust_proxy auth modes), matching every other runtime call.
+  // With credentials: the answer sets the flow's cookie, which binds it to
+  // this browser and must come back with the provider's redirect to the API's
+  // host, wherever the console is served from.
   const result = await RuntimeREST.instance.get(
     `/api/runtime/connections/${connectionId}/oauth/authorize`,
-    createAuthHeaders(token)
+    { ...createAuthHeaders(token), withCredentials: true }
   );
   return result.data.authorizationUrl;
 }
