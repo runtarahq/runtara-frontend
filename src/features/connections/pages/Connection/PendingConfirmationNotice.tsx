@@ -5,22 +5,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { Button } from '@/shared/components/ui/button';
 import { Spinner } from '@/shared/components/ui/spinner';
 import type { PendingConfirmation } from '@/features/connections/queries';
-
-/** Who started a flow, from its `channel:id` label. */
-export function describeStarter(startedBy: string): string {
-  const [channel, ...rest] = startedBy.split(':');
-  const who = rest.join(':');
-  switch (channel) {
-    case 'api_key':
-      return `an API key of ${who}`;
-    case 'mcp':
-      return `an MCP client of ${who}`;
-    case 'member':
-      return who;
-    default:
-      return startedBy || 'someone';
-  }
-}
+import { describeStarter } from '@/features/connections/utils/pendingConfirmation';
 
 /**
  * A connection authorized by a flow started without a browser (an API client

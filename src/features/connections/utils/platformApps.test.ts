@@ -46,9 +46,9 @@ describe('platform OAuth apps', () => {
         scopes: { type: 'string' },
       },
     } as unknown as FormDefinition;
-    expect(Object.keys(withoutPlatformAppCredentials(definition).fields)).toEqual(
-      ['scopes']
-    );
+    expect(
+      Object.keys(withoutPlatformAppCredentials(definition).fields)
+    ).toEqual(['scopes']);
     expect(Object.keys(definition.fields)).toHaveLength(3);
 
     expect(

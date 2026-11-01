@@ -36,7 +36,9 @@ export function useConnectionOAuth() {
           queryKey: queryKeys.connections.byId(connectionId),
         });
         if (result.pending) {
-          toast.info('Authorized: confirm the connection on its page to use it.');
+          toast.info(
+            'Authorized: confirm the connection on its page to use it.'
+          );
         } else {
           toast.success('Connection reconnected successfully');
         }
