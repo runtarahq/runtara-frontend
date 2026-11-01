@@ -24,7 +24,10 @@ import { NODE_TYPES, STEP_TYPES } from '@/features/workflows/config/workflow';
 import { canStepHaveErrorHandler } from '@/features/workflows/utils/step-error-support';
 
 const wasmBytes = readFileSync(
-  path.resolve(process.cwd(), 'src/wasm/validation/runtara_validation_bg.wasm')
+  path.resolve(
+    process.cwd(),
+    'node_modules/runtara-validation-wasm/runtara_validation_bg.wasm'
+  )
 );
 const originalFetch = globalThis.fetch.bind(globalThis);
 let agentsFetchCount = 0;

@@ -6,7 +6,5 @@ e2e-results
 playwright-report
 coverage
 src/generated
-# wasm-pack output, generated (src/wasm/validation); never hand-edited.
-src/wasm
 *.tsbuildinfo
 package-lock.json

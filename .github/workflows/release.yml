@@ -1,0 +1,73 @@
+name: Release
+
+# A tag vX.Y.Z publishes runtara-frontend-X.Y.Z.tar.gz (the contents of dist/)
+# and its .sha256 as a GitHub release. runtara pins a release by version and
+# checksum to embed it; Runtara Cloud builds the same tag with its edition.
+# The tag must match package.json's version.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Check the tag against package.json
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          declared="$(node -p "require('./package.json').version")"
+          if [ "$version" != "$declared" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${declared}"
+              exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        env:
+          VITE_RUNTARA_VERSION: ${{ steps.version.outputs.version }}
+          VITE_RUNTARA_COMMIT: ${{ github.sha }}
+          VITE_RUNTARA_BUILD_NUMBER: ${{ github.run_number }}
+        run: npm run build
+
+      - name: Package dist/
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p release
+          tarball="release/runtara-frontend-${VERSION}.tar.gz"
+          tar -czf "$tarball" -C dist .
+          (cd release && sha256sum "runtara-frontend-${VERSION}.tar.gz" > "runtara-frontend-${VERSION}.tar.gz.sha256")
+          cat release/*.sha256
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          if [[ "$TAG" == *-* ]]; then flags=(--prerelease); fi
+          gh release create "$TAG" --title "Release ${TAG#v}" --generate-notes "${flags[@]}" release/*

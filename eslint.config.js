@@ -15,9 +15,6 @@ export default tseslint.config(
       'playwright-report',
       'storybook-static',
       'coverage',
-      // wasm-pack output: src/wasm/validation is generated at build time
-      // (gitignored) and not hand-written, so linting it only produces noise.
-      'src/wasm',
     ],
   },
   {
