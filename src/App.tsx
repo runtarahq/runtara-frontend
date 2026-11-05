@@ -6,8 +6,6 @@ import { useMe } from '@/shared/hooks/useMe';
 import { useOrgId } from '@/shared/hooks/useOrgId';
 import { useTenantUrlGuard } from '@/shared/hooks/useTenantUrlGuard';
 import { useUserGroups } from '@/shared/hooks/useUserGroups';
-import { useEffect } from 'react';
-import { cleanupPointerEvents } from '@/lib/utils';
 import { MaintenancePage } from '@/shared/components/maintenance-page';
 import { useHealthCheck } from '@/shared/hooks/useHealthCheck';
 import { tenantIdFromUrl } from '@/shared/config/oidcConfig';
@@ -29,17 +27,6 @@ function App() {
   useMe();
   const isMaintenanceMode = useHealthCheck();
   const myTenants = useTenants();
-
-  // Global cleanup for pointer-events
-  useEffect(() => {
-    // Clean up on mount
-    cleanupPointerEvents();
-
-    // Clean up on unmount
-    return () => {
-      cleanupPointerEvents();
-    };
-  }, []);
 
   if (auth.isLoading) {
     return <Loader />;

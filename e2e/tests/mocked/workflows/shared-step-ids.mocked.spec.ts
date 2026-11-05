@@ -153,31 +153,35 @@ test.describe('Step ids shared across subgraphs (mocked)', () => {
       ['a', 'Post analyzed'],
       ['b', 'Notification complete'],
     ]) {
-      const containerBox = await boxOf(
-        page,
-        `.react-flow__node[data-id="${container}"]`
-      );
-      const finishBox = (await page
-        .locator('.react-flow__node', { hasText: finishName })
-        .boundingBox())!;
-      expect(finishBox.x).toBeGreaterThanOrEqual(containerBox.x);
-      expect(finishBox.x + finishBox.width).toBeLessThanOrEqual(
-        containerBox.x + containerBox.width
-      );
-      expect(finishBox.y).toBeGreaterThanOrEqual(containerBox.y);
-      expect(finishBox.y + finishBox.height).toBeLessThanOrEqual(
-        containerBox.y + containerBox.height
-      );
+      // Canvas fitting animates after nodes become visible. Retry the complete
+      // containment check so boxes captured on different frames cannot fail it.
+      await expect(async () => {
+        const containerBox = await boxOf(
+          page,
+          `.react-flow__node[data-id="${container}"]`
+        );
+        const finishBox = (await page
+          .locator('.react-flow__node', { hasText: finishName })
+          .boundingBox())!;
+        expect(finishBox.x).toBeGreaterThanOrEqual(containerBox.x);
+        expect(finishBox.x + finishBox.width).toBeLessThanOrEqual(
+          containerBox.x + containerBox.width
+        );
+        expect(finishBox.y).toBeGreaterThanOrEqual(containerBox.y);
+        expect(finishBox.y + finishBox.height).toBeLessThanOrEqual(
+          containerBox.y + containerBox.height
+        );
 
-      // The Split's inner edge stays inside its container.
-      const edge = page.locator(
-        `.react-flow__edge[data-id^="log_${container}-"] path`
-      );
-      const edgeBox = (await edge.first().boundingBox())!;
-      expect(edgeBox.x).toBeGreaterThanOrEqual(containerBox.x);
-      expect(edgeBox.x + edgeBox.width).toBeLessThanOrEqual(
-        containerBox.x + containerBox.width
-      );
+        // The Split's inner edge stays inside its container.
+        const edge = page.locator(
+          `.react-flow__edge[data-id^="log_${container}-"] path`
+        );
+        const edgeBox = (await edge.first().boundingBox())!;
+        expect(edgeBox.x).toBeGreaterThanOrEqual(containerBox.x);
+        expect(edgeBox.x + edgeBox.width).toBeLessThanOrEqual(
+          containerBox.x + containerBox.width
+        );
+      }).toPass();
     }
 
     await page.getByTitle('Add note').click();

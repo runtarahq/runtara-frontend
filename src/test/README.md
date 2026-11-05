@@ -29,7 +29,7 @@ This guide provides information on how to write, run, and maintain tests for the
 
 - Test files should be placed next to the files they test
 - Use the `.test.ts` or `.test.tsx` extension
-- Example: `src/components/modal-dialog.tsx` → `src/components/modal-dialog.test.tsx`
+- Example: `src/shared/components/confirmation-dialog.tsx` → `src/shared/components/confirmation-dialog.test.tsx`
 
 ### Testing Components
 
@@ -159,12 +159,12 @@ describe('myStore', () => {
 
 The project includes several example tests that demonstrate best practices:
 
-- Component test: `src/components/modal-dialog.test.tsx`
-- Hook test: `src/hooks/usePagination.test.ts`
-- Store test: `src/stores/authStore.test.ts`
+- Component test: `src/shared/components/confirmation-dialog.test.tsx`
+- Hook test: `src/shared/hooks/usePagination.test.ts`
+- Store test: `src/shared/stores/authStore.test.ts`
 
 Use these as templates when writing new tests.
 
 ## Improving Test Coverage
 
-See the [Test Coverage Gaps Report](./coverage-report.md) for a detailed analysis of test coverage gaps and recommendations for improvement.
+Run `npm run test:coverage` for a current coverage report in `coverage/`. Prioritize untested behavior in critical paths rather than relying on a static gap inventory. Browser tests and their CI coverage are documented in [the E2E guide](../../e2e/README.md).

@@ -1,16 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { useBlocker, type Location } from 'react-router';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@/shared/components/ui/alert-dialog';
+import { UnsavedChangesDialog } from './unsaved-changes-dialog';
 
 export function NavigationBlocker() {
   const {
@@ -32,15 +23,9 @@ export function NavigationBlocker() {
         currentLocation: Location;
         nextLocation: Location;
       }) => {
-        const shouldBlockNav =
-          shouldBlock && currentLocation.pathname !== nextLocation.pathname;
-        console.log(
-          '[NavigationBlocker] shouldBlock:',
-          shouldBlockNav,
-          'shouldBlock state:',
-          shouldBlock
+        return (
+          shouldBlock && currentLocation.pathname !== nextLocation.pathname
         );
-        return shouldBlockNav;
       },
       [shouldBlock]
     )
@@ -48,9 +33,7 @@ export function NavigationBlocker() {
 
   // When blocker becomes blocked, store the proceed/reset functions and show dialog
   useEffect(() => {
-    console.log('[NavigationBlocker] blocker.state:', blocker.state);
     if (blocker.state === 'blocked') {
-      console.log('[NavigationBlocker] Navigation blocked, opening dialog');
       setBlockerFunctions(blocker.proceed, blocker.reset);
       openDialog();
     }
@@ -63,30 +46,14 @@ export function NavigationBlocker() {
   ]);
 
   return (
-    <AlertDialog
+    <UnsavedChangesDialog
       open={isDialogOpen}
-      onOpenChange={(open) => !open && cancelNavigation()}
-    >
-      <AlertDialogContent className="p-6">
-        <AlertDialogHeader className="pb-4">
-          <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
-          <AlertDialogDescription className="pt-2">
-            You have unsaved changes. If you leave now, they&apos;ll be
-            discarded.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter className="pt-4">
-          <AlertDialogCancel onClick={cancelNavigation}>
-            Keep editing
-          </AlertDialogCancel>
-          <AlertDialogAction
-            onClick={confirmNavigation}
-            className="bg-warning text-warning-foreground hover:bg-warning/90"
-          >
-            Discard changes
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      onConfirm={confirmNavigation}
+      onCancel={cancelNavigation}
+      title="Unsaved changes"
+      description="You have unsaved changes. If you leave now, they'll be discarded."
+      confirmLabel="Discard changes"
+      cancelLabel="Keep editing"
+    />
   );
 }
