@@ -81,12 +81,7 @@ export default defineConfig({
             return 'utils-vendor';
           if (/node_modules\/(lucide-react|@radix-ui\/react-icons)\//.test(id))
             return 'icons';
-          if (
-            /node_modules\/(sonner|vaul|react-resizable-panels|next-themes)\//.test(
-              id
-            )
-          )
-            return 'ui-ext_ras';
+          if (/node_modules\/sonner\//.test(id)) return 'ui-extras';
         },
       },
       treeshake: {

@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from '@/shared/components/ui/dialog.tsx';
 import { Button } from '@/shared/components/ui/button.tsx';
-import React, { useEffect } from 'react';
+import React from 'react';
 
 const DEFAULT_TITLE = 'Are you absolutely sure?';
 const DEFAULT_DESCRIPTION = 'This action will delete this entity.';
@@ -27,7 +27,7 @@ interface ConfirmationDialogProps {
  * Use this for delete confirmations, clone confirmations, etc.
  *
  * For simple dialogs that just wrap content, use SimpleDialog from next-dialog.
- * For form dialogs with create/update buttons, use DialogBase from next-dialog.
+ * Use Dialog and DialogContent for custom form dialogs.
  */
 export function ConfirmationDialog(props: ConfirmationDialogProps) {
   const {
@@ -39,20 +39,6 @@ export function ConfirmationDialog(props: ConfirmationDialogProps) {
     onClose,
     onConfirm,
   } = props;
-
-  // Clean up pointer-events style when component unmounts
-  useEffect(() => {
-    return () => {
-      document.body.style.removeProperty('pointer-events');
-    };
-  }, []);
-
-  // Clean up pointer-events style when modal is closed
-  useEffect(() => {
-    if (!open) {
-      document.body.style.removeProperty('pointer-events');
-    }
-  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -75,6 +61,3 @@ export function ConfirmationDialog(props: ConfirmationDialogProps) {
     </Dialog>
   );
 }
-
-// Backwards compatibility alias - prefer using ConfirmationDialog directly
-// ModalDialog is not used externally; kept as local alias only

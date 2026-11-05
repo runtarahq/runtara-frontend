@@ -4,14 +4,16 @@ End-to-end tests live in this directory and run with Playwright.
 
 ## Projects
 
-`playwright.config.ts` defines four projects with different trust boundaries:
+`playwright.config.ts` defines five test projects, plus two authentication setup projects:
 
 | Project    | Test files                                                     | Network                                                     | Use when                                                                                                                   |
 | ---------- | -------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `mocked`   | `tests/mocked/**/*.mocked.spec.ts`                             | **None** — every API call is intercepted via `page.route()` | **PR gate.** Fast, deterministic, no secrets required. Fork PRs can run this.                                              |
-| `smoke`    | `tests/smoke/**/*.smoke.spec.ts`                               | Real API — packaged release bundle in CI                    | Release smoke coverage. CI runs in local auth mode, so no Auth0 secrets are required.                                      |
+| `smoke`    | `tests/smoke/**/*.smoke.spec.ts`                               | Real API                                                    | Smoke coverage against a running server. Set the smoke auth mode to match that server.                                     |
 | `e2e`      | `tests/e2e/**/*.e2e.spec.ts`                                   | Real API + full local backend stack                         | Deep end-to-end flows that exercise the runtime (gateway + DB + scheduler). Requires the backend services running locally. |
-| Root tests | `tests/*.spec.ts` (auth, login, navigation, components, theme) | Real API (uses `user.json` state)                           | Browser-facing checks that don't fit neatly into smoke or e2e.                                                             |
+| `chromium` | `tests/*.spec.ts` (auth, login, navigation, components, theme) | Real API (uses `user.json` state)                           | Browser-facing checks that don't fit neatly into smoke or e2e.                                                             |
+
+The `local-ui` project selects `*.local.e2e.spec.ts` tests. Run it with `npm run test:e2e:local-ui` to start Vite in local auth mode. These tests require a running local runtime.
 
 Each project has its own auth bootstrap:
 
@@ -94,30 +96,11 @@ Workflow:
 2. To enable visual regression for a given spec, set `E2E_VISUAL=true` in the CI workflow and run `--update-snapshots` once; commit the generated `*.png` files under `__snapshots__/` directories. Subsequent runs enforce them.
 3. Locally, to regenerate: `E2E_VISUAL=true npm run test:e2e:mocked:update` (but only commit the linux version — run in the docker-compose image for an accurate match).
 
-## Full-stack seeding
-
-`utils/seed.ts` wraps API calls that create fixtures for `*.e2e.spec.ts` tests:
-
-```ts
-import { seededApi, seedWorkflow, cleanupAllSeeded } from '../../utils/seed';
-
-test.beforeAll(async () => {
-  api = await seededApi();
-  workflow = await seedWorkflow(api, { scope: 'my-suite', name: 'My test' });
-});
-
-test.afterAll(async () => {
-  await cleanupAllSeeded(api, 'my-suite');
-  await api.dispose();
-});
-```
-
-The token is read from `.auth/user.json` (set by `auth.setup.ts`). Seeded entities include a tag `[__e2e:<scope>:<run-id>]` in their name/description so `cleanupAllSeeded` can reap them even after a crashed test — don't rely on `afterEach` for cleanup alone.
-
 ## CI
 
-- `.github/workflows/pr-checks.yml` — runs `lint`, `typecheck`, `unit`, `build`, `e2e-mocked` on every PR against `main`. All five jobs must pass. **The user needs to mark these as required status checks in GitHub branch-protection settings** (UI action, not a repo file).
-- `.github/workflows/release.yml` — builds release bundles, starts an isolated local Postgres/Valkey stack, runs the `smoke` project against the packaged Linux bundle in local auth mode, then creates the GitHub release only after smoke passes.
+- `.github/workflows/pr-checks.yml` runs lint, formatting, TypeScript, unit tests, Knip, build, and mocked browser tests on pushes and pull requests to `main`.
+- `.github/workflows/release.yml` checks the tag against `package.json`, runs unit tests, builds the console, and publishes the bundle and checksum. It does not start a backend stack or run real-API smoke tests.
+- Keep the Playwright Docker image in `docker-compose.e2e.yml` aligned with the exact Playwright versions in `package.json`.
 
 ## Directory layout
 
@@ -135,9 +118,7 @@ e2e/
 │   ├── builders.ts             # typed fixture factories (buildWorkflow, etc.)
 │   └── index.ts                # merged test + expect entrypoint
 ├── utils/
-│   ├── auth-token.ts           # Auth0 client-credentials flow helper
-│   ├── test-helpers.ts         # reusable interaction primitives
-│   └── seed.ts                 # full-stack seeding helpers
+│   └── auth-token.ts           # Auth0 client-credentials flow helper
 └── tests/
     ├── *.spec.ts               # root-level navigation/auth/theme
     ├── smoke/*.smoke.spec.ts   # real-API smoke

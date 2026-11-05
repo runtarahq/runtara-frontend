@@ -61,7 +61,7 @@ export default defineConfig({
     // Video on failure
     video: 'on-first-retry',
 
-    // Accept self-signed certificates from Vite's basicSsl plugin
+    // Allow tests against deployments with self-signed HTTPS certificates.
     ignoreHTTPSErrors: true,
   },
 
@@ -76,17 +76,13 @@ export default defineConfig({
     // Main test project - uses authenticated state from real Auth0 setup
     {
       name: 'chromium',
+      testMatch: /tests\/[^/]+\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: authFile,
       },
       dependencies: ['setup'],
-      testIgnore: [
-        /auth\.setup\.ts/,
-        /auth\.mocked\.setup\.ts/,
-        /.*\.local\.e2e\.spec\.ts/,
-        /tests\/mocked\//,
-      ],
+      testIgnore: [/.*\.local\.e2e\.spec\.ts/],
     },
 
     // Smoke tests - real API calls, longer timeout

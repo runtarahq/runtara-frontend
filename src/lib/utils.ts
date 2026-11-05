@@ -96,13 +96,3 @@ export const checkUserGroup = (
 
   return allowedGroups.some((group) => userGroups.includes(group));
 };
-
-/**
- * Cleans up pointer-events style on document.body
- * This can be called from anywhere to ensure UI elements remain clickable
- */
-export const cleanupPointerEvents = () => {
-  if (typeof document !== 'undefined') {
-    document.body.style.removeProperty('pointer-events');
-  }
-};
