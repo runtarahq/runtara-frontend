@@ -98,7 +98,7 @@ Workflow:
 
 ## CI
 
-- `.github/workflows/pr-checks.yml` runs lint, formatting, TypeScript, unit tests, Knip, build, and mocked browser tests on pushes and pull requests to `main`.
+- `.github/workflows/ci.yml` runs lint, formatting, TypeScript, unit tests, Knip, build, and mocked browser tests on pushes and pull requests to `main`. The browser job pins Ubuntu 24.04, which Playwright 1.59.1 supports.
 - `.github/workflows/release.yml` checks the tag against `package.json`, runs unit tests, builds the console, and publishes the bundle and checksum. It does not start a backend stack or run real-API smoke tests.
 - Keep the Playwright Docker image in `docker-compose.e2e.yml` aligned with the exact Playwright versions in `package.json`.
 

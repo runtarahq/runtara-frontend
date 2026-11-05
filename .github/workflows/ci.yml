@@ -44,7 +44,9 @@ jobs:
 
   e2e-mocked:
     name: E2E (mocked)
-    runs-on: ubuntu-latest
+    # Playwright 1.59.1 supports Ubuntu 24.04; ubuntu-latest has moved to
+    # 26.04, where its browser dependency installer fails before tests run.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
