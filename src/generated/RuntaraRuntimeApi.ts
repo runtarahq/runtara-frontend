@@ -317,8 +317,37 @@ export type BulkValidationMode = "stop" | "skip";
 /** Behavior on unique-key conflict for bulk-create. */
 export type BulkConflictMode = "error" | "skip" | "upsert";
 
-/** How much of the issuing user's role the key may exercise. Omitted or `full` means no narrowing. */
-export type ApiKeyScope = "full" | "read_only";
+/**
+ * How much of the issuing user's role the key may exercise. Omitted or `full` means no narrowing;
+ * `read_only` is every read permission; an array of permission wire-names is an explicit
+ * least-privilege set (SYN-939).
+ */
+export type ApiKeyScope =
+  | "full"
+  | "read_only"
+  | (
+      | "workflow:read"
+      | "workflow:create"
+      | "workflow:update"
+      | "workflow:delete"
+      | "workflow:execute"
+      | "workflow:folder_rename"
+      | "invocation_history:read"
+      | "database:read"
+      | "database:create"
+      | "database:update"
+      | "database:delete"
+      | "trigger:read"
+      | "trigger:create"
+      | "trigger:update"
+      | "trigger:delete"
+      | "connection:read"
+      | "connection:create"
+      | "connection:update"
+      | "connection:delete"
+      | "analytics:read"
+      | "user_management:access"
+    )[];
 
 /** Aggregate function. JSON encoding is SCREAMING_SNAKE_CASE. */
 export type AggregateFn =
@@ -6067,6 +6096,22 @@ export class Api<
         secure: true,
         type: "application/json",
         format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags api-keys-controller
+     * @name RevokeUserKeys
+     * @request POST:/api/runtime/api-keys/users/{user_id}/revoke
+     * @secure
+     */
+    revokeUserKeys: (userId: string, params: RequestParams = {}) =>
+      this.request<void, void>({
+        path: `/api/runtime/api-keys/users/${userId}/revoke`,
+        method: "POST",
+        secure: true,
         ...params,
       }),
 
