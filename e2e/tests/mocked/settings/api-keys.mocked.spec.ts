@@ -117,7 +117,7 @@ test.describe('Settings / API keys (mocked)', () => {
     expect(body.scope).toBeUndefined();
   });
 
-  test('creates a read-only key when the checkbox is ticked', async ({
+  test('creates a read-only key when Read-only access is chosen', async ({
     page,
     mockApi,
   }) => {
@@ -132,7 +132,8 @@ test.describe('Settings / API keys (mocked)', () => {
     await view.goto();
     await page.getByRole('button', { name: /new api key/i }).click();
     await page.getByLabel('Name').fill('MCP reader');
-    await page.getByLabel('Read-only').check();
+    await page.getByLabel('Access').click();
+    await page.getByRole('option', { name: 'Read-only' }).click();
     await page.getByRole('button', { name: /^create$/i }).click();
 
     await expect.poll(() => bodies.length).toBe(1);
