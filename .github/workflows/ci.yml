@@ -84,3 +84,44 @@ jobs:
             e2e-report/
             e2e-results/
           retention-days: 14
+
+  # The console image (Dockerfile): builds, renders config.js from env at
+  # start, refuses a config it cannot serve, and serves the console's pages.
+  image:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -t runtara-frontend:ci --build-arg VERSION=0.0.0-ci .
+
+      - name: Refuses oidc without an authority
+        run: |
+          if docker run --rm runtara-frontend:ci; then
+              echo "::error::started with RUNTARA_UI_AUTH_MODE=oidc and no RUNTARA_UI_OIDC_AUTHORITY"
+              exit 1
+          fi
+
+      - name: Serves the console with its rendered config
+        run: |
+          docker run -d --name console -p 8080:8080 \
+            -e RUNTARA_UI_AUTH_MODE=local \
+            -e RUNTARA_UI_API_BASE_URL=http://localhost:7001 \
+            -e RUNTARA_UI_TENANT_ID=ci \
+            runtara-frontend:ci
+          for _ in $(seq 1 30); do
+              curl -fsS http://localhost:8080/healthz >/dev/null && break
+              sleep 1
+          done
+          curl -fsS http://localhost:8080/config.js | tee /dev/stderr \
+            | grep -F '"hosting":"static","authMode":"local","apiBaseUrl":"http://localhost:7001","tenantId":"ci"'
+          headers=$(curl -fsSI http://localhost:8080/ui/ci/workflows)
+          echo "$headers"
+          echo "$headers" | grep -i '^content-security-policy:.*connect-src .self. http://localhost:7001'
+          curl -fsS http://localhost:8080/ui/ci/workflows | grep -F '<script src="./config.js"></script>'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/assets/missing.js)" = 404
+
+      - name: Container log
+        if: always()
+        run: docker logs console || true

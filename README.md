@@ -1,9 +1,10 @@
 # Runtara Frontend
 
 The Runtara console: a React + Vite + TypeScript SPA for the
-[Runtara](https://github.com/runtarahq/runtara) runtime. `runtara-server`
-embeds a release of it (`--features embed-ui`); it also runs from a plain
-static host (see [Static hosting](#static-hosting)).
+[Runtara](https://github.com/runtarahq/runtara) runtime. It is deployed apart
+from `runtara-server`: as its container image
+(`ghcr.io/runtarahq/runtara-frontend`, see [Docker image](#docker-image)) or
+from a plain static host (see [Static hosting](#static-hosting)).
 
 ## Quick start
 
@@ -28,9 +29,9 @@ releases are independent, so a console fix ships without a server release.
 - **Releasing.** Set `version` in `package.json`, merge, and push the tag
   `vX.Y.Z`. The release workflow builds with `VITE_RUNTARA_VERSION` set and
   publishes `runtara-frontend-X.Y.Z.tar.gz` (the contents of `dist/`) with its
-  `.sha256`.
-- **Embedding in runtara.** runtara pins a release by version and checksum in
-  `crates/runtara-server/frontend.lock`; its build fetches that tarball.
+  `.sha256`, and the image `ghcr.io/runtarahq/runtara-frontend:X.Y.Z` (and
+  `:latest`, unless the tag is a prerelease) for `linux/amd64` and
+  `linux/arm64`. runtara's evaluation `docker-compose.yml` runs `:latest`.
 
 ## Dev loops
 
@@ -38,45 +39,65 @@ releases are independent, so a console fix ships without a server release.
 base and auth mode (`VITE_RUNTARA_AUTH_MODE=local` against a local-auth
 server).
 
-**Console against the real server surface** — mount prefix, injected
-`<base href>`, CSP, single origin, no CORS — → keep a watcher going and point
-a runtara server at this checkout's `dist/`:
+**Console as deployed** — the image's nginx, rendered `config.js`, CSP, the
+API on another origin — → build the image and run it against a local server
+started with `CORS_ALLOWED_ORIGINS=http://localhost:8080` and
+`RUNTARA_UI_PUBLIC_URL=http://localhost:8080/`:
 
 ```bash
-npm run build:watch
+docker build -t runtara-frontend .
+docker run --rm -p 8080:8080 \
+  -e RUNTARA_UI_AUTH_MODE=local \
+  -e RUNTARA_UI_API_BASE_URL=http://localhost:7001 \
+  runtara-frontend
+# http://localhost:8080/ui/
 ```
-
-```bash
-RUNTARA_UI_DIST_DIR=/path/to/runtara-frontend/dist cargo run -p runtara-server --release
-```
-
-The server reads `dist/` per request, so a save plus a browser reload is the
-whole loop, and it takes precedence over an embedded copy.
 
 ## Runtime configuration
 
 The bundle is **mount-agnostic and tenant-agnostic**: one build deploys
-anywhere. At startup, `runtara-server` injects `<base href>` and
-`window.__RUNTARA_CONFIG__` into `index.html` from `RUNTARA_UI_*` env vars:
+anywhere. `index.html` loads `config.js` before the app; it sets
+`window.__RUNTARA_CONFIG__`, which
+[`src/shared/config/runtimeConfig.ts`](src/shared/config/runtimeConfig.ts)
+reads, falling back to the build-time `VITE_*` value for any key it lacks. The
+copy in `public/` sets nothing, which is what `vite dev` and the tests run
+with.
 
-| Runtime env (`RUNTARA_UI_*`)  | Build-time fallback (`VITE_*`)                 | Consumer                |
-| ----------------------------- | ---------------------------------------------- | ----------------------- |
-| `RUNTARA_UI_OIDC_AUTHORITY`   | `VITE_OIDC_AUTHORITY`                          | OIDC                    |
-| `RUNTARA_UI_OIDC_CLIENT_ID`   | `VITE_OIDC_CLIENT_ID`                          | OIDC                    |
-| `RUNTARA_UI_OIDC_AUDIENCE`    | `VITE_OIDC_AUDIENCE`                           | OIDC                    |
-| `RUNTARA_UI_API_BASE_URL`     | `VITE_RUNTARA_API_BASE_URL`                    | API client              |
-| `RUNTARA_UI_PLAUSIBLE_DOMAIN` | `VITE_RUNTARA_PLAUSIBLE_DOMAIN`                | Analytics (opt-in)      |
-| `RUNTARA_UI_PLAUSIBLE_HOST`   | `VITE_RUNTARA_PLAUSIBLE_HOST`                  | Analytics (opt-in)      |
-| server build stamp            | `VITE_RUNTARA_VERSION` / `VITE_RUNTARA_COMMIT` | Sidebar version display |
+### Docker image
 
-Config resolution lives in [`src/shared/config/runtimeConfig.ts`](src/shared/config/runtimeConfig.ts).
-Vite dev server and tests use the build-time fallbacks; the embedded
-server overrides them.
+`ghcr.io/runtarahq/runtara-frontend` serves `dist/` with nginx on port 8080,
+the console's pages under `/ui/` (a tenant's at `/ui/<tenant>/`). At every
+start, [`docker/render-config.sh`](docker/render-config.sh) renders
+`config.js` and the CSP from env vars, and refuses to start on a config it
+cannot serve:
+
+| Env                             | `config.js` key     | Default / notes                                        |
+| ------------------------------- | ------------------- | ------------------------------------------------------ |
+| `RUNTARA_UI_AUTH_MODE`          | `authMode`          | `oidc`; or `local`, `trust_proxy` — match the server's |
+| `RUNTARA_UI_API_BASE_URL`       | `apiBaseUrl`        | the server's URL; unset only if one host routes `/api` |
+| `RUNTARA_UI_EVENTS_BASE_URL`    | `eventsBaseUrl`     | where webhooks are delivered, if not the API's host    |
+| `RUNTARA_UI_TENANT_ID`          | `tenantId`          | the tenant of a server without an IdP                  |
+| `RUNTARA_UI_STRIP_ORG_ID`       | `stripOrgId`        | `true` for a single-tenant server                      |
+| `RUNTARA_UI_OIDC_AUTHORITY`     | `oidcAuthority`     | required with `oidc`                                   |
+| `RUNTARA_UI_OIDC_CLIENT_ID`     | `oidcClientId`      | required with `oidc`                                   |
+| `RUNTARA_UI_OIDC_AUDIENCE`      | `oidcAudience`      |                                                        |
+| `RUNTARA_UI_OIDC_ORGANIZATIONS` | `oidcOrganizations` | `false` when the IdP has no Auth0 Organizations        |
+| `RUNTARA_UI_PLAUSIBLE_DOMAIN`   | `plausibleDomain`   | turns analytics on                                     |
+| `RUNTARA_UI_PLAUSIBLE_HOST`     | `plausibleHost`     | `https://plausible.io`                                 |
+| `RUNTARA_UI_MOUNT_PATH`         | `mountPath`         | `/ui/`                                                 |
+
+The server needs the console's origin in `CORS_ALLOWED_ORIGINS` and as
+`RUNTARA_UI_PUBLIC_URL`, so the OAuth callback sends the consent popup to the
+console's `oauth-complete.html`. `GET /healthz` answers `ok` for health checks.
+The version shown is the image's own (`--build-arg VERSION=X.Y.Z`); a server
+more than one minor version away from it gets a warning.
 
 ### Static hosting
 
-`dist/` also runs from a plain static host (a CDN). With no injected config,
-the SPA reads `config.json` from the site root
+`dist/` also runs from a plain static host (a CDN). Either replace
+`config.js` with one that sets `window.__RUNTARA_CONFIG__` to the settings
+below plus `"hosting": "static"`, or leave it and the SPA reads `config.json`
+from the site root
 ([`staticConfig.ts`](src/shared/config/staticConfig.ts)): the same keys as
 `window.__RUNTARA_CONFIG__` (`authMode`, `oidcAuthority`, `oidcClientId`,
 `oidcAudience`, `oidcOrganizations`, `apiBaseUrl`, `eventsBaseUrl`,
@@ -92,10 +113,12 @@ The host has to:
 - serve `dist/` at the site root (`<base href="/">` is what `./assets/*`
   resolve against);
 - answer every unknown path with `index.html` (SPA fallback);
-- serve `index.html` and `config.json` with `Cache-Control: no-cache`, and
+- serve `index.html`, `config.js` and `config.json` with
+  `Cache-Control: no-cache`, and
   `assets/*` as immutable;
-- set the CSP itself. `index.html` has two inline scripts, the empty config
-  placeholder and the theme script; both are fixed, so their hashes are too.
+- set the CSP itself. `index.html` has one inline script, the theme script,
+  which is fixed, so its hash is too (`docker/inline-script-hashes.mjs`
+  prints it); `config.js` is covered by `'self'`.
   The OAuth landing page (`oauth-complete.html`) needs `script-src 'self'` and,
   for its `<style>` block, `style-src 'unsafe-inline'`.
 

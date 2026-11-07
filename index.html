@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <base href="/" />
-    <script id="runtara-runtime-config">
-      window.__RUNTARA_CONFIG__ = {};
-    </script>
+    <!-- The deployment's settings: the console image renders this file at
+         startup from RUNTARA_UI_* env vars (docker/render-config.sh). -->
+    <script src="./config.js"></script>
     <script>
       // Apply the persisted theme before first paint to avoid a light flash.
       // Mirrors themeStore's zustand-persist state ('theme-storage').

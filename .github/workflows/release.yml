@@ -1,9 +1,10 @@
 name: Release
 
 # A tag vX.Y.Z publishes runtara-frontend-X.Y.Z.tar.gz (the contents of dist/)
-# and its .sha256 as a GitHub release. runtara pins a release by version and
-# checksum to embed it; Runtara Cloud builds the same tag with its edition.
-# The tag must match package.json's version.
+# and its .sha256 as a GitHub release, and the console image (Dockerfile) as
+# ghcr.io/runtarahq/runtara-frontend:X.Y.Z, and :latest unless the tag is a
+# prerelease. Runtara Cloud builds the same tag with its edition. The tag must
+# match package.json's version.
 
 on:
   push:
@@ -13,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -71,3 +73,47 @@ jobs:
           flags=()
           if [[ "$TAG" == *-* ]]; then flags=(--prerelease); fi
           gh release create "$TAG" --title "Release ${TAG#v}" --generate-notes "${flags[@]}" release/*
+
+  image:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tags
+        id: tags
+        env:
+          TAG: ${{ github.ref_name }}
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          tags="${IMAGE}:${TAG#v}"
+          if [[ "$TAG" != *-* ]]; then tags="${tags},${IMAGE}:latest"; fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The bundle is built once on the runner's platform (the Dockerfile's
+      # build stage is $BUILDPLATFORM); only the nginx stage is per platform.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.tags.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_NUMBER=${{ github.run_number }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.tags.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}

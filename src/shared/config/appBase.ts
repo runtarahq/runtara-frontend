@@ -45,10 +45,9 @@ const staticBase =
 
 /**
  * Full absolute URL of the SPA root (protocol + host + mount path), e.g.
- * `http://localhost:7001/ui/org_abc/`. Served by runtara-server, that is
- * `document.baseURI`: the `<base href>` it injects for the tenant. A static
- * host serves one index.html everywhere, so there it comes from the page's
- * path.
+ * `http://localhost:8080/ui/org_abc/`. A deployment serves one index.html
+ * everywhere, so there it comes from the page's path; without a deployment's
+ * config (vite dev, tests) it is `document.baseURI`.
  */
 export const appBaseUrl = staticBase
   ? new URL(staticBase.path, window.location.origin).href

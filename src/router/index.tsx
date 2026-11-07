@@ -127,8 +127,8 @@ const PageLoader = () => (
   </div>
 );
 
-// Basename is the SPA root (the <base href> the server injects, or the path a
-// static host was loaded at) so the SPA works under any mount path (/ui,
+// Basename is the SPA root (the path the deployment's console was loaded at,
+// or the page root without one) so the SPA works under any mount path (/ui,
 // /ui/tenant-abc, etc.) without rebuilding.
 const basename = new URL(appBaseUrl).pathname.replace(/\/$/, '');
 

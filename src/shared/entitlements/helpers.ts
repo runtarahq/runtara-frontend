@@ -26,9 +26,9 @@ export function isFeatureKey(value: unknown): value is FeatureKey {
  * "no entitlement env set" default so the UI mirrors what an unconfigured
  * server would expose.
  *
- * In normal operation (server-rendered HTML), the inlined snapshot is always
- * present and this fallback is never reached. It exists for `vite dev`,
- * Storybook, and vitest contexts where the Rust UI handler isn't in the loop.
+ * In normal operation `GET /api/runtime/entitlements` answers and this
+ * fallback is never reached. It covers a server that cannot be reached or
+ * fails the request (`vite dev` without a server, Storybook, vitest).
  *
  * `agents: []` here is intentional and *does not* mean "no agents allowed"
  * for the fallback. The wire shape always sends a concrete array (backend

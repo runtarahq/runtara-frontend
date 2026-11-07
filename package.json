@@ -13,7 +13,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:watch": "RUNTARA_VITE_WATCH=1 vite build --watch",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

@@ -11,10 +11,9 @@ const ENTITLEMENTS_QUERY_KEY = ['entitlements'] as const;
  * Resolve the per-process entitlement snapshot.
  *
  * Resolution order:
- *   1. `window.__RUNTARA_CONFIG__.entitlements` — inlined by the Rust UI
- *      handler at HTML serve time (always present in production).
- *   2. `GET /api/runtime/entitlements` — used when the SPA is served outside
- *      the Rust binary (`vite dev`, tests, Storybook).
+ *   1. `window.__RUNTARA_CONFIG__.entitlements` — set only by tests; a
+ *      deployment's config never carries one.
+ *   2. `GET /api/runtime/entitlements` — what a deployed console reads.
  *   3. `PERMISSIVE_FALLBACK` — last-resort default matching the backend's
  *      "no entitlement env set" behavior, so a misconfigured server can't
  *      black-screen the UI.

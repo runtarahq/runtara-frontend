@@ -1,12 +1,11 @@
-// Runtime configuration for the embedded UI.
+// Runtime configuration.
 //
-// Values are injected by the Rust server into index.html as
-// `window.__RUNTARA_CONFIG__` at startup, so the same compiled bundle can be
-// deployed across tenants with different OIDC/API/analytics settings without
-// rebuilding. A static host has no server to inject them: there they come from
-// a `config.json` next to index.html (staticConfig.ts). When a key is missing
-// (e.g. running via `vite dev` or in tests), we fall back to the build-time
-// `VITE_*` values.
+// Values come from `window.__RUNTARA_CONFIG__`, which the deployment's
+// `config.js` sets (the console image renders it at startup from RUNTARA_UI_*
+// env vars) or staticConfig.ts fills from a `config.json`, so the same
+// compiled bundle can be deployed with different OIDC/API/analytics settings
+// without rebuilding. When a key is missing (e.g. running via `vite dev` or in
+// tests), we fall back to the build-time `VITE_*` values.
 
 import type { EntitlementsSnapshot } from '@/shared/entitlements';
 import { normalizeMountPath } from '@/shared/config/staticConfig';
@@ -14,11 +13,11 @@ import { normalizeMountPath } from '@/shared/config/staticConfig';
 export type AuthMode = 'oidc' | 'local' | 'trust_proxy';
 
 /**
- * Who serves the page: runtara-server, which injects the config; a static
- * host, whose `config.json` supplied it; or neither (vite dev, tests), where
- * only the build-time values apply.
+ * Where the settings came from: a deployment's `config.js` or `config.json`,
+ * with the console under its mount; or neither (vite dev, tests), where the
+ * build-time values apply at the page root.
  */
-export type Hosting = 'server' | 'static' | 'build';
+export type Hosting = 'static' | 'build';
 
 export type RuntimeConfig = {
   oidcAuthority?: string;
@@ -39,21 +38,21 @@ export type RuntimeConfig = {
   buildNumber?: string;
   /** Selected server-side auth provider. Defaults to "oidc" when unset. */
   authMode?: AuthMode;
-  /** Configured tenant — injected when the server runs without an IdP that
+  /** Configured tenant — set when the server runs without an IdP that
    * would otherwise supply `org_id` via JWT claims. */
   tenantId?: string;
-  /** When "true", stop prefixing /api/runtime/ paths with org_id. Set by the
-   * server from RUNTARA_UI_STRIP_ORG_ID for single-tenant deployments. */
+  /** When "true", stop prefixing /api/runtime/ paths with org_id. Set from
+   * RUNTARA_UI_STRIP_ORG_ID for single-tenant deployments. */
   stripOrgId?: string;
-  /** Per-process entitlement snapshot. Always present when served by the
-   *  embedded Rust UI handler; absent when running under `vite dev` or in
-   *  tests, in which case consumers fall back to `GET /api/runtime/entitlements`. */
+  /** Entitlement snapshot, set only by tests: a deployment's config never
+   *  carries one (staticConfig.ts drops it), and consumers read
+   *  `GET /api/runtime/entitlements`. */
   entitlements?: EntitlementsSnapshot;
-  /** Set by staticConfig.ts when the config came from a static host's
-   *  `config.json`; never injected by the server. */
+  /** "static" in a deployment's settings: written into `config.js` by the
+   *  console image, and set by staticConfig.ts for `config.json`. */
   hosting?: 'static';
   /** Static hosting only: the path the console is served under, its tenants
-   *  at `{mountPath}{tenant}/`. Defaults to `/ui/`, the server's mount. */
+   *  at `{mountPath}{tenant}/`. Defaults to `/ui/`. */
   mountPath?: string;
 };
 
@@ -87,10 +86,8 @@ const resolveAuthMode = (value: string | undefined): AuthMode => {
   }
 };
 
-const resolveHosting = (value: RuntimeConfig): Hosting => {
-  if (value.hosting === 'static') return 'static';
-  return value.authMode ? 'server' : 'build';
-};
+const resolveHosting = (value: RuntimeConfig): Hosting =>
+  value.hosting === 'static' ? 'static' : 'build';
 
 export const config = {
   hosting: resolveHosting(runtime),
@@ -140,7 +137,7 @@ export const config = {
 export const isOidcAuth = config.authMode === 'oidc';
 
 // Diagnostic: make the resolved auth mode visible during boot so mismatches
-// between server-injected config and what the SPA observes are easy to spot.
+// between the deployment's config and what the SPA observes are easy to spot.
 // Safe to leave in — logs at most once per page load.
 console.info(
   `[runtara] authMode=${config.authMode} tenantId=${config.tenantId ?? '<unset>'} version=${config.build.version} commit=${config.build.commit ?? '<unset>'}`,

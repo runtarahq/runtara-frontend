@@ -453,40 +453,23 @@ const factory: MockApi = {
     // PrivateRoute stuck on its loading spinner — the symptom that
     // showed up as a blank screenshot in every mocked spec.
     //
-    // `index.html` carries an inline `<script id="runtara-runtime-config">`
-    // that sets `window.__RUNTARA_CONFIG__ = {}` — it always runs AFTER
-    // any `addInitScript`, so we have to rewrite the HTML itself to
-    // bake in the local-auth config.
+    // `index.html` loads `config.js` before the app, and the dev server's copy
+    // sets `window.__RUNTARA_CONFIG__ = {}` — after any `addInitScript` — so
+    // the config is served in its place. Without `hosting: "static"` the SPA
+    // keeps running at the page root, as under `vite dev`.
     //
-    // This must match EVERY navigation document, not just the root: the dev
-    // server serves the same index.html for any SPA route, and specs deep-link
-    // (`/settings/api-keys`, `/usage`, …). When an unpatched document
-    // is served the SPA boots in `oidc` mode, `useTenantUrlGuard` sees a JWT
-    // org_id that can never match the tenant parsed from the URL, and it does
-    // `window.location.replace('/ui/<org>/')` — which is outside the router's
-    // basename, so the spec silently ends up on the `*` 404 route instead of
-    // the page under test.
-    await page.route(/localhost:8081\//, async (route) => {
-      // Only navigations carry the runtime-config script; let assets and XHR
-      // fall through to the API handlers registered below.
-      if (route.request().resourceType() !== 'document') {
-        return route.fallback();
-      }
-      const response = await route.fetch();
-      const html = await response.text();
-      const patched = html.replace(
-        /window\.__RUNTARA_CONFIG__\s*=\s*\{\s*\}\s*;/,
-        `window.__RUNTARA_CONFIG__={"authMode":"local","tenantId":"org_mocked_e2e","apiBaseUrl":""};`
-      );
-      await route.fulfill({
-        response,
-        body: patched,
-        headers: {
-          ...response.headers(),
-          'content-type': 'text/html; charset=utf-8',
-        },
-      });
-    });
+    // Every page loads it, not just the root: specs deep-link
+    // (`/settings/api-keys`, `/usage`, …). A page booted in `oidc` mode would
+    // have `useTenantUrlGuard` see a JWT org_id that can never match the
+    // tenant parsed from the URL and `window.location.replace('/ui/<org>/')`
+    // — outside the router's basename, so the spec would silently end up on
+    // the `*` 404 route instead of the page under test.
+    await page.route(/localhost:8081\/config\.js(\?|$)/, (route) =>
+      route.fulfill({
+        contentType: 'text/javascript; charset=utf-8',
+        body: `window.__RUNTARA_CONFIG__={"authMode":"local","tenantId":"org_mocked_e2e","apiBaseUrl":""};`,
+      })
+    );
     // Register the catch-all FIRST so later handlers (specific endpoints + spec-level
     // overrides) take precedence (Playwright matches page.route handlers LIFO).
     await page.route(/\/api\/runtime\//, (route) => fulfill(route, {}));
