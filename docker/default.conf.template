@@ -1,9 +1,11 @@
-# The console's site. docker/render-config.sh writes config.js and
-# security-headers.conf into /tmp/runtara at every start. add_header in a
-# location replaces the server's, so each location includes the headers.
+# The console's site, rendered by the nginx image's envsubst step at start
+# (RUNTARA_UI_LISTEN: a port, default 8080, or an address and port such as
+# 127.0.0.1:17989 on the host network). docker/render-config.sh writes
+# config.js and security-headers.conf into /tmp/runtara at every start.
+# add_header in a location replaces the server's, so each location includes
+# the headers.
 server {
-    listen 8080;
-    listen [::]:8080;
+    listen ${RUNTARA_UI_LISTEN};
     server_name _;
     server_tokens off;
     root /usr/share/nginx/html;

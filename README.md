@@ -85,6 +85,7 @@ cannot serve:
 | `RUNTARA_UI_PLAUSIBLE_DOMAIN`   | `plausibleDomain`   | turns analytics on                                     |
 | `RUNTARA_UI_PLAUSIBLE_HOST`     | `plausibleHost`     | `https://plausible.io`                                 |
 | `RUNTARA_UI_MOUNT_PATH`         | `mountPath`         | `/ui/`                                                 |
+| `RUNTARA_UI_LISTEN`             | —                   | where nginx listens: `8080`, or e.g. `127.0.0.1:8080`  |
 
 The server needs the console's origin in `CORS_ALLOWED_ORIGINS` and as
 `RUNTARA_UI_PUBLIC_URL`, so the OAuth callback sends the consent popup to the
