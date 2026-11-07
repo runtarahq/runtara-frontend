@@ -25,9 +25,9 @@ export function isCompatibleServer(
 let warned = false;
 
 /**
- * Warn once when a statically hosted console talks to a server release it was
- * not built for. Served by runtara-server, the console is that server's own
- * build, so there is nothing to check.
+ * Warn once when a deployed console talks to a server release it was not
+ * built for. Without a deployment's config (vite dev, tests) there is nothing
+ * to check.
  */
 export function checkServerVersion(serverVersion: string | undefined) {
   if (config.hosting !== 'static' || warned) return;

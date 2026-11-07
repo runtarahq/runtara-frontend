@@ -1,0 +1,10 @@
+.git
+node_modules
+dist
+e2e-results
+e2e-report
+test-results
+playwright-report
+.auth
+.env*
+*.local

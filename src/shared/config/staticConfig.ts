@@ -1,7 +1,8 @@
-// Static hosting: the bundle served by a plain static host (a CDN) instead of
-// runtara-server. The server injects `window.__RUNTARA_CONFIG__` into
-// index.html; a static host serves the same index.html to every path and
-// tenant, so the deployment's settings come from a `config.json` next to it.
+// Static hosting: the console is always served apart from runtara-server, by
+// its container image or a plain static host (a CDN), which serve the same
+// index.html to every path and tenant. The deployment's settings come from
+// `config.js`, which index.html loads before the app and the image renders
+// from env vars at startup, or else from a `config.json` next to index.html.
 //
 // Runs before anything reads the config (see main.tsx): runtimeConfig.ts
 // snapshots `window.__RUNTARA_CONFIG__` when it is first imported.
@@ -11,8 +12,8 @@
 import type { RuntimeConfig } from '@/shared/config/runtimeConfig';
 
 /**
- * `mountPath` with exactly one leading and one trailing slash; `/ui/`, the
- * server's mount, when unset.
+ * `mountPath` with exactly one leading and one trailing slash; `/ui/` when
+ * unset.
  */
 export function normalizeMountPath(mountPath: string | undefined): string {
   if (!mountPath?.trim()) return '/ui/';
@@ -26,8 +27,8 @@ export function isWithinMount(pathname: string, mountPath: string): boolean {
 }
 
 /**
- * The deployment's settings from `config.json`, or `undefined` when there is
- * none to read. Keys only a build or a server can know are dropped: the
+ * The deployment's settings from `config.js` or `config.json`, or `undefined`
+ * when there are none. Keys only a build or a server can know are dropped: the
  * version stamp is the bundle's own (`VITE_RUNTARA_*`), and entitlements are
  * the tenant's, read from `GET /api/runtime/entitlements`.
  */
@@ -43,31 +44,22 @@ export function parseStaticConfig(loaded: unknown): RuntimeConfig | undefined {
 }
 
 /**
- * Read `config.json` when the server injected no config. Returns `false` when
- * the page is leaving for the mount, so the caller boots nothing.
+ * Settle the deployment's settings: those `config.js` set, or else
+ * `config.json`'s. Returns `false` when the page is leaving for the mount, so
+ * the caller boots nothing.
  *
- * Never throws: with no `config.json` (vite dev, a server that injected the
- * config) the build-time `VITE_*` values stay in force.
+ * Never throws: with neither (vite dev) the build-time `VITE_*` values stay in
+ * force.
  */
 export async function loadStaticConfig(): Promise<boolean> {
-  // The server always injects `authMode`; index.html's placeholder is `{}`.
-  if (window.__RUNTARA_CONFIG__?.authMode) return true;
+  // A rendered `config.js` marks itself `hosting: "static"`. One that sets
+  // `authMode` without it is a test's, which runs at the page root rather than
+  // under the mount; the placeholder `config.js` sets nothing.
+  const rendered = window.__RUNTARA_CONFIG__;
+  if (rendered?.authMode && rendered.hosting !== 'static') return true;
 
-  let config: RuntimeConfig | undefined;
-  try {
-    const response = await fetch(new URL('config.json', document.baseURI), {
-      headers: { accept: 'application/json' },
-      cache: 'no-store',
-    });
-    // A static host's SPA fallback (vite dev, Cloudflare Pages) answers a
-    // missing config.json with index.html and a 200.
-    const type = response.headers.get('content-type') ?? '';
-    if (response.ok && type.includes('application/json')) {
-      config = parseStaticConfig(await response.json());
-    }
-  } catch (error) {
-    console.warn('[runtara] config.json could not be read', error);
-  }
+  let config = rendered?.authMode ? parseStaticConfig(rendered) : undefined;
+  if (!config) config = await fetchConfigJson();
   if (!config) return true;
 
   window.__RUNTARA_CONFIG__ = config;
@@ -81,4 +73,22 @@ export async function loadStaticConfig(): Promise<boolean> {
     return false;
   }
   return true;
+}
+
+async function fetchConfigJson(): Promise<RuntimeConfig | undefined> {
+  try {
+    const response = await fetch(new URL('config.json', document.baseURI), {
+      headers: { accept: 'application/json' },
+      cache: 'no-store',
+    });
+    // A static host's SPA fallback (vite dev, Cloudflare Pages) answers a
+    // missing config.json with index.html and a 200.
+    const type = response.headers.get('content-type') ?? '';
+    if (response.ok && type.includes('application/json')) {
+      return parseStaticConfig(await response.json());
+    }
+  } catch (error) {
+    console.warn('[runtara] config.json could not be read', error);
+  }
+  return undefined;
 }

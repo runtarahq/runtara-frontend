@@ -40,7 +40,7 @@ const OIDC_AUDIENCE = config.oidc.audience;
 
 if (isOidcAuth && (!OIDC_AUTHORITY || !OIDC_CLIENT_ID || !OIDC_AUDIENCE)) {
   throw new Error(
-    'Missing required OIDC configuration. Provide either window.__RUNTARA_CONFIG__.oidc{Authority,ClientId,Audience} (injected by the server from RUNTARA_UI_OIDC_* env vars) or VITE_OIDC_AUTHORITY / VITE_OIDC_CLIENT_ID / VITE_OIDC_AUDIENCE at build time.'
+    'Missing required OIDC configuration. Provide either window.__RUNTARA_CONFIG__.oidc{Authority,ClientId,Audience} (config.js, rendered by the console image from RUNTARA_UI_OIDC_* env vars) or VITE_OIDC_AUTHORITY / VITE_OIDC_CLIENT_ID / VITE_OIDC_AUDIENCE at build time.'
   );
 }
 

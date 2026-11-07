@@ -73,7 +73,36 @@ describe('loadStaticConfig', () => {
       )
     );
 
-  it('leaves a server-injected config alone', async () => {
+  it("takes a rendered config.js's settings without fetching config.json", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    window.__RUNTARA_CONFIG__ = {
+      hosting: 'static',
+      authMode: 'local',
+      mountPath: '/',
+      version: '9.9.9',
+    };
+
+    expect(await loadStaticConfig()).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(window.__RUNTARA_CONFIG__).toEqual({
+      hosting: 'static',
+      authMode: 'local',
+      mountPath: '/',
+    });
+  });
+
+  it('sends a page outside the mount to the mount for config.js too', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const replace = vi.fn();
+    vi.stubGlobal('location', { pathname: '/', replace });
+    window.__RUNTARA_CONFIG__ = { hosting: 'static', authMode: 'local' };
+
+    expect(await loadStaticConfig()).toBe(false);
+    expect(replace).toHaveBeenCalledWith('/ui/');
+  });
+
+  it("leaves a test's config, which is not marked static, alone", async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     window.__RUNTARA_CONFIG__ = { authMode: 'local' };

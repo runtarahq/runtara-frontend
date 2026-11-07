@@ -4,8 +4,8 @@ import { config, isOidcAuth } from '@/shared/config/runtimeConfig';
 import { useAuthStore } from '@/shared/stores/authStore.ts';
 import { useMaintenanceStore } from '@/shared/stores/maintenanceStore.ts';
 
-// Resolve the API base URL. When unset (typical for the embedded UI where the
-// API is same-origin), we use relative URLs and let the browser resolve them.
+// Resolve the API base URL. When unset (one host routing /api to the server,
+// or vite dev), we use relative URLs and let the browser resolve them.
 const API_BASE_URL = config.apiBaseUrl;
 
 /**
