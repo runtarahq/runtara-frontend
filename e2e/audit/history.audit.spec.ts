@@ -179,11 +179,17 @@ test.describe('History audit', () => {
     // Attempt + one retry from the QueryClient default (1 s), then idle.
     await expect.poll(() => run.gets.length).toBe(2);
 
-    await knownDefect('HI-1', async () => {
-      await expect(page.getByText(FAILED_COPY)).toBeVisible({ timeout: 8_000 });
-      await expect(page.locator('.animate-spin')).toHaveCount(0);
-    });
+    // Fixed: the failure shows instead of the spinner.
+    await expect(page.getByText(FAILED_COPY)).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.animate-spin')).toHaveCount(0);
     expect(run.gets.length, 'no further attempts').toBe(2);
+
+    // Try again loads the run once the server answers.
+    run.fail = false;
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Workflow Execution Details' })
+    ).toBeVisible();
   });
 
   test('HI-2 One failed poll keeps a loaded run history page', async ({
