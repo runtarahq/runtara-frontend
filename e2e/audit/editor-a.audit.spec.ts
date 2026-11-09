@@ -308,21 +308,29 @@ test.describe('Editor audit A', () => {
     await messageBox(page).fill('EDITED');
     await expect(messageBox(page)).toHaveValue('EDITED');
 
+    // Fixed: a dirty panel asks before moving to another step.
     await step(page, 'Second').first().click();
-    const prompted = await panelMovedOrPrompted(page, 'second');
+    expect(await panelMovedOrPrompted(page, 'second')).toBe(true);
 
-    // Without a prompt the edit must be kept: go back, apply, read the payload.
-    let message: unknown;
-    if (!prompted) {
-      await step(page, 'First').first().click();
-      await expect(panel(page)).toHaveAttribute('data-node-id', 'first');
-      await applyPanel(page);
-      await page.getByTitle('Add note').click();
-      message = (await capture.save()).steps.first.message;
-    }
-    await knownDefect('ED-3', async () => {
-      if (!prompted) expect(message).toBe('EDITED');
-    });
+    // Keep editing: the panel stays on First with the edit.
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(discardPrompt(page)).toHaveCount(0);
+    await expect(panel(page)).toHaveAttribute('data-node-id', 'first');
+    await expect(messageBox(page)).toHaveValue('EDITED');
+
+    // Discard: the panel moves on, and nothing of the edit is saved.
+    await step(page, 'Second').first().click();
+    await expect(discardPrompt(page)).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(panel(page)).toHaveAttribute('data-node-id', 'second');
+    await closePanel(page);
+    await page.getByTitle('Add note').click();
+    expect((await capture.save()).steps.first.message).not.toBe('EDITED');
+
+    // Control: a clean panel still moves with no prompt.
+    await openStep(page, 'First');
+    await step(page, 'Second').first().click();
+    expect(await panelMovedOrPrompted(page, 'second')).toBe(false);
   });
 
   test('ED-4 Renaming a step id does not discard other unsaved panel edits', async ({

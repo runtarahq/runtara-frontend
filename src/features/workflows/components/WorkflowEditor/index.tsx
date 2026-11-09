@@ -54,6 +54,8 @@ import {
 } from './CustomNodes';
 import { getNodePositionInsideParent } from './CustomNodes/utils.tsx';
 import { NodeConfigPanel } from './NodeConfigPanel';
+import { useEditingNode } from './use-editing-node';
+import { DiscardStepChangesDialog } from './NodeConfigPanel/DiscardStepChangesDialog';
 import { NodeFormProvider } from './NodeForm/NodeFormProvider';
 import { StepPickerModal, StepPickerResult } from './NodeForm/StepPickerModal';
 import { NodeConfigProvider } from './NodeConfigContext';
@@ -243,7 +245,16 @@ function WorkflowEditorContent({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   // Dialog states
-  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const {
+    editingNodeId,
+    setEditingNodeId,
+    editNode,
+    closeEditor: closeNodeConfig,
+    setDirty: handleEditorDirtyChange,
+    switchTargetId,
+    confirmSwitch,
+    cancelSwitch,
+  } = useEditingNode();
   const [showStepPicker, setShowStepPicker] = useState(false);
 
   // Pending new node state from store (for deferred creation until user confirms)
@@ -258,13 +269,12 @@ function WorkflowEditorContent({
   // from, and leaving it set puts two config panels on screen at once.
   const openNodeConfig = useCallback(
     (nodeId: string) => {
-      if (workflow && !readOnly) {
+      if (workflow && !readOnly && editNode(nodeId)) {
         setCreateStepContext(null);
         setPendingNewNode(null);
-        setEditingNodeId(nodeId);
       }
     },
-    [workflow, readOnly, setPendingNewNode]
+    [workflow, readOnly, setPendingNewNode, editNode]
   );
   const nodeConfigContextValue = useMemo(
     () => ({ openNodeConfig }),
@@ -367,10 +377,6 @@ function WorkflowEditorContent({
     };
   }, [editingNodeId, nodes, stagedNodeChanges]);
 
-  const closeNodeConfig = useCallback(() => {
-    setEditingNodeId(null);
-  }, []);
-
   // Keep the config dialog/panel bound to the step being edited when its id
   // is renamed (renameStep changes the node id in the store immediately).
   const lastStepRename = useWorkflowStore((state) => state.lastStepRename);
@@ -380,8 +386,8 @@ function WorkflowEditorContent({
       current === lastStepRename.oldId ? lastStepRename.newId : current
     );
     // Keyed on the rename event only so a stale rename is never re-applied
-    // to a step that later reuses the freed id.
-  }, [lastStepRename]);
+    // to a step that later reuses the freed id. (The setter is stable.)
+  }, [lastStepRename, setEditingNodeId]);
 
   const closeCreateStep = useCallback(() => {
     setCreateStepContext(null);
@@ -1412,7 +1418,7 @@ function WorkflowEditorContent({
                   }
                   // Open dialog for editing on double-click
                   if (workflow && !readOnly) {
-                    setEditingNodeId(node.id);
+                    editNode(node.id);
                   }
                 }}
                 onNodeClick={(event, node) => {
@@ -1448,8 +1454,8 @@ function WorkflowEditorContent({
                     setSelectedEdgeId(null);
                     // With a step's editor already open, a click moves it to
                     // the clicked step: reading through steps should not
-                    // need a close and a double-click per step. Unsaved
-                    // edits stay staged on the step they were made on.
+                    // need a close and a double-click per step. With unsaved
+                    // edits it asks first (see editNode).
                     if (editingNodeId && editingNodeId !== node.id) {
                       openNodeConfig(node.id);
                     }
@@ -1537,8 +1543,15 @@ function WorkflowEditorContent({
           onStagedChange={onStagedNodeChange}
           onReset={onResetNodeChanges}
           onDelete={handleNodeDelete}
+          onDirtyChange={handleEditorDirtyChange}
         />
       )}
+
+      <DiscardStepChangesDialog
+        open={switchTargetId !== null}
+        onKeepEditing={cancelSwitch}
+        onDiscard={confirmSwitch}
+      />
 
       {/* Docked step inspector - for creating new nodes */}
       {pendingNewNode && workflow && (

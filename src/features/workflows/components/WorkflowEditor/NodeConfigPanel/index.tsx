@@ -6,16 +6,6 @@ import {
   useState,
 } from 'react';
 import { Button } from '@/shared/components/ui/button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/components/ui/alert-dialog';
 import { Icons } from '@/shared/components/icons';
 import { cn } from '@/lib/utils';
 import { NodeForm } from '../NodeForm';
@@ -29,6 +19,7 @@ import {
   panelGeometry,
   type Rect,
 } from './dock-position';
+import { DiscardStepChangesDialog } from './DiscardStepChangesDialog';
 
 /** Simple variable type matching the WorkflowEditor prop type */
 interface SimpleVariable {
@@ -58,6 +49,8 @@ interface NodeConfigPanelProps {
   onStagedChange?: (nodeId: string, data: form.SchemaType) => void;
   onReset?: (nodeId: string) => void;
   onDelete?: (nodeId: string) => void;
+  /** Whether the form holds unsaved edits, for guards outside the panel. */
+  onDirtyChange?: (isDirty: boolean) => void;
   /** When true, the panel is for creating a new node (no delete, different title) */
   isCreate?: boolean;
   /** Parent node ID for computing previous steps (used when creating new nodes) */
@@ -129,6 +122,7 @@ export function NodeConfigPanel({
   // onReset is kept in the props interface for backwards compatibility but not
   // used (we reset locally)
   onDelete,
+  onDirtyChange,
   isCreate = false,
   parentNodeId,
   createContainerId,
@@ -215,6 +209,13 @@ export function NodeConfigPanel({
     handleChangeRef.current?.(data);
   }, []);
 
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  const handleDirtyChange = useCallback((dirty: boolean) => {
+    setIsDirty(dirty);
+    onDirtyChangeRef.current?.(dirty);
+  }, []);
+
   const handleSave = useCallback(() => {
     const formElement = formContainerRef.current?.querySelector('form');
     if (!formElement) {
@@ -226,10 +227,10 @@ export function NodeConfigPanel({
 
   const discard = useCallback(() => {
     stagedDataRef.current = originalNodeData;
-    setIsDirty(false);
+    handleDirtyChange(false);
     setConfirmDiscardOpen(false);
     onOpenChange(false);
-  }, [originalNodeData, onOpenChange]);
+  }, [originalNodeData, onOpenChange, handleDirtyChange]);
 
   const requestClose = useCallback(() => {
     if (isDirty) {
@@ -347,7 +348,7 @@ export function NodeConfigPanel({
               values={nodeData}
               originalValues={originalNodeData}
               onChange={handleChange}
-              onDirtyChange={setIsDirty}
+              onDirtyChange={handleDirtyChange}
               onSubmit={handleSubmit}
               onDelete={isCreate ? undefined : handleDelete}
               contentScrollable={false}
@@ -387,24 +388,11 @@ export function NodeConfigPanel({
         </div>
       </aside>
 
-      <AlertDialog
+      <DiscardStepChangesDialog
         open={confirmDiscardOpen}
-        onOpenChange={setConfirmDiscardOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Discard changes to this step?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This step has edits you have not saved. Closing now throws them
-              away &mdash; there is no undo.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction onClick={discard}>Discard</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onKeepEditing={() => setConfirmDiscardOpen(false)}
+        onDiscard={discard}
+      />
     </>
   );
 }
