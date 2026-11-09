@@ -650,17 +650,18 @@ test.describe('Connections audit', () => {
     expect(ctl.counts.post).toBe(1);
     expect(popup.isClosed()).toBe(false);
 
-    // A fix may disable the button, so the click itself may not be possible.
-    await create.click({ timeout: 1_000 }).catch(() => {});
+    // Fixed: Create stays disabled (reading "Saving...") while the popup is
+    // open, and a forced click still sends nothing.
+    const submit = page.locator('button[type="submit"]');
+    await expect(submit).toBeDisabled();
+    await submit.click({ force: true });
     await page.waitForTimeout(1_000);
     expect(ctl.popups).toHaveLength(1);
-    await knownDefect('CN-9', async () => {
-      expect(ctl.counts.post).toBe(1);
-      expect(ctl.counts.postTitles).toEqual(['New Acme']);
-      expect(ctl.counts.authorize).toEqual(['conn_new_1']);
-      expect([...ctl.byId.keys()]).toEqual(['conn_new_1']);
-      expect(popup.url()).toContain('c=conn_new_1');
-    });
+    expect(ctl.counts.post).toBe(1);
+    expect(ctl.counts.postTitles).toEqual(['New Acme']);
+    expect(ctl.counts.authorize).toEqual(['conn_new_1']);
+    expect([...ctl.byId.keys()]).toEqual(['conn_new_1']);
+    expect(popup.url()).toContain('c=conn_new_1');
   });
 
   test('CN-10 The unsaved-changes blocker stays on during the popup', async ({
@@ -972,9 +973,8 @@ test.describe('Connections audit', () => {
       counts.push(ctl.counts.post - before);
     }
     console.log(`CN-17 POSTs per real double click: ${counts.join(', ')}`);
-    await knownDefect('CN-17', async () => {
-      expect(counts).toEqual([1, 1, 1]);
-    });
+    // Fixed by CN-9's guard: the page sends its create once.
+    expect(counts).toEqual([1, 1, 1]);
   });
 
   test('CN-18 Reconnect without saving keeps edits, or warns, if the server bumps the version', async ({
