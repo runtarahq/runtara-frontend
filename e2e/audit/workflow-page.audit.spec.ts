@@ -180,16 +180,21 @@ test.describe('Workflow page audit: saving', () => {
     expect(shown).toBe('edited during save');
     expect(save.saves).toHaveLength(1);
 
-    await knownDefect('WF-2', async () => {
-      await expect(saveClean(page)).toHaveCount(0);
-      await workflowsLink(page).first().click();
-      await expect(unsavedDialog(page)).toBeVisible();
-    });
+    // Fixed: the edit made during the save is still unsaved.
+    await expect(saveClean(page)).toHaveCount(0);
+    await workflowsLink(page).first().click();
+    await expect(unsavedDialog(page)).toBeVisible();
+    await page.getByRole('button', { name: 'Keep editing' }).click();
 
-    // The server has only the first text.
+    // Saving again sends it, and the server then has it.
+    save.hold = null;
+    await saveEnabled(page).click();
+    await expect.poll(() => save.responded).toBe(2);
+    expect(save.saves[1].executionGraph.description).toBe('edited during save');
+    await expect(saveClean(page)).toBeVisible({ timeout: 10_000 });
     await page.goto(`/workflows/${wf.id}`);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await expect(description).toHaveValue('first description');
+    await expect(description).toHaveValue('edited during save');
   });
 
   test('WF-3 Two clicks during the validation window send one save', async ({
