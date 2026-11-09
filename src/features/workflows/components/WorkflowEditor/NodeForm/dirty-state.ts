@@ -15,3 +15,10 @@ export function hasDirtyFields(dirtyFields: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * setValue options for a change the user made. Without `shouldDirty`, RHF
+ * leaves `dirtyFields` alone, so the panel would close without asking and
+ * drop the edit. Seeds and resets must not use this.
+ */
+export const USER_EDIT = { shouldDirty: true } as const;
