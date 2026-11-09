@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { RuntimeREST } from '@/shared/queries';
@@ -37,17 +37,30 @@ export function canOpen(
   return tenants === null ? null : tenants.some((t) => t.id === tenant);
 }
 
+/** The tenant lookup, with whether it failed and a way to try again. */
+export type MyTenantsLookup = {
+  /** `null` while loading, outside OIDC, and after a failure. */
+  tenants: MyTenant[] | null;
+  /** The lookup failed: there is nothing to wait for until `retry`. */
+  failed: boolean;
+  retry?: () => void;
+};
+
 /**
- * The tenants the signed-in user may act in. `null` while loading, outside
- * OIDC (where the server's own tenant is the only one), and when the lookup
- * failed, so a failure is never read as "a member of nothing".
+ * The tenants the signed-in user may act in, from this server. A failure is
+ * never read as "a member of nothing": `tenants` stays `null`, and `failed`
+ * says so, so the gate can offer a retry rather than spin forever (SH-1).
  */
-export function useMyTenants(): MyTenant[] | null {
+export function useMyTenantsLookup(): MyTenantsLookup {
   const auth = useAuth();
   const token = auth.user?.access_token;
   const [tenants, setTenants] = useState<MyTenant[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
+    setFailed(false);
     if (!isOidcAuth || !auth.isAuthenticated) {
       setTenants(null);
       return;
@@ -59,12 +72,23 @@ export function useMyTenants(): MyTenant[] | null {
         if (!cancelled) setTenants(res.data?.tenants ?? []);
       })
       .catch(() => {
-        if (!cancelled) setTenants(null);
+        if (cancelled) return;
+        setTenants(null);
+        setFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [auth.isAuthenticated, token]);
+  }, [auth.isAuthenticated, token, attempt]);
 
-  return tenants;
+  return { tenants, failed, retry };
+}
+
+/**
+ * The tenants the signed-in user may act in. `null` while loading, outside
+ * OIDC (where the server's own tenant is the only one), and when the lookup
+ * failed, so a failure is never read as "a member of nothing".
+ */
+export function useMyTenants(): MyTenant[] | null {
+  return useMyTenantsLookup().tenants;
 }

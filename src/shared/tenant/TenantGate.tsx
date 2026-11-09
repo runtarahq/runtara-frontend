@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useAuth } from 'react-oidc-context';
 import logoIcon from '@/assets/logo/runtara-logo-icon.svg';
 import { Button } from '@/shared/components/ui/button';
@@ -21,9 +21,14 @@ import {
 export function TenantGate({
   tenants,
   deniedTenant,
+  failed = false,
+  onRetry,
 }: {
   tenants: MyTenant[] | null;
   deniedTenant?: string;
+  /** The lookup failed: say so and offer a retry, rather than spin. */
+  failed?: boolean;
+  onRetry?: () => void;
 }) {
   const { signoutRedirect } = useAuth();
   const chosen = tenants === null ? null : chooseTenant(tenants);
@@ -39,10 +44,84 @@ export function TenantGate({
     }
   }, [redirectTo]);
 
+  if (choice === null && failed) {
+    return (
+      <GateCard>
+        <h1 className="mb-1 text-lg font-semibold">
+          Could not load your workspaces
+        </h1>
+        <p className="mb-6 text-sm text-muted-foreground">
+          The server did not answer which workspaces you belong to. Try again,
+          or sign out and back in.
+        </p>
+        <div className="flex gap-2">
+          {onRetry && <Button onClick={onRetry}>Try again</Button>}
+          <Button variant="secondary" onClick={() => signoutRedirect()}>
+            Sign out
+          </Button>
+        </div>
+      </GateCard>
+    );
+  }
+
   if (choice === null || choice.kind === 'redirect') {
     return <Loader />;
   }
 
+  return (
+    <GateCard>
+      {choice.kind === 'pick' ? (
+        <>
+          <h1 className="mb-1 text-lg font-semibold">
+            {deniedTenant ? 'No access' : 'Choose a workspace'}
+          </h1>
+          <p className="mb-6 text-sm text-muted-foreground">
+            {deniedTenant
+              ? `You are not a member of the workspace ${deniedTenant}. Open one of yours instead.`
+              : 'You are a member of several workspaces on this server.'}
+          </p>
+          <ul className="flex flex-col gap-2">
+            {choice.tenants.map((tenant) => (
+              <li key={tenant.id}>
+                <Button
+                  variant="secondary"
+                  className="w-full justify-between"
+                  onClick={() =>
+                    window.location.assign(
+                      tenantHome(mountReturnPath, tenant.id)
+                    )
+                  }
+                >
+                  <span className="truncate">{tenant.id}</span>
+                  {tenant.role && (
+                    <span className="text-xs text-muted-foreground">
+                      {tenant.role}
+                    </span>
+                  )}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <>
+          <h1 className="mb-1 text-lg font-semibold">No workspace</h1>
+          {edition.noWorkspace ?? (
+            <p className="mb-6 text-sm text-muted-foreground">
+              Your account is not a member of any workspace on this server. Ask
+              a workspace owner to invite you.
+            </p>
+          )}
+          <Button variant="secondary" onClick={() => signoutRedirect()}>
+            Sign out
+          </Button>
+        </>
+      )}
+    </GateCard>
+  );
+}
+
+function GateCard({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md text-center">
@@ -50,53 +129,7 @@ export function TenantGate({
           <img src={logoIcon} alt="Runtara" className="size-12" />
         </div>
         <div className="rounded-lg border bg-card px-8 py-8 text-left shadow-sm">
-          {choice.kind === 'pick' ? (
-            <>
-              <h1 className="mb-1 text-lg font-semibold">
-                {deniedTenant ? 'No access' : 'Choose a workspace'}
-              </h1>
-              <p className="mb-6 text-sm text-muted-foreground">
-                {deniedTenant
-                  ? `You are not a member of the workspace ${deniedTenant}. Open one of yours instead.`
-                  : 'You are a member of several workspaces on this server.'}
-              </p>
-              <ul className="flex flex-col gap-2">
-                {choice.tenants.map((tenant) => (
-                  <li key={tenant.id}>
-                    <Button
-                      variant="secondary"
-                      className="w-full justify-between"
-                      onClick={() =>
-                        window.location.assign(
-                          tenantHome(mountReturnPath, tenant.id)
-                        )
-                      }
-                    >
-                      <span className="truncate">{tenant.id}</span>
-                      {tenant.role && (
-                        <span className="text-xs text-muted-foreground">
-                          {tenant.role}
-                        </span>
-                      )}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : (
-            <>
-              <h1 className="mb-1 text-lg font-semibold">No workspace</h1>
-              {edition.noWorkspace ?? (
-                <p className="mb-6 text-sm text-muted-foreground">
-                  Your account is not a member of any workspace on this server.
-                  Ask a workspace owner to invite you.
-                </p>
-              )}
-              <Button variant="secondary" onClick={() => signoutRedirect()}>
-                Sign out
-              </Button>
-            </>
-          )}
+          {children}
         </div>
       </div>
     </div>
