@@ -15,8 +15,10 @@ import {
   dropEditsForRows,
   recordCellEdit,
   restoreEditsForRows,
+  settleCreatedDraft,
   settleSavedRow,
 } from './pending-edits';
+import { createRowSaveQueue } from './row-save-queue';
 import {
   Breadcrumb,
   ConsoleTableShell,
@@ -305,13 +307,16 @@ export function ObjectInstanceDtosTable({
     dirtyRowsRef.current = dirtyRows;
   }, [dirtyRows]);
 
-  const saveDirtyRow = useCallback(
-    async (rowId: string) => {
-      const dirtyData = dirtyRowsRef.current.get(rowId);
-      if (!dirtyData) {
-        return;
-      }
+  // One save per row at a time; a flush during one runs after it (OB-1).
+  const saveQueueRef = useRef(createRowSaveQueue());
+  const saveDirtyRowRef = useRef<(rowId: string) => Promise<void>>();
 
+  /** Sends one row's values; resolves to where they now live, or null. */
+  const saveRow = useCallback(
+    async (
+      rowId: string,
+      dirtyData: Record<string, unknown>
+    ): Promise<string | null> => {
       if (isDraftRow(rowId)) {
         // Save pending record
         try {
@@ -323,17 +328,28 @@ export function ObjectInstanceDtosTable({
             },
           });
           setPendingRecords((prev) => prev.filter((r) => r.id !== rowId));
+          // Values typed while the POST was in flight move to the record.
           setDirtyRows((prev) => {
-            const updated = new Map(prev);
-            updated.delete(rowId);
+            const updated = settleCreatedDraft(
+              prev,
+              rowId,
+              newInstance.id,
+              dirtyData
+            );
+            dirtyRowsRef.current = updated;
             return updated;
           });
+          if (newInstance.id && lastFocusedRowRef.current === rowId) {
+            lastFocusedRowRef.current = newInstance.id;
+          }
           // Trigger animation with the server-returned ID
           if (newInstance.id) {
             handleRowAnimationTrigger(newInstance.id);
           }
+          return newInstance.id ?? null;
         } catch {
           toast.error('Failed to create record');
+          return null;
         }
       } else {
         // Save existing record
@@ -353,6 +369,7 @@ export function ObjectInstanceDtosTable({
             return updated;
           });
           handleRowAnimationTrigger(rowId);
+          return rowId;
         } catch (error) {
           if (isNotFoundError(error)) {
             // The row was deleted while this edit was pending. Its
@@ -364,14 +381,38 @@ export function ObjectInstanceDtosTable({
               dirtyRowsRef.current = updated;
               return updated;
             });
-            return;
+            return null;
           }
           toast.error('Failed to update record');
+          return null;
         }
       }
     },
     [createRecord, updateRecord, objectSchemaDto.id, handleRowAnimationTrigger]
   );
+
+  const saveDirtyRow = useCallback(
+    async (rowId: string) => {
+      const dirtyData = dirtyRowsRef.current.get(rowId);
+      if (!dirtyData || !saveQueueRef.current.begin(rowId)) {
+        return;
+      }
+      let savedRowId: string | null = null;
+      try {
+        savedRowId = await saveRow(rowId, dirtyData);
+      } finally {
+        // A flush that waited runs once the state updates above have landed,
+        // and sends only what changed meanwhile; against the record's id if a
+        // draft was created. Not after a failure: a failed row is not re-sent.
+        if (saveQueueRef.current.end(rowId) && savedRowId) {
+          const next = savedRowId;
+          setTimeout(() => void saveDirtyRowRef.current?.(next), 0);
+        }
+      }
+    },
+    [saveRow]
+  );
+  saveDirtyRowRef.current = saveDirtyRow;
 
   const handleUpdate = useCallback((instanceId: string, data: any) => {
     const propertyEntries = Object.entries(data.properties || {});

@@ -257,11 +257,11 @@ test.describe('Objects audit', () => {
     await expect.poll(() => saved().length).toBeGreaterThanOrEqual(1);
     await settle(page);
 
-    await knownDefect('OB-1', async () => {
-      expect(backend.requests.create).toHaveLength(1);
-      expect(saved()).toHaveLength(1);
-      await expect(allRows(page).filter({ hasText: 'Ann' })).toHaveCount(1);
-    });
+    // Fixed: the second flush waits for the open POST, then finds nothing
+    // left to send.
+    expect(backend.requests.create).toHaveLength(1);
+    expect(saved()).toHaveLength(1);
+    await expect(allRows(page).filter({ hasText: 'Ann' })).toHaveCount(1);
   });
 
   test('OB-2 Edits typed during an in-flight save survive when it succeeds', async ({
@@ -281,32 +281,29 @@ test.describe('Objects audit', () => {
     // Keep typing in the same cell while the PUT is open.
     await typeInto(page, 0, 'AB');
     await expect(cellInput(page, 0)).toHaveValue('AB');
-    // Reopening the cell counts as an outside click (see typeInto), so a second
-    // PUT of 'A' is already queued behind the hold; 'AB' is in neither.
+    // Reopening the cell counts as an outside click (see typeInto). That flush
+    // waits for the open PUT rather than sending 'A' again (OB-1).
     expect(backend.requests.put.map((p) => p.body.properties.name)).toEqual([
-      'A',
       'A',
     ]);
     release();
+    // Fixed: 'AB' stays dirty after the first PUT succeeds, and the flush that
+    // waited sends it with no further gesture.
     await expect
       .poll(() => (backend.dbs[DEFAULT_CONN].rows[0].properties as Props).name)
-      .toBe('A');
-    // Let the success finish rebuilding the cell before any gesture.
+      .toBe('AB');
     await settle(page);
 
-    // A flush gesture afterwards has to find the later text to send.
+    // Later flush gestures find nothing left to send.
     await clickAway(page);
     await settle(page);
-    await clickAway(page);
-    await settle(page);
+    expect(backend.requests.put.map((p) => p.body.properties.name)).toEqual([
+      'A',
+      'AB',
+    ]);
 
     await page.reload();
     await expect(rowAt(page, 0)).toBeVisible({ timeout: 15_000 });
-
-    // Fixed: the later text is still dirty after the success, so it is sent.
-    expect(backend.requests.put.map((p) => p.body.properties.name)).toContain(
-      'AB'
-    );
     await expect(cell(page, 0)).toHaveText('AB');
   });
 
