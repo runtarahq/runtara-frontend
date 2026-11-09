@@ -230,7 +230,13 @@ export const EditableCell = memo(function EditableCell({
         onFocus={() => {
           onFocus?.();
         }}
-        onBlur={onBlur}
+        onBlur={(e) => {
+          onBlur();
+          // The editor closes when focus leaves it, so Escape can't later
+          // revert a value that has since been saved. Focus staying on the
+          // input means only the window lost it, so the edit carries on.
+          if (document.activeElement !== e.target) setIsEditing(false);
+        }}
         onKeyDown={handleKeyDown}
         className="box-border h-10 w-full rounded-none border-0 bg-info/10 px-2 py-2 ring-2 ring-inset ring-info focus-visible:ring-0"
         type={

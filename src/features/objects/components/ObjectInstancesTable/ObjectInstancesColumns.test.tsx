@@ -16,8 +16,6 @@ function renderIdCell(instance: Instance) {
       columns: [],
     } satisfies Schema,
     onUpdate: vi.fn(),
-    editingCellId: null,
-    setEditingCellId: vi.fn(),
   });
 
   const idColumn = columns.find((column) => column.id === '_id')!;
@@ -51,8 +49,6 @@ describe('objectInstancesColumns', () => {
     const columns = objectInstancesColumns({
       objectSchemaDto: schema,
       onUpdate: vi.fn(),
-      editingCellId: null,
-      setEditingCellId: vi.fn(),
     });
 
     expect(columns.map((column) => column.id)).toContain('name');

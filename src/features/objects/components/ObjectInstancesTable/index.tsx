@@ -11,7 +11,7 @@ import {
   isDraftRow,
   makeDraftInstance,
 } from './draft-row';
-import { dropEditsForRows } from './pending-edits';
+import { dropEditsForRows, recordCellEdit } from './pending-edits';
 import {
   Breadcrumb,
   ConsoleTableShell,
@@ -38,6 +38,7 @@ import type {
   BulkValidationMode,
 } from '../../queries';
 import { objectInstancesColumns } from './ObjectInstancesColumns';
+import { EditingCellContext } from './editing-cell-context';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -152,6 +153,10 @@ export function ObjectInstanceDtosTable({
     }
   }, [isError, error]);
 
+  // What the server holds, for telling an edit from a revert.
+  const serverRecordsRef = useRef<Instance[]>([]);
+  serverRecordsRef.current = data?.content ?? [];
+
   const records = useMemo(() => {
     const content = data?.content || [];
 
@@ -235,10 +240,14 @@ export function ObjectInstanceDtosTable({
   );
   // A deferred flush can lose the race with a delete and 404; that case is
   // handled in saveDirtyRow, so the shared 404 toast stays off.
-  const updateRecord = useUpdateObjectInstanceDto(connectionId, {
-    suppressNotFoundToasts: true,
-  });
-  const createRecord = useCreateObjectInstanceDto(connectionId);
+  const { mutateAsync: updateRecord } = useUpdateObjectInstanceDto(
+    connectionId,
+    {
+      suppressNotFoundToasts: true,
+    }
+  );
+  const { mutateAsync: createRecord } =
+    useCreateObjectInstanceDto(connectionId);
   const exportCsvMutation = useExportCsv(connectionId);
 
   const handleExportCsv = useCallback(async () => {
@@ -301,7 +310,7 @@ export function ObjectInstanceDtosTable({
       if (isDraftRow(rowId)) {
         // Save pending record
         try {
-          const newInstance = await createRecord.mutateAsync({
+          const newInstance = await createRecord({
             schemaId: objectSchemaDto.id || '',
             data: {
               properties: dirtyData,
@@ -324,7 +333,7 @@ export function ObjectInstanceDtosTable({
       } else {
         // Save existing record
         try {
-          await updateRecord.mutateAsync({
+          await updateRecord({
             schemaId: objectSchemaDto.id || '',
             instanceId: rowId,
             data: {
@@ -386,25 +395,16 @@ export function ObjectInstanceDtosTable({
     }
 
     if (hasChanges) {
-      // Track as dirty for later save
+      const serverProperties = isDraftRow(instanceId)
+        ? undefined
+        : serverRecordsRef.current.find((r) => r.id === instanceId)?.properties;
       setDirtyRows((prev) => {
-        const updated = new Map(prev);
-        const existing = updated.get(instanceId) || {};
-        const nextRow = { ...existing };
-        let shouldUpdate = false;
-
-        propertyEntries.forEach(([key, value]) => {
-          if (nextRow[key] !== value) {
-            shouldUpdate = true;
-            nextRow[key] = value;
-          }
-        });
-
-        if (!shouldUpdate) {
-          return prev;
-        }
-
-        updated.set(instanceId, nextRow);
+        const updated = recordCellEdit(
+          prev,
+          instanceId,
+          data.properties,
+          serverProperties as Record<string, unknown> | undefined
+        );
         // Update ref immediately so saveDirtyRow can see it
         dirtyRowsRef.current = updated;
         return updated;
@@ -576,10 +576,13 @@ export function ObjectInstanceDtosTable({
         enableSelection: true,
         onCellFocus: handleCellFocus,
         onCommitRow: commitRow,
-        editingCellId,
-        setEditingCellId,
       }),
-    [objectSchemaDto, handleUpdate, handleCellFocus, commitRow, editingCellId]
+    [objectSchemaDto, handleUpdate, handleCellFocus, commitRow]
+  );
+
+  const editingCell = useMemo(
+    () => ({ editingCellId, setEditingCellId }),
+    [editingCellId]
   );
 
   // Convert schema columns to filter schema definition format
@@ -622,7 +625,7 @@ export function ObjectInstanceDtosTable({
   );
 
   return (
-    <>
+    <EditingCellContext.Provider value={editingCell}>
       <ConsoleTableShell
         ref={tableRef}
         onKeyDown={handleKeyDown}
@@ -838,6 +841,6 @@ export function ObjectInstanceDtosTable({
         objectSchemaDto={objectSchemaDto}
         connectionId={connectionId}
       />
-    </>
+    </EditingCellContext.Provider>
   );
 }

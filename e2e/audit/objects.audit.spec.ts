@@ -395,7 +395,8 @@ test.describe('Objects audit', () => {
     const box = rowAt(page, 0).getByRole('checkbox', { name: 'Select row' });
     await box.click();
     await expect(selectionCount(page)).toHaveText('1 selected');
-    await expect(cellInput(page, 0)).toHaveValue('unsaved');
+    // Unsaved: the editor closed, but the cell shows the pending edit.
+    await expect(cell(page, 0)).toHaveText('unsaved');
 
     // The keyboard route opens the dialog without an outside click either.
     await box.press('Delete');
@@ -505,17 +506,11 @@ test.describe('Objects audit', () => {
     await expect(cellInput(page, 0)).toHaveCount(0);
     expect(backend.requests.put).toHaveLength(0);
 
-    await knownDefect('OB-8', async () => {
-      await expect(cell(page, 0)).toHaveText('old');
-    });
+    await expect(cell(page, 0)).toHaveText('old');
 
     await clickAway(page);
     await settle(page);
-    await knownDefect('OB-8', async () => {
-      expect(backend.requests.put.map((p) => p.body.properties.name)).toEqual(
-        []
-      );
-    });
+    expect(backend.requests.put).toHaveLength(0);
   });
 
   test('OB-9 Refocusing and pressing Escape after a saved flush keeps the saved value and sends nothing', async ({
@@ -532,10 +527,14 @@ test.describe('Objects audit', () => {
     await expect
       .poll(() => (backend.dbs[DEFAULT_CONN].rows[0].properties as Props).name)
       .toBe('new');
-    // An outside click leaves the editor open: the claimed precondition holds.
-    await expect(cellInput(page, 0)).toHaveValue('new');
+    // The click away closed the editor, so there is nothing left to revert.
+    await expect(cellInput(page, 0)).toHaveCount(0);
+    await expect(cell(page, 0)).toHaveText('new');
 
-    await cellInput(page, 0).click();
+    // A new edit starts from the saved value, and Escape returns to it.
+    await cell(page, 0).locator('div.cursor-text').click();
+    await page.waitForTimeout(250);
+    await expect(cellInput(page, 0)).toHaveValue('new');
     await cellInput(page, 0).press('Escape');
     await expect(cellInput(page, 0)).toHaveCount(0);
     await expect(cell(page, 0)).toHaveText('new');
