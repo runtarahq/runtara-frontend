@@ -180,21 +180,21 @@ test.describe('Shared audit', () => {
     // The scenario was reached: the signed-in token asked and was refused.
     await expect.poll(() => lookups.length).toBeGreaterThan(0);
     expect(lookups[0]).toBe('token-1');
-    await knownDefect('SH-1', async () => {
-      await expect(page.locator('.animate-spin')).toHaveCount(0, {
-        timeout: 8_000,
-      });
+    // Fixed: the failure stops the spinner and says so.
+    await expect(page.locator('.animate-spin')).toHaveCount(0, {
+      timeout: 8_000,
     });
-    const attempts = lookups.length;
+    await expect(
+      page.getByText('Could not load your workspaces')
+    ).toBeVisible();
     await expect(page.getByText('Choose a workspace')).toHaveCount(0);
-    await page.waitForTimeout(3_000);
-    console.log(`SH-1 tenant lookups in 11 s: ${lookups.length}`);
-    expect(lookups.length, 'nothing retries the lookup').toBe(attempts);
 
-    // Control: the same mount with a good answer offers the workspaces.
+    // Try again asks once more, and a good answer offers the workspaces.
+    const attempts = lookups.length;
     ok = true;
-    await page.reload();
+    await page.getByRole('button', { name: 'Try again' }).click();
     await expect(page.getByText('Choose a workspace')).toBeVisible();
+    expect(lookups.length).toBe(attempts + 1);
   });
 
   test('SH-2 A failed lookup at a tenant URL does not render the router', async ({

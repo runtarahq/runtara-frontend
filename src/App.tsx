@@ -11,12 +11,20 @@ import { useHealthCheck } from '@/shared/hooks/useHealthCheck';
 import { tenantIdFromUrl } from '@/shared/config/oidcConfig';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { TenantGate } from '@/shared/tenant/TenantGate';
-import { canOpen, useMyTenants } from '@/shared/tenant/myTenants';
+import {
+  canOpen,
+  useMyTenantsLookup,
+  type MyTenantsLookup,
+} from '@/shared/tenant/myTenants';
 import { edition } from '@edition';
 
 // Where the signed-in user's tenants come from: the edition's, or this
-// server's. Chosen once, so every render calls the same hook.
-const useTenants = edition.useTenants ?? useMyTenants;
+// server's. Chosen once, so every render calls the same hook. Only this
+// server's lookup reports a failure; an edition's hook keeps its contract.
+const editionTenants = edition.useTenants;
+const useTenants: () => MyTenantsLookup = editionTenants
+  ? () => ({ tenants: editionTenants(), failed: false })
+  : useMyTenantsLookup;
 
 function App() {
   const auth = useAutoSignin();
@@ -26,7 +34,8 @@ function App() {
   useUserGroups();
   useMe();
   const isMaintenanceMode = useHealthCheck();
-  const myTenants = useTenants();
+  const tenantLookup = useTenants();
+  const myTenants = tenantLookup.tenants;
 
   if (auth.isLoading) {
     return <Loader />;
@@ -56,7 +65,13 @@ function App() {
   const tenantless =
     isOidcAuth && auth.isAuthenticated && !auth.user?.profile?.org_id;
   if (tenantless && !tenantIdFromUrl) {
-    return <TenantGate tenants={myTenants} />;
+    return (
+      <TenantGate
+        tenants={myTenants}
+        failed={tenantLookup.failed}
+        onRetry={tenantLookup.retry}
+      />
+    );
   }
   if (
     tenantless &&
