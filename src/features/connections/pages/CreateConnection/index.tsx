@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -21,12 +21,17 @@ import { useAuth } from 'react-oidc-context';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import { queryClient } from '@/bootstrap.tsx';
+import { useCreateOnce } from './use-create-once';
 
 export function CreateConnection() {
   const { id } = useParams();
 
   const navigate = useNavigate();
   const { openOAuthPopup } = useOAuthPopup();
+  const createOnce = useCreateOnce();
+  // The connection exists and its popup is open: the form stays busy until
+  // the flow navigates away, so Create cannot be clicked again.
+  const [authorizing, setAuthorizing] = useState(false);
   const auth = useAuth();
   const token = auth.user?.access_token;
 
@@ -100,6 +105,7 @@ export function CreateConnection() {
         useNavigationBlockerStore.getState().setBlocker(false);
       });
       if (isOAuthType && connectionId) {
+        setAuthorizing(true);
         startOAuthFlow(connectionId);
       } else {
         navigate('/connections');
@@ -143,16 +149,20 @@ export function CreateConnection() {
         }
       : undefined;
 
-    mutate({
-      title: title as string,
-      connectionParameters: parameters,
-      integrationId: currentConnectionType?.integrationId,
-      rateLimitConfig,
-      isDefaultFileStorage: isDefaultFileStorage
-        ? Boolean(isDefaultFileStorage)
-        : undefined,
-      defaultFor: Array.isArray(defaultFor) ? (defaultFor as string[]) : [],
-    });
+    if (!createOnce.begin()) return;
+    mutate(
+      {
+        title: title as string,
+        connectionParameters: parameters,
+        integrationId: currentConnectionType?.integrationId,
+        rateLimitConfig,
+        isDefaultFileStorage: isDefaultFileStorage
+          ? Boolean(isDefaultFileStorage)
+          : undefined,
+        defaultFor: Array.isArray(defaultFor) ? (defaultFor as string[]) : [],
+      },
+      { onError: createOnce.fail }
+    );
   };
 
   if (isFetching) {
@@ -176,7 +186,7 @@ export function CreateConnection() {
   return (
     <DynamicConnectionForm
       connectionType={currentConnectionType}
-      isLoading={isPending}
+      isLoading={isPending || authorizing}
       onSubmit={handleSubmit}
       mode="create"
       oauthCreateHint={isOAuthType}
