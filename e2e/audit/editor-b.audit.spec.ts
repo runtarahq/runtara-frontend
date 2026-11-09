@@ -6,7 +6,7 @@ import {
   buildWorkflow,
 } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json, logWorkflow, openWorkflow } from './helpers';
+import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                   */
@@ -251,11 +251,8 @@ async function history(page: Page) {
       '/src/features/workflows/stores/workflowStore.ts' as string
     );
     const s = m.useWorkflowStore.getState();
-    return {
-      length: s.history.length,
-      index: s.historyIndex,
-      canUndo: s.canUndo(),
-    };
+    // null once the history code is gone, which ED-36 accepts as correct.
+    return { length: s.history?.length ?? null };
   });
 }
 
@@ -323,7 +320,7 @@ const memoryWorkflow = (id: string) =>
   );
 
 test.describe('Editor audit B', () => {
-  test('ED-19 Switching composite between object and array clears data with no prompt', async ({
+  test('ED-19 Switching composite between object and array keeps the data or prompts first', async ({
     page,
     mockApi,
   }) => {
@@ -334,23 +331,30 @@ test.describe('Editor audit B', () => {
     await expect(inputs).toHaveCount(2);
     await expect(inputs.first()).toHaveValue('keep-me');
     let nativeDialog = false;
-    page.on('dialog', () => {
+    page.on('dialog', (dialog) => {
       nativeDialog = true;
+      void dialog.dismiss();
     });
 
     await panel.getByRole('button', { name: 'Composite Array' }).click();
 
-    await expect(inputs).toHaveCount(0);
-    expect(nativeDialog).toBe(false);
-    await expect(page.getByRole('alertdialog')).toHaveCount(0);
-    const graph = await applyAndSave(page, panel, ctl);
-    expect(graph.steps.worker.inputMapping.payload).toEqual({
-      valueType: 'composite',
-      value: [],
+    // A prompt would have to show by now; without one, what gets saved decides.
+    await page.waitForTimeout(500);
+    const prompted =
+      nativeDialog || (await page.getByRole('alertdialog').count()) > 0;
+    const graph = prompted ? null : await applyAndSave(page, panel, ctl);
+    await knownDefect('ED-19', async () => {
+      if (!graph) return;
+      expect(graph.steps.worker.inputMapping.payload.valueType).toBe(
+        'composite'
+      );
+      expect(
+        JSON.stringify(graph.steps.worker.inputMapping.payload.value)
+      ).toContain('keep-me');
     });
   });
 
-  test('ED-20 Re-selecting a composite item current type wipes its value', async ({
+  test('ED-20 Re-selecting the current type of a composite item keeps its value', async ({
     page,
     mockApi,
   }) => {
@@ -365,15 +369,19 @@ test.describe('Editor audit B', () => {
     await panel.getByRole('button', { name: 'immediate' }).first().click();
     await page.getByRole('menuitem', { name: 'Immediate' }).click();
 
-    await expect(input).toHaveValue('');
+    // The POST, not the input: the input showed keep-me before the click too.
     const graph = await applyAndSave(page, panel, ctl);
-    expect(graph.steps.worker.inputMapping.payload.value).toEqual({
-      first: { valueType: 'immediate', value: '' },
-      second: { valueType: 'immediate', value: 'keep-me-too' },
+    const saved = graph.steps.worker.inputMapping.payload.value;
+    expect(saved.second).toEqual({
+      valueType: 'immediate',
+      value: 'keep-me-too',
+    });
+    await knownDefect('ED-20', async () => {
+      expect(saved.first).toEqual({ valueType: 'immediate', value: 'keep-me' });
     });
   });
 
-  test('ED-21 Cancelling the reference picker leaves an empty reference with the value gone', async ({
+  test('ED-21 Cancelling the reference picker restores the original value', async ({
     page,
     mockApi,
   }) => {
@@ -391,20 +399,20 @@ test.describe('Editor audit B', () => {
     await page.keyboard.press('Escape');
     await expect(picker).toHaveCount(0);
 
-    await expect(panel.getByText('Click to select variable...')).toBeVisible();
     const left = panel.getByRole('textbox', { name: 'Enter value...' });
-    await expect(left).toHaveCount(1);
-    await expect(left).toHaveValue('keep-me-too');
-    // The validator catches the empty reference, so it is not persisted, but
-    // the original value is not restored either.
-    await panel.getByTestId('node-config-save').click();
-    await expect(
-      page.getByTestId('validation-message').getByText(/empty reference path/)
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(panel).toBeVisible();
+    await knownDefect('ED-21', async () => {
+      await expect(left).toHaveCount(2);
+      await expect(left.first()).toHaveValue('keep-me');
+      await expect(panel.getByText('Click to select variable...')).toHaveCount(
+        0
+      );
+      // With the value back there is no empty reference for E011 to refuse.
+      await panel.getByTestId('node-config-save').click();
+      await expect(panel).toHaveCount(0, { timeout: 10_000 });
+    });
   });
 
-  test('ED-22 Decimals cannot be typed into auto-typed composite items', async ({
+  test('ED-22 Decimals can be typed into auto-typed composite items', async ({
     page,
     mockApi,
   }) => {
@@ -422,12 +430,19 @@ test.describe('Editor audit B', () => {
 
     await input.pressSequentially('1.5');
 
-    await expect(input).toHaveValue('15');
+    // Both digits landed, whether or not the point did.
+    await expect(input).toHaveValue(/^1\.?5$/);
+    const typed = await input.inputValue();
     const graph = await applyAndSave(page, panel, ctl);
-    expect(graph.steps.worker.inputMapping.payload.value.first.value).toBe(15);
+    await knownDefect('ED-22', async () => {
+      expect(typed).toBe('1.5');
+      expect(
+        Number(graph.steps.worker.inputMapping.payload.value.first.value)
+      ).toBe(1.5);
+    });
   });
 
-  test('ED-23 File input with a {{ value in upload mode: Upload is refused and Reference clears the value', async ({
+  test('ED-23 File input with a {{ value in upload mode: Upload is honoured and Reference keeps the value', async ({
     page,
     mockApi,
   }) => {
@@ -437,38 +452,56 @@ test.describe('Editor audit B', () => {
       graphWorkflowSteps(agentStep('cap-file'))
     );
     await open(page, mockApi, wf);
-    const panel = await openPanel(page, 'Worker');
-    await panel.getByRole('button', { name: /Add custom parameter/ }).waitFor();
-    const fileRow = panel.getByRole('row', { name: /attachment/ });
-    const box = panel.getByPlaceholder("{{steps['stepId'].outputs.file}}");
-    await expect(
-      fileRow.getByRole('button', { name: 'Upload', exact: true })
-    ).toBeVisible();
-    await expect(box).toHaveCount(0); // upload mode
 
-    // The only way found into mode=upload + `{{`: the stored FileData JSON
-    // carries the file name, and a name can contain `{{`.
-    await fileRow.locator('input[type="file"]').setInputFiles({
-      name: '{{report}}.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.from('hello'),
+    const reachUploadModeWithBraces = async () => {
+      const panel = await openPanel(page, 'Worker');
+      await panel
+        .getByRole('button', { name: /Add custom parameter/ })
+        .waitFor();
+      const fileRow = panel.getByRole('row', { name: /attachment/ });
+      const box = panel.getByPlaceholder("{{steps['stepId'].outputs.file}}");
+      await expect(
+        fileRow.getByRole('button', { name: 'Upload', exact: true })
+      ).toBeVisible();
+      await expect(box).toHaveCount(0); // upload mode
+
+      // The only way found into mode=upload + `{{`: the stored FileData JSON
+      // carries the file name, and a name can contain `{{`.
+      await fileRow.locator('input[type="file"]').setInputFiles({
+        name: '{{report}}.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('hello'),
+      });
+      await expect(box).toBeVisible();
+      await expect(box).toHaveValue(/\{\{report\}\}\.txt/);
+      return { fileRow, box, uploaded: await box.inputValue() };
+    };
+
+    const first = await reachUploadModeWithBraces();
+    await first.fileRow
+      .getByRole('button', { name: 'Upload', exact: true })
+      .click();
+    await knownDefect('ED-23', async () => {
+      await expect(first.box).toHaveCount(0, { timeout: 300 });
     });
-    await expect(box).toBeVisible();
-    await expect(box).toHaveValue(/\{\{report\}\}\.txt/);
-    const uploaded = await box.inputValue();
 
-    await fileRow.getByRole('button', { name: 'Upload', exact: true }).click();
-    await page.waitForTimeout(300);
-    await expect(box).toBeVisible();
-    await expect(box).toHaveValue(uploaded);
-
-    await fileRow
+    // A fresh start, so the Reference facet does not depend on what Upload did.
+    await page.reload();
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    const second = await reachUploadModeWithBraces();
+    await second.fileRow
       .getByRole('button', { name: 'Reference', exact: true })
       .click();
-    await expect(box).toHaveValue('');
+    // The box held this value before the click, so give the click time to act.
+    await page.waitForTimeout(300);
+    await knownDefect('ED-23', async () => {
+      await expect(second.box).toHaveValue(second.uploaded);
+    });
   });
 
-  test('ED-24 Clearing the condition prop does not clear the condition editor (component only; every UI caller guards it)', async ({
+  test('ED-24 Clearing the condition prop clears the condition editor', async ({
     page,
     mockApi,
   }) => {
@@ -520,10 +553,12 @@ test.describe('Editor audit B', () => {
 
     expect(seen.initial).toBe('left-marker');
     expect(seen.changed).toBe('changed-marker'); // the prop does sync normally
-    expect(seen.cleared).toBe('changed-marker'); // but clearing it does nothing
+    await knownDefect('ED-24', async () => {
+      expect(seen.cleared).not.toBe('changed-marker');
+    });
   });
 
-  test('ED-25 Closing route settings without Apply keeps the draft on reopen', async ({
+  test('ED-25 Closing route settings without Apply discards the draft on reopen', async ({
     page,
     mockApi,
   }) => {
@@ -538,10 +573,12 @@ test.describe('Editor audit B', () => {
 
     await page.getByTestId('edge-route-settings').click();
     await expect(pop).toBeVisible();
-    await expect(pop.getByLabel('Priority')).toHaveValue('99');
+    await knownDefect('ED-25', async () => {
+      await expect(pop.getByLabel('Priority')).toHaveValue('3');
+    });
   });
 
-  test('ED-26 Route settings: a stale error stays after editing', async ({
+  test('ED-26 Route settings: a stale error clears after editing', async ({
     page,
     mockApi,
   }) => {
@@ -556,19 +593,20 @@ test.describe('Editor audit B', () => {
 
     await text.fill(JSON.stringify(COND));
     await pop.getByLabel('Priority').fill('5');
-    await page.waitForTimeout(300);
-    await expect(error).toBeVisible();
+    await knownDefect('ED-26', async () => {
+      await expect(error).toBeHidden({ timeout: 300 });
+    });
 
     // The text really was valid: Apply accepts it and closes.
     await pop.getByRole('button', { name: 'Apply' }).click();
     await expect(pop).toHaveCount(0);
   });
 
-  test('ED-27 Route settings: Clear commits immediately, without Apply', async ({
+  test('ED-27 Route settings: Clear commits nothing until Apply', async ({
     page,
     mockApi,
   }) => {
-    const ctl = await open(page, mockApi, routeWorkflow('wf_ed27'));
+    await open(page, mockApi, routeWorkflow('wf_ed27'));
     const pop = await openRoutePopover(page);
     await expect(pop.getByLabel('Priority')).toHaveValue('3');
     await expect(page.getByTitle('No changes to save')).toBeVisible();
@@ -576,16 +614,18 @@ test.describe('Editor audit B', () => {
     await pop.getByRole('button', { name: 'Clear' }).click();
 
     await expect(pop).toBeVisible(); // still open, Apply never clicked
-    await expect(page.getByTitle('Save changes')).toBeEnabled();
+    // The draft has been cleared, so Clear has acted.
+    await expect(pop.getByLabel('Priority')).toHaveValue('');
     await page.keyboard.press('Escape');
-    const graph = await save(page, ctl);
-    const edge = graph.executionPlan.find((e: any) => e.fromStep === 'a');
-    expect(edge).toBeTruthy();
-    expect(edge).not.toHaveProperty('condition');
-    expect(edge).not.toHaveProperty('priority');
+    await expect(pop).toHaveCount(0);
+    await knownDefect('ED-27', async () => {
+      await expect(page.getByTitle('No changes to save')).toBeVisible();
+      await page.getByTestId('edge-route-settings').click();
+      await expect(pop.getByLabel('Priority')).toHaveValue('3');
+    });
   });
 
-  test('ED-28 Step picker: capabilities, typing and clearing a query lands on browse', async ({
+  test('ED-28 Step picker: capabilities, typing and clearing a query returns to capabilities', async ({
     page,
     mockApi,
   }) => {
@@ -601,11 +641,15 @@ test.describe('Editor audit B', () => {
     await expect(dialog.getByText('Toolkit Capabilities')).toHaveCount(0);
     await search.fill('');
 
-    await expect(dialog.getByText('Step Types', { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Toolkit Capabilities')).toHaveCount(0);
+    await knownDefect('ED-28', async () => {
+      await expect(dialog.getByText('Toolkit Capabilities')).toBeVisible();
+      await expect(dialog.getByText('Step Types', { exact: true })).toHaveCount(
+        0
+      );
+    });
   });
 
-  test('ED-29 DENIED: a disabled agent is never held by the picker, so nothing is dropped on close', async ({
+  test('ED-29 A disabled agent is never held by the picker, so nothing is dropped on close', async ({
     page,
     mockApi,
   }) => {
@@ -665,7 +709,7 @@ test.describe('Editor audit B', () => {
     });
   });
 
-  test('ED-30 AI Agent memory is written straight to the store with no configure or cancel step', async ({
+  test('ED-30 AI Agent memory offers a configure or cancel step before it stays in the store', async ({
     page,
     mockApi,
   }) => {
@@ -677,55 +721,64 @@ test.describe('Editor audit B', () => {
     await page.getByRole('button', { name: 'Add memory to Brain' }).click();
     await page.getByTestId('step-picker-agent-memstore').click();
 
-    // No config panel, and the store is already written.
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.getByTestId('node-config-dialog')).toHaveCount(0);
-    await expect(page.getByTitle('Save changes')).toBeEnabled();
+    // The pick has been handled once the picker has gone.
+    await expect(page.getByTestId('step-picker-agent-memstore')).toHaveCount(0);
+    const prompted =
+      (await page.getByRole('dialog').count()) > 0 ||
+      (await page.getByTestId('node-config-dialog').count()) > 0;
     const nodes = await storeNodes(page);
-    const brain = nodes.find((n: any) => n.id === 'brain');
-    expect(brain.inputMapping.map((i: any) => i.type)).toEqual(
-      expect.arrayContaining([
-        'memoryEnabled',
-        'memoryProviderStepId',
-        'memoryConversationId',
-      ])
-    );
     const provider = nodes.find((n: any) => n.id !== 'brain');
-    expect(provider.id).toContain('memstore');
 
-    // Nothing to back out of: Cancel on the step leaves the memory in place.
-    const panel = await openAiPanel(page);
-    await expect(panel.getByText('Conversation ID *')).toBeVisible();
-    await panel.getByRole('button', { name: 'Cancel' }).click();
-    const discard = page.getByRole('button', { name: 'Discard' });
-    if (await discard.isVisible().catch(() => false)) await discard.click();
-    await expect(panel).toHaveCount(0);
-    const after = await storeNodes(page);
-    expect(after.map((n: any) => n.id)).toContain(provider.id);
-    expect(ctl.saves()).toBe(0);
+    // Correct if the pick prompts, or waits to write, or if Cancel backs it out.
+    let kept: string[] = [];
+    if (!prompted && provider) {
+      await expect(page.getByTitle('Save changes')).toBeEnabled();
+      const brain = nodes.find((n: any) => n.id === 'brain');
+      expect(brain.inputMapping.map((i: any) => i.type)).toEqual(
+        expect.arrayContaining([
+          'memoryEnabled',
+          'memoryProviderStepId',
+          'memoryConversationId',
+        ])
+      );
+      expect(provider.id).toContain('memstore');
 
-    // Side finding: filling the only visible field still cannot be applied.
-    // The hard-coded empty `messages` reference on the hidden provider trips
-    // E011, so no save payload is reachable from this flow.
-    const again = await openAiPanel(page);
-    await again
-      .getByRole('button', { name: 'Click to select a variable...' })
-      .click();
-    await page
-      .getByRole('dialog', { name: 'Select Variable' })
-      .getByRole('button', { name: /^data / })
-      .click();
-    await again.getByTestId('node-config-save').click();
-    await expect(
-      page
-        .getByTestId('validation-message')
-        .getByText(new RegExp(`'${provider.id}' has invalid reference path`))
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(again).toBeVisible();
-    expect(ctl.saves()).toBe(0);
+      const panel = await openAiPanel(page);
+      await expect(panel.getByText('Conversation ID *')).toBeVisible();
+      await panel.getByRole('button', { name: 'Cancel' }).click();
+      const discard = page.getByRole('button', { name: 'Discard' });
+      if (await discard.isVisible().catch(() => false)) await discard.click();
+      await expect(panel).toHaveCount(0);
+      kept = (await storeNodes(page)).map((n: any) => n.id);
+      expect(ctl.saves()).toBe(0);
+
+      // Side finding: filling the only visible field still cannot be applied.
+      // The hard-coded empty `messages` reference on the hidden provider trips
+      // E011, so no save payload is reachable from this flow.
+      const again = await openAiPanel(page);
+      await again
+        .getByRole('button', { name: 'Click to select a variable...' })
+        .click();
+      await page
+        .getByRole('dialog', { name: 'Select Variable' })
+        .getByRole('button', { name: /^data / })
+        .click();
+      await again.getByTestId('node-config-save').click();
+      await expect(
+        page
+          .getByTestId('validation-message')
+          .getByText(new RegExp(`'${provider.id}' has invalid reference path`))
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(again).toBeVisible();
+      expect(ctl.saves()).toBe(0);
+    }
+
+    await knownDefect('ED-30', async () => {
+      expect(kept).not.toContain(provider?.id);
+    });
   });
 
-  test('ED-31 A late test response for an old capability populates results for the new one', async ({
+  test('ED-31 A late test response for an old capability does not populate results for the new one', async ({
     page,
     mockApi,
   }) => {
@@ -764,24 +817,24 @@ test.describe('Editor audit B', () => {
     ).toBeVisible();
     await expect(panel.getByText('Test Successful')).toHaveCount(0);
 
+    const answered = page.waitForResponse(/\/capabilities\/cap-a\/test/);
     release();
 
-    await expect(panel.getByText('Test Successful')).toBeVisible();
-    await expect(
-      panel
-        .locator('textarea, pre')
-        .filter({ hasText: 'OLD-CAP-A-OUTPUT' })
-        .first()
-    ).toBeVisible();
+    // Results are absent before the response too, so wait until it has landed.
+    await answered;
+    await page.waitForTimeout(500);
     await expect(
       panel.getByRole('button', { name: 'Toolkit → cap-b' })
     ).toBeVisible();
+    await knownDefect('ED-31', async () => {
+      await expect(
+        panel.locator('textarea, pre').filter({ hasText: 'OLD-CAP-A-OUTPUT' })
+      ).toHaveCount(0);
+      await expect(panel.getByText('Test Successful')).toHaveCount(0);
+    });
   });
 
-  test('ED-32 Invalid on-wait JSON keeps the last valid value and does not block Save', async ({
-    page,
-    mockApi,
-  }) => {
+  test('ED-32 Invalid on-wait JSON blocks Save', async ({ page, mockApi }) => {
     const wf = graphWorkflow('wf_ed32', 'w', {
       w: {
         id: 'w',
@@ -799,16 +852,31 @@ test.describe('Editor audit B', () => {
     await text.fill('{"steps": not json');
     await expect(panel.getByText(/is not valid JSON/)).toBeVisible();
 
-    const graph = await applyAndSave(page, panel, ctl);
+    // Try both Saves as far as the UI allows; refusing either one is correct.
+    await panel.getByTestId('node-config-save').click();
+    const applied = await panel
+      .waitFor({ state: 'detached', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (applied) {
+      const button = page.getByTitle('Save changes');
+      const dirty = await button
+        .waitFor({ timeout: 3_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (dirty && (await button.isEnabled())) await save(page, ctl);
+    }
 
-    expect(graph.steps.w.onWait.marker).toBe('last-valid');
+    await knownDefect('ED-32', async () => {
+      expect(ctl.saves()).toBe(0);
+    });
   });
 
-  test('ED-33 The AI Agent effect writes conversation_id to the provider before Save, and Discard does not revert it', async ({
+  test('ED-33 Discarding an AI Agent edit leaves conversation_id on the provider unchanged', async ({
     page,
     mockApi,
   }) => {
-    const ctl = await open(page, mockApi, memoryWorkflow('wf_ed33'));
+    await open(page, mockApi, memoryWorkflow('wf_ed33'));
     const provider = async () =>
       (await storeNodes(page))
         .find((n: any) => n.id === 'mem')
@@ -820,24 +888,26 @@ test.describe('Editor audit B', () => {
     const conv = panel.getByPlaceholder('data.sessionId');
     await expect(conv).toHaveValue('conv-saved');
     await conv.fill('conv-draft');
-
-    // Written before the panel's Save.
-    await expect.poll(async () => (await provider()).value).toBe('conv-draft');
+    await expect(conv).toHaveValue('conv-draft');
 
     await panel.getByRole('button', { name: 'Cancel' }).click();
     await page.getByRole('button', { name: 'Discard' }).click();
     await expect(panel).toHaveCount(0);
 
-    const graph = await save(page, ctl);
-    expect(graph.steps.brain.config.memory.conversationId.value).toBe(
-      'conv-saved'
-    );
-    expect(graph.steps.mem.inputMapping.conversation_id.value).toBe(
-      'conv-draft'
-    );
+    // Discard does revert the agent's own copy.
+    const agent = (await storeNodes(page))
+      .find((n: any) => n.id === 'brain')
+      ?.inputMapping.find((i: any) => i.type === 'memoryConversationId');
+    expect(agent.value).toBe('conv-saved');
+
+    await knownDefect('ED-33', async () => {
+      await expect
+        .poll(async () => (await provider()).value)
+        .toBe('conv-saved');
+    });
   });
 
-  test('ED-34 Removing an earlier iteration row leaves editingIndex on a different row', async ({
+  test('ED-34 Removing an earlier iteration row does not move the open editor to a different row', async ({
     page,
     mockApi,
   }) => {
@@ -892,11 +962,16 @@ test.describe('Editor audit B', () => {
     await expect(names).toHaveCount(2);
     await expect(names.nth(0)).toHaveValue('b');
     await expect(names.nth(1)).toHaveValue('c');
-    await expect(editorValue).toHaveCount(1);
-    await expect(editorValue).toHaveValue('ccc');
+    // Staying on "b" or closing are both fine; showing "c" is not.
+    await knownDefect('ED-34', async () => {
+      const shown = await editorValue.evaluateAll((els) =>
+        els.map((el) => (el as HTMLInputElement).value)
+      );
+      expect(shown).not.toContain('ccc');
+    });
   });
 
-  test('ED-35 DENIED: the JSON view toggle is disabled while forced by invalid JSON', async ({
+  test('ED-35 The JSON view toggle is disabled while forced by invalid JSON', async ({
     page,
     mockApi,
   }) => {
@@ -923,7 +998,7 @@ test.describe('Editor audit B', () => {
     await expect(text).toHaveValue('{bad');
   });
 
-  test('ED-36 PARTIAL: no UI caller of undo and Cmd+Z does nothing, but history is not even recorded', async ({
+  test('ED-36 An edit records undo history while the history code exists', async ({
     page,
     mockApi,
   }) => {
@@ -945,22 +1020,25 @@ test.describe('Editor audit B', () => {
       await page.keyboard.press(key);
     }
     await page.waitForTimeout(800);
-    await expect(b).toHaveCount(0);
 
-    // Two recording actions ran, yet the store history stayed empty: each
-    // action calls saveToHistory() inside its own immer `set`, and the outer
-    // set overwrites what the inner one wrote.
+    // Two recording actions ran. Each calls saveToHistory() inside its own
+    // immer `set`, and the outer set overwrites what the inner one wrote.
+    // Removing the unused history code would be just as correct.
     const after = await history(page);
-    expect(after).toMatchObject({ length: 0, index: -1, canUndo: false });
+    await knownDefect('ED-36', async () => {
+      if (after.length !== null) expect(after.length).toBeGreaterThan(0);
+    });
 
     // Control: the probe reads the live store, and a direct call does record.
-    const direct = await page.evaluate(async () => {
-      const m = await import(
-        '/src/features/workflows/stores/workflowStore.ts' as string
-      );
-      m.useWorkflowStore.getState().saveToHistory();
-      return m.useWorkflowStore.getState().history.length;
-    });
-    expect(direct).toBe(1);
+    if (after.length !== null) {
+      const direct = await page.evaluate(async () => {
+        const m = await import(
+          '/src/features/workflows/stores/workflowStore.ts' as string
+        );
+        m.useWorkflowStore.getState().saveToHistory();
+        return m.useWorkflowStore.getState().history.length;
+      });
+      expect(direct).toBeGreaterThan(after.length);
+    }
   });
 });

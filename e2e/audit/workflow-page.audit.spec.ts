@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { expect, type Page } from '@playwright/test';
 import { test, buildWorkflow } from '../fixtures';
-import { api, json, logWorkflow, openWorkflow } from './helpers';
+import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
 
 type Gate = { promise: Promise<void>; release: () => void };
 
@@ -77,7 +77,7 @@ async function addNote(page: Page, text: string) {
 }
 
 test.describe('Workflow page audit: saving', () => {
-  test('WF-1 A canvas edit made during a save is no longer counted as unsaved after the save succeeds', async ({
+  test('WF-1 A canvas edit made during a save is still counted as unsaved after the save succeeds', async ({
     page,
     mockApi,
   }) => {
@@ -112,25 +112,27 @@ test.describe('Workflow page audit: saving', () => {
     save.hold.release();
     await expect.poll(() => save.responded).toBe(1);
 
-    // The save carried the old text, the canvas keeps the new one, and the page
-    // says there is nothing to save.
+    // The save has finished: the toolbar reads "Save changes" while it is in
+    // flight either way, so an earlier check would prove nothing.
+    await expect(page.getByTitle('Add note')).toBeEnabled({ timeout: 10_000 });
+
+    // The save carried the old text and the canvas keeps the new one.
     const sent = JSON.stringify(save.saves[0]);
     expect(sent).toContain('before save');
     expect(sent).not.toContain('edited during save');
-    await expect(saveClean(page)).toBeVisible();
     await expect(
       page.locator('.react-flow__node').getByText('edited during save')
     ).toBeVisible();
-    await expect(saveClean(page)).toBeDisabled();
-
-    // Leaving gives no warning: the edit is gone.
-    await workflowsLink(page).first().click();
-    await expect(page).toHaveURL(/\/workflows$/);
-    await expect(unsavedDialog(page)).toHaveCount(0);
     expect(save.saves).toHaveLength(1);
+
+    await knownDefect('WF-1', async () => {
+      await expect(saveClean(page)).toHaveCount(0);
+      await workflowsLink(page).first().click();
+      await expect(unsavedDialog(page)).toBeVisible();
+    });
   });
 
-  test('WF-2 A settings edit made during a save is discarded after the save succeeds', async ({
+  test('WF-2 A settings edit made during a save is still counted as unsaved after the save succeeds', async ({
     page,
     mockApi,
   }) => {
@@ -157,30 +159,33 @@ test.describe('Workflow page audit: saving', () => {
 
     save.hold.release();
     await expect.poll(() => save.responded).toBe(1);
-    await expect(saveClean(page)).toBeVisible();
+    // The save has finished: the toolbar reads "Save changes" while it is in
+    // flight either way, so an earlier check would prove nothing.
+    await expect(page.getByTitle('Add note')).toBeEnabled({ timeout: 10_000 });
 
-    // Never sent, not counted as unsaved, and no save can send it now.
+    // The edit was never sent.
     expect(JSON.stringify(save.saves)).not.toContain('edited during save');
-    await expect(saveClean(page)).toBeDisabled();
 
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const shown = await description.inputValue();
     console.log(`WF-2 Description field after save and tab return: "${shown}"`);
-    // The page goes on showing the edit as if it had been saved.
+    // The page goes on showing the edit.
     expect(shown).toBe('edited during save');
-
-    await workflowsLink(page).first().click();
-    await expect(page).toHaveURL(/\/workflows$/);
-    await expect(unsavedDialog(page)).toHaveCount(0);
     expect(save.saves).toHaveLength(1);
 
-    // The server has the first text; the edit does not survive a reopen.
+    await knownDefect('WF-2', async () => {
+      await expect(saveClean(page)).toHaveCount(0);
+      await workflowsLink(page).first().click();
+      await expect(unsavedDialog(page)).toBeVisible();
+    });
+
+    // The server has only the first text.
     await page.goto(`/workflows/${wf.id}`);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(description).toHaveValue('first description');
   });
 
-  test('WF-3 Two clicks during the validation window send two saves', async ({
+  test('WF-3 Two clicks during the validation window send one save', async ({
     page,
     mockApi,
   }) => {
@@ -285,12 +290,14 @@ test.describe('Workflow page audit: saving', () => {
     save.hold.release();
 
     console.log('WF-3 update POSTs per double click', JSON.stringify(results));
-    expect(results.coldDblclick).toBe(2);
     expect(whileHeld).toBe(0);
-    expect(results.slowCatalogGap250ms).toBe(2);
-    expect(JSON.stringify(save.saves[0].executionGraph)).toEqual(
-      JSON.stringify(save.saves[1].executionGraph)
-    );
+    await knownDefect('WF-3', async () => {
+      expect(results.coldDblclick).toBe(1);
+      expect(results.slowCatalogGap250ms).toBe(1);
+      expect(JSON.stringify(save.saves[0].executionGraph)).not.toEqual(
+        JSON.stringify(save.saves[1].executionGraph)
+      );
+    });
   });
 });
 
@@ -374,7 +381,7 @@ const failureToast = (page: Page) =>
   page.locator('[data-sonner-toast]').filter({ hasText: 'Compilation failed' });
 
 test.describe('Workflow page audit: compilation watch', () => {
-  test('WF-4 A compilation status of unknown polls indefinitely and Rebuilding never clears', async ({
+  test('WF-4 A compilation status of unknown does not poll indefinitely and Rebuilding clears', async ({
     page,
     mockApi,
   }) => {
@@ -394,15 +401,17 @@ test.describe('Workflow page audit: compilation watch', () => {
     await openVersions(page);
     await rebuildButton(page, 1).click();
     await expect(rebuildingButton(page, 1)).toBeVisible();
+    await expect(rebuildingButton(page, 1)).toBeDisabled();
     await expect.poll(() => c.rebuilds).toEqual([1]);
 
-    // Well past the 8 s failure clear and the 2.5 s success clear.
-    await page.waitForTimeout(25_000);
-    const unknownPolls = c.count(1);
-    console.log('WF-4 polls in 25 s:', unknownPolls);
-    expect(unknownPolls).toBeGreaterThanOrEqual(18);
-    await expect(rebuildingButton(page, 1)).toBeVisible();
-    await expect(rebuildingButton(page, 1)).toBeDisabled();
+    // 25 s is well past the 8 s failure clear and the 2.5 s success clear.
+    await knownDefect('WF-4', async () => {
+      await expect(rebuildingButton(page, 1)).toHaveCount(0, {
+        timeout: 25_000,
+      });
+      expect(c.count(1)).toBeLessThan(18);
+    });
+    console.log('WF-4 polls in 25 s:', c.count(1));
     // Nothing in the toolbar says a build is going on.
     await expect(page.locator('header').getByText('Compiling')).toHaveCount(0);
 
@@ -414,7 +423,7 @@ test.describe('Workflow page audit: compilation watch', () => {
     expect(c.count(1)).toBe(atEnd);
   });
 
-  test('WF-5 A failing compilation-progress endpoint polls indefinitely', async ({
+  test('WF-5 A failing compilation-progress endpoint does not poll indefinitely', async ({
     page,
     mockApi,
   }) => {
@@ -434,6 +443,7 @@ test.describe('Workflow page audit: compilation watch', () => {
     await openVersions(page);
     await rebuildButton(page, 1).click();
     await expect.poll(() => c.count(1), { timeout: 10_000 }).toBeGreaterThan(0);
+    await expect(rebuildingButton(page, 1)).toBeDisabled();
 
     await page.waitForTimeout(12_000);
     const mid = c.count(1);
@@ -443,13 +453,13 @@ test.describe('Workflow page audit: compilation watch', () => {
     console.log(
       `WF-5 failed polls: ${mid} at 12 s, ${end} at 25 s; toasts visible: ${toasts}`
     );
-    expect(mid).toBeGreaterThanOrEqual(4);
-    expect(end).toBeGreaterThan(mid + 3);
-    await expect(rebuildingButton(page, 1)).toBeVisible();
-    await expect(rebuildingButton(page, 1)).toBeDisabled();
+    await knownDefect('WF-5', async () => {
+      expect(end).toBeLessThanOrEqual(mid + 3);
+      await expect(rebuildingButton(page, 1)).toHaveCount(0);
+    });
   });
 
-  test('WF-6 Rebuilding a version that recently failed shows the cached failure toast straight away', async ({
+  test('WF-6 Rebuilding a version that recently failed does not show the cached failure', async ({
     page,
     mockApi,
   }) => {
@@ -502,19 +512,23 @@ test.describe('Workflow page audit: compilation watch', () => {
     await expect.poll(() => c.count(1)).toBeGreaterThan(before);
     expect(answered).toBe(false);
 
-    await expect(failureToast(page)).toBeVisible();
-    await expect(failureToast(page)).toContainText('old failure');
-    await expect(
-      page.locator('header').getByText('Compile failed')
-    ).toBeVisible();
+    // Same wait as the control above. The counts do not retry: a retrying
+    // "gone" check would pass once the toast timed out on its own.
+    await page.waitForTimeout(1_000);
     expect(answered).toBe(false);
+    await knownDefect('WF-6', async () => {
+      expect(await failureToast(page).count()).toBe(0);
+      expect(
+        await page.locator('header').getByText('Compile failed').count()
+      ).toBe(0);
+    });
 
     held.release();
     await expect.poll(() => answered).toBe(true);
     await expect(page.locator('header').getByText('Compiling')).toBeVisible();
   });
 
-  test('WF-7 Rebuilding version B while A is rebuilding drops tracking of A', async ({
+  test('WF-7 Rebuilding version B while A is rebuilding keeps tracking A', async ({
     page,
     mockApi,
   }) => {
@@ -541,54 +555,60 @@ test.describe('Workflow page audit: compilation watch', () => {
     await expect(rebuildingButton(page, 2)).toBeVisible();
     await expect.poll(() => c.rebuilds).toEqual([1, 2]);
 
-    // A is still building on the server, but its row no longer says so.
-    await expect(rebuildButton(page, 1)).toBeVisible();
+    // B's watch is established, so the switch has happened. A is still building
+    // on the server.
     await expect.poll(() => c.count(2), { timeout: 8_000 }).toBeGreaterThan(1);
     const v1Polls = c.count(1);
     await page.waitForTimeout(5_000);
-    expect(c.count(1)).toBe(v1Polls);
     expect(c.count(2)).toBeGreaterThan(3);
 
-    // A now fails: nobody is told.
+    // A now fails.
     c.answer = async (version) =>
       version === 1
         ? { status: 200, body: { status: 'failed', errorMessage: 'A failed' } }
         : { status: 200, body: { status: 'in_progress' } };
-    await page.waitForTimeout(4_000);
-    await expect(failureToast(page)).toHaveCount(0);
-    expect(c.count(1)).toBe(v1Polls);
+    await knownDefect('WF-7', async () => {
+      await expect(rebuildButton(page, 1)).toHaveCount(0);
+      await expect
+        .poll(() => c.count(1), { timeout: 4_000 })
+        .toBeGreaterThan(v1Polls);
+      await expect(failureToast(page)).toBeVisible({ timeout: 4_000 });
+    });
     console.log(
-      `WF-7 v1 polls frozen at ${v1Polls}, v2 polls ${c.count(2)}, rebuilds ${c.rebuilds}`
+      `WF-7 v1 polls ${v1Polls} then ${c.count(1)}, v2 polls ${c.count(2)}, rebuilds ${c.rebuilds}`
     );
   });
 });
 
 test.describe('Execution audit: status and store', () => {
-  test('EX-5 isDebugExecution is written but never read', async () => {
+  test('EX-5 isDebugExecution has a reader, or is gone', async () => {
     const out = execSync(
       'grep -rn "isDebugExecution" src e2e/tests e2e/fixtures e2e/pages || true',
       { encoding: 'utf8' }
     );
     const lines = out.trim().split('\n').filter(Boolean);
     console.log(out);
-    // Positive control: the field exists.
-    expect(lines.length).toBeGreaterThan(0);
-    expect(lines.every((l) => l.includes('stores/executionStore.ts'))).toBe(
-      true
-    );
-    // Every occurrence: declaration, parameter, initial value, two writes.
-    const code = lines.map((l) => l.split(':').slice(2).join(':').trim());
-    expect(code).toEqual([
+    // Declaration, parameter, initial value, two writes: anything else reads it.
+    const notReads = [
       'isDebugExecution: boolean;',
       'isDebugExecution?: boolean',
       'isDebugExecution: false,',
       'startExecution: (instanceId, workflowId, debugMode, isDebugExecution) => {',
       'state.isDebugExecution = isDebugExecution || false;',
       'state.isDebugExecution = false;',
-    ]);
+    ];
+    const reads = lines.filter(
+      (l) =>
+        !l.includes('stores/executionStore.ts') ||
+        !notReads.includes(l.split(':').slice(2).join(':').trim())
+    );
+    await knownDefect('EX-5', async () => {
+      // No occurrences at all also counts: the dead field is gone.
+      expect(lines.length === 0 ? 1 : reads.length).toBeGreaterThan(0);
+    });
   });
 
-  test('EX-6 An unrecognized run status counts as finished: Replay is offered and polling stops', async ({
+  test('EX-6 An unrecognized run status does not count as finished: Replay is not offered and polling continues', async ({
     page,
     mockApi,
   }) => {
@@ -667,15 +687,13 @@ test.describe('Execution audit: status and store', () => {
         has: page.getByRole('link', { name: label, exact: true }),
       });
     await expect(row('MYSTERY')).toBeVisible({ timeout: 15_000 });
-    await expect(row('MYSTERY').getByLabel('Replay')).toBeVisible();
-    await expect(
-      row('MYSTERY').getByLabel('Stop', { exact: false })
-    ).toHaveCount(0);
     // Control: a known active run offers no Replay.
     await expect(row('RUNNING').getByLabel('Replay')).toHaveCount(0);
     await expect(
       row('RUNNING').getByLabel('Stop', { exact: false })
     ).toBeVisible();
+    // Read once the row's actions have rendered, as the control above shows.
+    const mysteryReplay = await row('MYSTERY').getByLabel('Replay').count();
     console.log(
       'EX-6 mystery row:',
       (await row('MYSTERY').innerText()).replace(/\s+/g, ' ')
@@ -696,14 +714,20 @@ test.describe('Execution audit: status and store', () => {
     await page.waitForTimeout(1_000);
     const first = polls.inst_mystery;
     const firstInput = inputPolls.inst_mystery;
-    await page.waitForTimeout(12_000);
+    expect(running.inst_running).toBeGreaterThanOrEqual(2);
+    expect(running.input).toBeGreaterThanOrEqual(3);
+    await knownDefect('EX-6', async () => {
+      expect(mysteryReplay).toBe(0);
+      await expect
+        .poll(() => polls.inst_mystery, { timeout: 12_000 })
+        .toBeGreaterThan(first);
+      await expect
+        .poll(() => inputPolls.inst_mystery, { timeout: 12_000 })
+        .toBeGreaterThan(firstInput);
+    });
     console.log(
       `EX-6 12 s window: running instance GETs ${running.inst_running}, pending-input ${running.input}; ` +
         `mystery instance GETs ${polls.inst_mystery} (${first} after load), pending-input ${inputPolls.inst_mystery} (${firstInput} after load)`
     );
-    expect(running.inst_running).toBeGreaterThanOrEqual(2);
-    expect(running.input).toBeGreaterThanOrEqual(3);
-    expect(polls.inst_mystery).toBe(first);
-    expect(inputPolls.inst_mystery).toBe(firstInput);
   });
 });

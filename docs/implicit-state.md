@@ -27,10 +27,26 @@ a code scan, `test` was found while testing another claim.
 
 Of 135 claims: **118 confirmed, 8 partial, 5 denied and 4 static**. All were tested or settled; none is left open.
 
-- **Method:** every claim except the static ones has a test that drives the real UI in Chrome against `page.route()` mocks (`e2e/audit/`). A test asserts the claimed defect, so passing means reproduced. Denied claims have tests asserting what actually happens instead.
+- **Method:** each claim has a test that drives the real UI in Chrome against `page.route()` mocks (`e2e/audit/`), apart from the static claims, which read the source. The verdicts below record what those tests observed when they asserted the claimed defect directly.
+- **Tests now assert correct behaviour:** see [Working with the specs](#working-with-the-specs).
 - **Mock limits:** a mock proves what the client does with a given response, not that the real server sends it. Claims that depend on server behaviour say so in their evidence, notably EX-2, CH-3, CN-18 and HI-4.
 - **Not reproduced on a real server:** nothing here was run against a real runtara server.
-- **Run:** `npx playwright test -c e2e/audit/playwright.audit.config.ts` (installed Chrome, about 16 minutes). These specs assert today's defects, so they sit outside the mocked PR gate, and a fixed defect makes its spec fail.
+
+## Working with the specs
+
+Run them with `npx playwright test -c e2e/audit/playwright.audit.config.ts`. This uses the installed Chrome, takes about 16 minutes, and sits outside the mocked PR gate.
+
+Each test states the correct behaviour. While a defect exists, its assertions sit inside `knownDefect()` (`e2e/audit/helpers.ts`), which expects them to fail:
+
+- **Passing test:** the defect is still there, or for the four plain tests (ED-29, ED-35, HI-12, OB-9) the correct behaviour still holds. The JSON reporter keeps the assertion failure as a `known-defect` annotation.
+- **"no longer reproduces":** the defect appears fixed. Remove the wrapper, which leaves a regression test, and update the claim's verdict here. Temporarily fixing EX-1 and HI-1 confirmed this: both went red, and EX-2 and HI-2 stayed green.
+- **Any other failure:** setup, a control or the scenario broke. `knownDefect()` only absorbs failed assertions.
+
+**Expect some tests to need editing when a fix lands:**
+
+- **False "fixed" alarms:** a retrying check such as `toHaveCount(0)` inside a wrapper can pass on a brief absence. This fails loudly and can't hide a bug, so check the alarm before removing a wrapper.
+- **Tests that assume a fix:** CH-1 expects `done` to be set, not deleted. HI-3 expects the 5 s poll to run, not be removed. SH-3 expects a failed entitlement fetch to fail closed. ED-16 expects every mode switch to keep the value.
+- **Steps that describe today's behaviour:** some plain steps will break with a fix, such as OB-2's duplicate PUT check and CN-7's Confirm click. Fixing TR-1 breaks TR-2's setup, and fixing OB-6 breaks OB-7's control.
 
 ## Corrections to the original findings
 
@@ -48,7 +64,7 @@ These were observed in passing and have no dedicated test.
 - **Objects:** opening a cell can count as an outside click, queueing a flush 100 ms later. Filling within 100 ms caused an extra PUT, and reopening a cell during a save sends a duplicate PUT.
 - **Chat:** pressing Enter while a retry is in flight drops the send with no feedback; the text stays in the box.
 - **Connections:** past the confirmation deadline, a re-render can read "within 4/5 minutes", since the distance is absolute.
-- **Editor:** adding AI Agent memory on a mock catalog left the step blocked by E011, even after picking a conversation variable. `e2e/tests/e2e/workflow-builder.local.e2e.spec.ts` suggests the real catalog may differ, so check this before acting on it.
+- **Editor:** adding AI Agent memory on a mock catalog left the step blocked by E011, even after picking a conversation variable. `e2e/tests/e2e/workflow-builder.local.e2e.spec.ts` suggests the real catalog may differ, so check this before acting on it. ED-30 still asserts this E011 error as a plain step, so fixing it will fail that test.
 
 ## Claims
 

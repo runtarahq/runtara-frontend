@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { expect, type Page } from '@playwright/test';
 import { test, buildWorkflow, type MockApi } from '../fixtures';
-import { api, json } from './helpers';
+import { api, json, knownDefect } from './helpers';
 
 const SRC = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -157,7 +157,7 @@ const restricted = {
 };
 
 test.describe('Shared audit', () => {
-  test('SH-1 A failed tenant lookup at the bare mount spins forever', async ({
+  test('SH-1 A failed tenant lookup at the bare mount stops the spinner', async ({
     page,
     mockApi,
   }) => {
@@ -180,12 +180,13 @@ test.describe('Shared audit', () => {
     // The scenario was reached: the signed-in token asked and was refused.
     await expect.poll(() => lookups.length).toBeGreaterThan(0);
     expect(lookups[0]).toBe('token-1');
-    await page.waitForTimeout(8_000);
+    await knownDefect('SH-1', async () => {
+      await expect(page.locator('.animate-spin')).toHaveCount(0, {
+        timeout: 8_000,
+      });
+    });
     const attempts = lookups.length;
-    await expect(page.locator('.animate-spin').first()).toBeVisible();
     await expect(page.getByText('Choose a workspace')).toHaveCount(0);
-    await expect(page.getByText('No workspace')).toHaveCount(0);
-    await expect(page.getByRole('alert')).toHaveCount(0);
     await page.waitForTimeout(3_000);
     console.log(`SH-1 tenant lookups in 11 s: ${lookups.length}`);
     expect(lookups.length, 'nothing retries the lookup').toBe(attempts);
@@ -196,7 +197,7 @@ test.describe('Shared audit', () => {
     await expect(page.getByText('Choose a workspace')).toBeVisible();
   });
 
-  test('SH-2 A failed lookup at a tenant URL renders the router', async ({
+  test('SH-2 A failed lookup at a tenant URL does not render the router', async ({
     page,
     mockApi,
   }) => {
@@ -220,8 +221,11 @@ test.describe('Shared audit', () => {
     await page.goto('/ui/acme/workflows');
 
     await expect.poll(() => lookups).toBeGreaterThan(0);
-    await expect(page.getByText('Tenant workflow')).toBeVisible();
-    await expect(page.getByText('No access')).toHaveCount(0);
+    // Let the route load: the list is absent until then, defect or not.
+    await page.waitForTimeout(5_000);
+    await knownDefect('SH-2', async () => {
+      await expect(page.getByText('Tenant workflow')).toHaveCount(0);
+    });
 
     // Control: membership that excludes this tenant does stop at the gate, so
     // only the failure let the page through.
@@ -231,7 +235,7 @@ test.describe('Shared audit', () => {
     await expect(page.getByText('Tenant workflow')).toHaveCount(0);
   });
 
-  test('SH-3 Restricted entitlements show full access while loading and after a failed fetch', async ({
+  test('SH-3 Restricted entitlements do not show full access while loading or after a failed fetch', async ({
     page,
     mockApi,
   }) => {
@@ -255,28 +259,32 @@ test.describe('Shared audit', () => {
     const database = page.getByRole('link', { name: 'Database' });
     const disabled = page.getByText('Feature not enabled');
 
-    // Loading: the gated page and its menu entry are open to a restricted tenant.
-    await expect(database).toBeVisible();
+    // Loading: the gated page and its menu entry stay shut until the answer.
     await expect.poll(() => entitlementGets).toBeGreaterThan(0);
-    await expect.poll(() => schemaGets).toBeGreaterThan(0);
-    await expect(disabled).toHaveCount(0);
+    // Let the route load: the page's own request comes after that.
+    await page.waitForTimeout(3_000);
+    await knownDefect('SH-3', async () => {
+      expect(schemaGets, 'gated page requests while loading').toBe(0);
+      await expect(database).toHaveCount(0);
+    });
 
     // Control: the answer arrives and the same tenant is locked out.
     hold.open();
     await expect(disabled).toBeVisible();
     await expect(database).toHaveCount(0);
 
-    // Failed fetch: same tenant, and it reads as full access for good.
+    // Failed fetch: the answer is unknown, which must not read as full access.
     mode = 'fail';
     const beforeFail = entitlementGets;
     await page.reload();
     await expect.poll(() => entitlementGets).toBeGreaterThan(beforeFail);
-    await page.waitForTimeout(1_500);
-    await expect(database).toBeVisible();
-    await expect(disabled).toHaveCount(0);
+    await page.waitForTimeout(3_000);
+    await knownDefect('SH-3', async () => {
+      await expect(database).toHaveCount(0);
+    });
   });
 
-  test('SH-4 A failed /me drops known permissions', async ({
+  test('SH-4 A failed /me keeps known permissions', async ({
     page,
     mockApi,
   }) => {
@@ -332,12 +340,16 @@ test.describe('Shared audit', () => {
       .toBe(true);
 
     console.log(`SH-4 /me calls: ${JSON.stringify(me)}`);
-    // The role did not change, only a read failed, and every control is back.
-    await expect(row.getByTitle('Start')).toHaveCount(1);
-    await expect(row.getByTitle('Delete')).toHaveCount(1);
+    // Let the failure land: the controls are absent until it does.
+    await page.waitForTimeout(1_000);
+    // The role did not change, only a read failed, so the controls stay away.
+    await knownDefect('SH-4', async () => {
+      await expect(row.getByTitle('Start')).toHaveCount(0);
+      await expect(row.getByTitle('Delete')).toHaveCount(0);
+    });
   });
 
-  test('SH-5 PARTIAL: the hook clears every resolver field, but no product code supplies a resolver', async ({
+  test("SH-5 One field's dependency change clears only that field; no product code supplies a resolver", async ({
     page,
     mockApi,
   }) => {
@@ -405,19 +417,24 @@ test.describe('Shared audit', () => {
       window.__gate = new Promise((resolve) => { window.__release = resolve; });
       window.__setData({ x: 2, y: 1 });
     `);
-    await expect(harness).toHaveText('{"options":[],"loading":["a","b"]}');
+    // The change has landed: field a is reloading.
+    await expect(harness).toHaveText(/"loading":\[[^\]]*"a"/);
     const calls = (await page.evaluate(`window.__calls.slice()`)) as string[];
     const before = callsBefore as string[];
-    expect(
-      calls.filter((c) => c === 'b').length,
-      'field b was fetched again though its dependency did not change'
-    ).toBeGreaterThan(before.filter((c) => c === 'b').length);
+    await knownDefect('SH-5', async () => {
+      // Field a may keep or drop its old options; field b must keep its own.
+      await expect(harness).toHaveText(/"options":\[(?:"a",)?"b"\]/);
+      expect(
+        calls.filter((c) => c === 'b').length,
+        'field b was not fetched again, as its dependency did not change'
+      ).toBe(before.filter((c) => c === 'b').length);
+    });
 
     await page.evaluate(`window.__release()`);
     await expect(harness).toHaveText('{"options":["a","b"],"loading":[]}');
   });
 
-  test('SH-6 After "Load full value", polled updates to that section are ignored', async ({
+  test('SH-6 After "Load full value", polled updates to that section still show', async ({
     page,
     mockApi,
   }) => {
@@ -456,11 +473,12 @@ test.describe('Shared audit', () => {
     await explorer.getByRole('tab', { name: /^Output/ }).click();
     await expect(panel).toContainText('out_v2');
     await explorer.getByRole('tab', { name: /^Input/ }).click();
-    await expect(panel).toContainText('cat_v1');
-    await expect(panel).not.toContainText('cat_v2');
+    await knownDefect('SH-6', async () => {
+      await expect(panel).toContainText('cat_v2');
+    });
   });
 
-  test("SH-7 Overlapping full-value loads clear each other's indicator", async ({
+  test("SH-7 Overlapping full-value loads keep each other's indicator", async ({
     page,
     mockApi,
   }) => {
@@ -495,18 +513,20 @@ test.describe('Shared audit', () => {
     // The input load finishes; the state load is still held open.
     gates[0].open();
     await expect(page.getByText('Loaded the full input')).toBeVisible();
+    // Loading… was already showing: let the finished load's update land.
+    await page.waitForTimeout(500);
 
-    // State's request is in flight, yet it offers to load again.
-    await expect(panelNote('Loading…')).toHaveCount(0);
-    await expect(panelNote('Load full value')).toBeEnabled();
-    await expect(explorer.getByText('1 large value not loaded')).toBeVisible();
+    // State's request is still in flight, so it should still say so.
+    await knownDefect('SH-7', async () => {
+      await expect(panelNote('Loading…')).toBeVisible();
+    });
 
     gates[1].open();
     await expect(page.getByText('Loaded the full state')).toBeVisible();
     await expect(explorer.getByText('1 large value not loaded')).toHaveCount(0);
   });
 
-  test('SH-8 File input: overlapping reads, with the last to finish winning', async ({
+  test('SH-8 File input: overlapping reads, with the newest choice winning', async ({
     page,
     mockApi,
   }) => {
@@ -553,18 +573,19 @@ test.describe('Shared audit', () => {
     await page.evaluate(() => (window as any).__heldReads['second.txt']());
     await expect(dialog.getByText('second.txt')).toBeVisible();
 
-    // The older choice finishes last and silently replaces it.
+    // The older choice finishes last; let its read land before submitting.
     await page.evaluate(() => (window as any).__heldReads['first.txt']());
-    await expect(dialog.getByText('first.txt')).toBeVisible();
-    await expect(dialog.getByText('second.txt')).toHaveCount(0);
+    await page.waitForTimeout(500);
 
     await dialog.getByRole('button', { name: 'Execute' }).click();
     await expect.poll(() => bodies.length).toBe(1);
-    expect(JSON.stringify(bodies[0])).toContain('first.txt');
-    expect(JSON.stringify(bodies[0])).not.toContain('second.txt');
+    await knownDefect('SH-8', async () => {
+      expect(JSON.stringify(bodies[0])).toContain('second.txt');
+      expect(JSON.stringify(bodies[0])).not.toContain('first.txt');
+    });
   });
 
-  test('SH-9 A 429 entitlement denial gets the default toast', async ({
+  test('SH-9 A 429 entitlement denial gets the entitlement toast', async ({
     page,
     mockApi,
   }) => {
@@ -595,8 +616,9 @@ test.describe('Shared audit', () => {
     await row.getByTitle('Start').click();
 
     await expect.poll(() => hits).toBe(1);
-    await expect(page.getByText('Error: 429')).toBeVisible();
-    await expect(page.getByText('Tier limit reached')).toHaveCount(0);
+    await knownDefect('SH-9', async () => {
+      await expect(page.getByText('Tier limit reached')).toBeVisible();
+    });
 
     // Control: the identical body at 403 gets the entitlement toast.
     status = 403;
@@ -606,14 +628,16 @@ test.describe('Shared audit', () => {
     await expect(page.getByText('Tier limit reached')).toBeVisible();
   });
 
-  test('SH-10 readJsonEventStream has no non-test callers (static)', () => {
+  test('SH-10 readJsonEventStream has a non-test caller or is gone', async () => {
     const uses = walk(SRC)
-      .filter((file) => /\.tsx?$/.test(file))
+      .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
       .filter((file) =>
         fs.readFileSync(file, 'utf8').includes('readJsonEventStream')
       )
       .map((file) => path.relative(SRC, file))
       .sort();
-    expect(uses).toEqual(['shared/utils/sse.test.ts', 'shared/utils/sse.ts']);
+    await knownDefect('SH-10', async () => {
+      expect(uses).not.toEqual(['shared/utils/sse.ts']);
+    });
   });
 });

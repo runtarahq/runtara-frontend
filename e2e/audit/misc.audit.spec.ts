@@ -7,7 +7,7 @@ import {
   buildWorkflow,
 } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json } from './helpers';
+import { api, json, knownDefect } from './helpers';
 
 const CUSTOM = { custom_key: 'custom_val' };
 
@@ -152,7 +152,7 @@ async function mockRateLimits(
 }
 
 test.describe('Triggers audit', () => {
-  test("TR-1 An existing trigger's custom pairs never load", async ({
+  test("TR-1 An existing trigger's custom pairs load", async ({
     page,
     mockApi,
   }) => {
@@ -163,12 +163,14 @@ test.describe('Triggers audit', () => {
     await expect(page.getByLabel('Event type')).toHaveValue('order');
     await expect(addPair(page)).toBeVisible();
 
-    await expect(keyInputs(page)).toHaveCount(0);
-    await expect(valueInputs(page)).toHaveCount(0);
-    await expect(page.getByText('custom_val')).toHaveCount(0);
+    await knownDefect('TR-1', async () => {
+      await expect(keyInputs(page)).toHaveCount(1);
+      await expect(keyInputs(page).nth(0)).toHaveValue('custom_key');
+      await expect(valueInputs(page).nth(0)).toHaveValue('custom_val');
+    });
   });
 
-  test('TR-2 A removed pair cannot be deleted, because the edit page merges it back', async ({
+  test('TR-2 A removed pair is deleted, not merged back by the edit page', async ({
     page,
     mockApi,
   }) => {
@@ -191,12 +193,14 @@ test.describe('Triggers audit', () => {
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expect.poll(() => puts.length).toBe(1);
     expect(puts[0].configuration.fresh_key).toBe('fresh_val');
-    expect(puts[0].configuration.custom_key).toBe('custom_val');
+    await knownDefect('TR-2', async () => {
+      expect(puts[0].configuration.custom_key).toBeUndefined();
+    });
   });
 });
 
 test.describe('Settings audit', () => {
-  test('ST-1 PARTIAL: closing the API key dialog during submit hides the created key until the dialog is reopened', async ({
+  test('ST-1 Closing the API key dialog during submit still shows the created key, and reopening reveals it', async ({
     page,
     mockApi,
   }) => {
@@ -213,12 +217,13 @@ test.describe('Settings audit', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     release();
-    // The server made the key and says so; the key itself is nowhere.
+    // The server made the key and says so; the key has to reach the user.
     await expect(page.getByText('API key created')).toBeVisible();
-    await expect(page.getByText(SECRET)).toHaveCount(0);
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await knownDefect('ST-1', async () => {
+      await expect(page.getByText(SECRET)).toBeVisible();
+    });
 
-    // Nothing says so, but reopening "New API Key" reveals it.
+    // The part that was never broken: reopening "New API Key" reveals it.
     await page.getByRole('button', { name: /new api key/i }).click();
     await expect(
       page.getByRole('heading', { name: 'API Key Created' })
@@ -227,7 +232,7 @@ test.describe('Settings audit', () => {
     expect(keys.posts).toHaveLength(1);
   });
 
-  test('ST-2 Esc on the reveal view destroys the key with no confirmation', async ({
+  test('ST-2 Esc on the reveal view keeps the key or asks for confirmation', async ({
     page,
     mockApi,
   }) => {
@@ -237,17 +242,17 @@ test.describe('Settings audit', () => {
     await expect(page.getByText(SECRET)).toBeVisible();
 
     await page.keyboard.press('Escape');
-    await expect(page.getByText(SECRET)).toHaveCount(0);
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.getByRole('alertdialog')).toHaveCount(0);
-
-    await page.getByRole('button', { name: /new api key/i }).click();
-    await expect(page.getByText('Create API Key')).toBeVisible();
-    await expect(page.getByText(SECRET)).toHaveCount(0);
+    // The key is on screen before Esc: let the dialog finish closing, if it does.
+    await page.waitForTimeout(800);
+    await knownDefect('ST-2', async () => {
+      await expect(
+        page.getByText(SECRET).or(page.getByRole('alertdialog')).first()
+      ).toBeVisible();
+    });
     expect(keys.posts).toHaveLength(1);
   });
 
-  test('ST-3 A clipboard rejection is unhandled', async ({ page, mockApi }) => {
+  test('ST-3 A clipboard rejection is handled', async ({ page, mockApi }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.addInitScript(() => {
@@ -278,24 +283,22 @@ test.describe('Settings audit', () => {
     await expect
       .poll(() => page.evaluate(() => (window as any).__clipboardCalls))
       .toBe(1);
-    await expect
-      .poll(() => page.evaluate(() => (window as any).__rejections.length))
-      .toBe(1);
-    expect(
-      await page.evaluate(() => (window as any).__rejections[0])
-    ).toContain('audit clipboard denied');
-    expect(pageErrors.join()).toContain('audit clipboard denied');
+    // Give the rejection time to surface before reading that there was none.
+    await page.waitForTimeout(800);
+    await knownDefect('ST-3', async () => {
+      expect(await page.evaluate(() => (window as any).__rejections)).toEqual(
+        []
+      );
+      expect(pageErrors).toEqual([]);
+    });
 
-    // No success, and no failure message either.
+    // A rejected copy must not claim success.
     await expect(page.getByText('Copied to clipboard')).toHaveCount(0);
-    await expect(page.getByText(/copy|clipboard/i)).toHaveText([
-      /Copy your API key now/,
-    ]);
   });
 });
 
 test.describe('Analytics audit', () => {
-  test('AN-1 The 60-second metrics refresh re-requests the same window', async ({
+  test('AN-1 The 60-second metrics refresh moves the requested window', async ({
     page,
     mockApi,
   }) => {
@@ -331,10 +334,12 @@ test.describe('Analytics audit', () => {
     console.log(
       `AN-1: ${windows.length} requests over ${after - before}ms, window ${windows[0]}`
     );
-    expect(new Set(windows).size).toBe(1);
+    await knownDefect('AN-1', async () => {
+      expect(new Set(windows).size).toBeGreaterThan(1);
+    });
   });
 
-  test('AN-2 The rate-limit timeline poll repeats a fixed window', async ({
+  test('AN-2 The rate-limit timeline poll moves its window', async ({
     page,
     mockApi,
   }) => {
@@ -363,10 +368,12 @@ test.describe('Analytics audit', () => {
     console.log(
       `AN-2: ${windows.length} requests over ${after - before}ms, window ${windows[0]}`
     );
-    expect(new Set(windows).size).toBe(1);
+    await knownDefect('AN-2', async () => {
+      expect(new Set(windows).size).toBeGreaterThan(1);
+    });
   });
 
-  test('AN-3 The deep-link scroll stays armed when the connection is missing', async ({
+  test('AN-3 The deep-link scroll is not left armed when the connection is missing', async ({
     page,
     mockApi,
   }) => {
@@ -403,9 +410,12 @@ test.describe('Analytics audit', () => {
     await expect(page.getByText(/Rate Limit History/)).toHaveCount(0);
     expect(await scrolls()).toBe(0);
 
-    // A later, ordinary card click consumes the armed flag.
+    // A later, ordinary card click must not scroll, as in the control above.
     await page.getByText('Alpha API').click();
     await expect(history).toBeVisible();
-    await expect.poll(scrolls).toBe(1);
+    await page.waitForTimeout(1_000);
+    await knownDefect('AN-3', async () => {
+      expect(await scrolls()).toBe(0);
+    });
   });
 });

@@ -1,6 +1,6 @@
 import { expect, type Page, type Route } from '@playwright/test';
 import { test, type MockApi } from '../fixtures';
-import { api, json } from './helpers';
+import { api, json, knownDefect } from './helpers';
 
 const WF = 'wf_ops';
 const INST = 'inst_ops_0001';
@@ -194,7 +194,7 @@ const openSavedQueue = (page: Page) =>
   page.goto(`/operations/queues/${VIEW_ID}`);
 
 test.describe('Operations audit', () => {
-  test('OP-1 A failed poll on the Queue page replaces it and resets its state', async ({
+  test('OP-1 A failed poll on the Queue page keeps it and its state', async ({
     page,
     mockApi,
   }) => {
@@ -215,18 +215,24 @@ test.describe('Operations audit', () => {
 
     failing = true;
     const before = served;
-    const alert = page.getByText('Could not load queue. Refresh to try again.');
-    await expect(alert).toBeVisible({ timeout: POLL + 5_000 });
-    expect(served).toBeGreaterThan(before);
-    // The whole page is gone, not just annotated.
-    await expect(search).toHaveCount(0);
+    // Two failures in a row, as the client retries once; then let them land.
+    await expect
+      .poll(() => served - before, { timeout: POLL + 5_000 })
+      .toBeGreaterThanOrEqual(2);
+    await page.waitForTimeout(2_000);
 
+    await knownDefect('OP-1', async () => {
+      await expect(search).toHaveValue('typed before the failure');
+    });
+
+    // Control: the page is back once the poll recovers.
     failing = false;
-    await expect(alert).toHaveCount(0, { timeout: POLL + 5_000 });
-    await expect(page.getByLabel('Search runs')).toHaveValue('');
+    await expect(page.getByLabel('Search runs')).toBeVisible({
+      timeout: POLL + 5_000,
+    });
   });
 
-  test('OP-2 A failed poll on the Run page replaces it, including form drafts', async ({
+  test('OP-2 A failed poll on the Run page keeps it, including form drafts', async ({
     page,
     mockApi,
   }) => {
@@ -247,18 +253,30 @@ test.describe('Operations audit', () => {
     await field.fill('draft answer');
     await expect(field).toHaveValue('draft answer');
 
+    const before = run.instanceGets;
     run.failInstance = true;
-    const alert = page.getByText('Could not load this run.');
-    await expect(alert).toBeVisible({ timeout: POLL + 5_000 });
-    await expect(page.getByText('Decision needed')).toHaveCount(0);
+    // Two failures in a row, as the client retries once; then let them land.
+    await expect
+      .poll(() => run.instanceGets - before, { timeout: POLL + 5_000 })
+      .toBeGreaterThanOrEqual(2);
+    await page.waitForTimeout(2_000);
 
+    await knownDefect('OP-2', async () => {
+      await expect(page.getByText('Decision needed')).toBeVisible();
+      await expect(field).toHaveValue('draft answer');
+    });
+
+    // Control: the page is back once the poll recovers.
     run.failInstance = false;
-    await expect(alert).toHaveCount(0, { timeout: POLL + 5_000 });
-    await expect(page.getByText('Decision needed')).toBeVisible();
-    await expect(page.getByRole('textbox').last()).toHaveValue('');
+    await expect(page.getByText('Decision needed')).toBeVisible({
+      timeout: POLL + 5_000,
+    });
   });
 
-  test('OP-3 Queue answer editing has no cancel', async ({ page, mockApi }) => {
+  test('OP-3 Queue answer editing can be cancelled', async ({
+    page,
+    mockApi,
+  }) => {
     await mockOperations(page, mockApi, {
       views: () => [savedView({ answers: { bulk: false, inline: 'comment' } })],
       requests: () =>
@@ -272,20 +290,20 @@ test.describe('Operations audit', () => {
     const submit = page.getByRole('button', { name: 'Submit answer' });
     await expect(submit).toBeVisible();
 
-    // The only control in the answer cell submits; there is no way back.
     const cell = page
       .getByRole('row', { name: /RUN-a/ })
       .getByRole('cell')
       .last();
-    await expect(cell.getByRole('button')).toHaveText(['Submit answer']);
     await page.keyboard.press('Escape');
-    await expect(submit).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Answer in place' })
-    ).toHaveCount(0);
+
+    // Escape closing the editor and a separate cancel button both satisfy this:
+    // either way, submitting is no longer the cell's only control.
+    await knownDefect('OP-3', async () => {
+      await expect(cell.getByRole('button')).not.toHaveText(['Submit answer']);
+    });
   });
 
-  test('OP-4 PARTIAL: two options sent only when both clicks land in one task', async ({
+  test('OP-4 Clicking two options sends one answer, even when both clicks land in one task', async ({
     page,
     mockApi,
   }) => {
@@ -322,15 +340,18 @@ test.describe('Operations audit', () => {
     });
     await expect
       .poll(() => log.signals.filter((s) => s.requestId === 'req_b').length)
-      .toBe(2);
-    const answers = log.signals
-      .filter((s) => s.requestId === 'req_b')
-      .map((s) => s.payload.decision)
-      .sort();
-    expect(answers).toEqual(['approve', 'reject']);
+      .toBeGreaterThan(0);
+    // The count passes through 1 on its way to 2: wait before reading it.
+    await page.waitForTimeout(500);
+    await knownDefect('OP-4', async () => {
+      expect(
+        log.signals.filter((s) => s.requestId === 'req_b').length,
+        'clicks in one task'
+      ).toBe(1);
+    });
   });
 
-  test('OP-5 "Submit prepared answers" does nothing for non-editing rows, with no feedback', async ({
+  test('OP-5 "Submit prepared answers" on non-editing rows acts or gives feedback', async ({
     page,
     mockApi,
   }) => {
@@ -340,13 +361,20 @@ test.describe('Operations audit', () => {
     await page.getByRole('checkbox', { name: /Select RUN-a/ }).check();
     await expect(page.getByText('1 requests selected')).toBeVisible();
     await page.getByRole('button', { name: 'Submit prepared answers' }).click();
-    await page.waitForTimeout(1_500);
 
-    expect(log.signals).toHaveLength(0);
-    await expect(page.getByText('1 requests selected')).toBeVisible();
-    await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
-    await expect(page.getByRole('alert')).toHaveCount(0);
-    await expect(page.getByRole('status')).toHaveCount(0);
+    // Sending or explaining why not are both fine; doing nothing silently is not.
+    await knownDefect('OP-5', async () => {
+      await expect
+        .poll(
+          async () =>
+            log.signals.length +
+            (await page.locator('[data-sonner-toast]').count()) +
+            (await page.getByRole('alert').count()) +
+            (await page.getByRole('status').count()),
+          { timeout: 1_500 }
+        )
+        .toBeGreaterThan(0);
+    });
 
     // Control: the row can answer, so the mock and form are live.
     await page
@@ -356,12 +384,12 @@ test.describe('Operations audit', () => {
     await expect.poll(() => log.signals.length).toBe(1);
   });
 
-  test('OP-6 Answering everything on the last page strands an empty table', async ({
+  test('OP-6 Answering everything on the last page leaves a way to the remaining requests', async ({
     page,
     mockApi,
   }) => {
     let answered = false;
-    const log = await mockOperations(page, mockApi, {
+    await mockOperations(page, mockApi, {
       requests: (_route, body) => {
         const n = body.query.page;
         const first = Array.from({ length: 25 }, (_, i) => request(`p${i}`));
@@ -380,21 +408,24 @@ test.describe('Operations audit', () => {
     await expect(last.getByRole('status')).toHaveText(/Answered|Sending/);
     answered = true;
 
-    const body = page.locator('table tbody tr');
-    await expect(body).toHaveCount(0, { timeout: POLL + 5_000 });
-    // 25 requests still exist one page back, but nothing leads to them.
-    expect(log.requests.at(-1).query.page).toBe(1);
-    await expect(page.locator('table thead')).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Previous page' })
-    ).toHaveCount(0);
-    await expect(
-      page.getByText('No requests waiting for an answer.')
-    ).toHaveCount(0);
+    // The poll has landed: the old pager and the old row went with it.
+    await expect(last).toHaveCount(0, { timeout: POLL + 5_000 });
+    // Control: 25 requests still exist.
     await expect(page.getByRole('tab', { name: /Open\s*25/ })).toBeVisible();
+
+    // Rows, a pager or the empty text: anything but a bare table header.
+    await knownDefect('OP-6', async () => {
+      await expect(
+        page
+          .locator('table tbody tr')
+          .or(page.getByRole('button', { name: 'Previous page' }))
+          .or(page.getByText('No requests waiting for an answer.'))
+          .first()
+      ).toBeVisible();
+    });
   });
 
-  test('OP-7 The sort tooltip at descending says ascending, but clicking removes the sort', async ({
+  test('OP-7 The sort tooltip at descending says what clicking does', async ({
     page,
     mockApi,
   }) => {
@@ -433,21 +464,25 @@ test.describe('Operations audit', () => {
     // The click closed the tooltip; leave and come back to open it again.
     await page.mouse.move(0, 0);
     await descending.hover();
-    await expect(page.getByRole('tooltip')).toHaveText(
-      'Descending — switch to ascending'
-    );
-
-    await descending.click();
-    // Not ascending: the sort is gone altogether.
-    await expect(select).toHaveValue('');
-    await expect(
-      page.getByRole('button', { name: /^Sort (a|de)scending$/ })
-    ).toHaveCount(0);
-    await expect.poll(() => queries.at(-1).stateSort ?? null).toBeNull();
+    const tooltip = page.getByRole('tooltip');
+    await expect(tooltip).toBeVisible();
+    const promisesAscending = /ascending/i.test(await tooltip.innerText());
     expect(queries.some((q) => q.stateSort?.descending === true)).toBe(true);
+
+    const sent = queries.length;
+    await descending.click();
+    await expect.poll(() => queries.length).toBeGreaterThan(sent);
+
+    // The words and the click must agree; which of them changes is a design call.
+    await knownDefect('OP-7', async () => {
+      expect(
+        queries.at(-1).stateSort?.descending === false,
+        'clicking sorted ascending'
+      ).toBe(promisesAscending);
+    });
   });
 
-  test('OP-8 Deleting a queue flashes "Queue not found"', async ({
+  test('OP-8 Deleting a queue does not flash "Queue not found"', async ({
     page,
     mockApi,
   }) => {
@@ -474,16 +509,18 @@ test.describe('Operations audit', () => {
       .getByRole('button', { name: 'Delete queue' })
       .click();
 
-    // The invalidation has refreshed the views while the queues list is still
-    // on its way, and the page sits on the not-found copy.
-    await expect(page.getByText('Queue not found.')).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`/operations/queues/${VIEW_ID}$`));
+    // Let the invalidation refresh the views while the queues list is held.
+    await expect.poll(() => deleted).toBe(true);
+    await page.waitForTimeout(1_000);
+    await knownDefect('OP-8', async () => {
+      await expect(page.getByText('Queue not found.')).toHaveCount(0);
+    });
 
     hold.open();
     await expect(page).toHaveURL(/\/operations\/queues$/);
   });
 
-  test('OP-9 Run page polling continues after a terminal status', async ({
+  test('OP-9 Run page polling stops after a terminal status', async ({
     page,
     mockApi,
   }) => {
@@ -496,10 +533,12 @@ test.describe('Operations audit', () => {
     console.log(
       `OP-9 instance GETs after completed: ${run.instanceGets - before}`
     );
-    expect(run.instanceGets - before).toBeGreaterThanOrEqual(2);
+    await knownDefect('OP-9', async () => {
+      expect(run.instanceGets - before).toBeLessThan(2);
+    });
   });
 
-  test('OP-10 The replay dialog can close mid-request and still navigate', async ({
+  test('OP-10 The replay dialog does not close mid-request and then navigate', async ({
     page,
     mockApi,
   }) => {
@@ -525,23 +564,44 @@ test.describe('Operations audit', () => {
     expect(replays).toBe(1);
 
     await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
-    await expect(page).toHaveURL(new RegExp(`/runs/${WF}/${INST}$`));
+    // Past the close animation, if the dialog closes at all.
+    await page.waitForTimeout(1_000);
+    const closed = (await dialog.count()) === 0;
 
+    const replayed = page.waitForResponse(
+      api(`workflows/instances/${INST}/replay`)
+    );
     hold.open();
-    await expect(page).toHaveURL(new RegExp(`/runs/${WF}/inst_new$`));
+    await replayed;
+    await page.waitForTimeout(1_000);
+    const navigated = page.url().endsWith(`/runs/${WF}/inst_new`);
+
+    // Refusing to close and not navigating after a close are both fine.
+    await knownDefect('OP-10', async () => {
+      expect(closed && navigated, 'closed mid-request, then navigated').toBe(
+        false
+      );
+    });
   });
 
-  test('OP-11 Retrying a queue delete after a revision conflict resends the same revision', async ({
+  test('OP-11 Retrying a queue delete after a revision conflict sends the current revision', async ({
     page,
     mockApi,
   }) => {
-    await mockOperations(page, mockApi, {});
+    // The server moved to revision 2 once it refused revision 1, and the views
+    // list says so; otherwise no client could ever send the current revision.
+    let serverRevision = 1;
+    await mockOperations(page, mockApi, {
+      views: () => [{ ...savedView(), revision: serverRevision }],
+    });
     const revisions: string[] = [];
     await page.route(api(`operations/views/${VIEW_ID}\\?[^/]*`), (route) => {
-      revisions.push(
-        new URL(route.request().url()).searchParams.get('revision')!
-      );
+      const revision = new URL(route.request().url()).searchParams.get(
+        'revision'
+      )!;
+      revisions.push(revision);
+      if (revision === '2') return json(route, envelope({}));
+      serverRevision = 2;
       return json(route, { message: 'Revision conflict' }, 409);
     });
     await openSavedQueue(page);
@@ -557,21 +617,28 @@ test.describe('Operations audit', () => {
     await confirm.click();
     await expect.poll(() => revisions.length).toBe(2);
 
-    expect(revisions).toEqual(['1', '1']);
-    await expect(dialog.getByRole('alert')).toHaveText('Revision conflict');
+    await knownDefect('OP-11', async () => {
+      expect(revisions).toEqual(['1', '2']);
+    });
   });
 
-  test('OP-12 A view editor 409 retry can never succeed', async ({
+  test('OP-12 A view editor 409 retry can succeed', async ({
     page,
     mockApi,
   }) => {
-    await mockOperations(page, mockApi, {});
+    // The views list reports the new revision once the server has refused the
+    // old one; otherwise no client could ever send it.
     const SERVER_REVISION = 2;
+    let listedRevision = 1;
+    await mockOperations(page, mockApi, {
+      views: () => [{ ...savedView(), revision: listedRevision }],
+    });
     const puts: { revision: number; status: number }[] = [];
     await page.route(api(`operations/views/${VIEW_ID}`), (route) => {
       const { revision } = route.request().postDataJSON();
       const status = revision === SERVER_REVISION ? 200 : 409;
       puts.push({ revision, status });
+      listedRevision = SERVER_REVISION;
       return status === 200
         ? json(route, envelope(savedView()))
         : json(route, { message: 'Revision conflict' }, 409);
@@ -583,22 +650,23 @@ test.describe('Operations audit', () => {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       await save.click();
       await expect.poll(() => puts.length).toBe(attempt);
+      if (puts.at(-1)!.status === 200) break;
       await expect(conflict).toBeVisible();
       await expect(save).toBeEnabled();
     }
 
-    expect(puts.map((p) => p.revision)).toEqual([1, 1, 1]);
-    expect(puts.map((p) => p.status)).toEqual([409, 409, 409]);
-    await expect(page).toHaveURL(/\/edit$/);
+    await knownDefect('OP-12', async () => {
+      expect(puts.map((p) => p.status)).toContain(200);
+    });
   });
 
-  test('OP-13 Any queue count change drops the Requests rows to loading', async ({
+  test('OP-13 A queue count change keeps the Requests rows on screen', async ({
     page,
     mockApi,
   }) => {
     let count = 1;
     const hold = gate();
-    await mockOperations(page, mockApi, {
+    const log = await mockOperations(page, mockApi, {
       queues: () => [queue(count)],
       requests: async () => {
         if (count > 1) await hold.opened;
@@ -613,11 +681,20 @@ test.describe('Operations audit', () => {
     const known = page.getByRole('link', { name: 'RUN-r0', exact: true });
     await expect(known).toBeVisible();
 
+    const queuePolls = log.queues;
+    const requestQueries = log.requests.length;
     count = 2;
-    const loading = page.getByText('Loading requests…');
-    await expect(loading).toBeVisible({ timeout: POLL + 5_000 });
-    // The row is still valid and still open, yet it is gone.
-    await expect(known).toHaveCount(0);
+    // The new count has landed and its held request has gone out.
+    await expect
+      .poll(() => log.queues, { timeout: POLL + 5_000 })
+      .toBeGreaterThan(queuePolls);
+    await page.waitForTimeout(1_000);
+    expect(log.requests.length).toBeGreaterThan(requestQueries);
+
+    // The row is still valid and still open, so it should still be there.
+    await knownDefect('OP-13', async () => {
+      await expect(known).toBeVisible();
+    });
 
     hold.open();
     await expect(known).toBeVisible();
@@ -626,7 +703,7 @@ test.describe('Operations audit', () => {
     ).toBeVisible();
   });
 
-  test('OP-14 A failed queues poll with an empty list shows "Requests unavailable"', async ({
+  test('OP-14 A failed queues poll with an empty list keeps the empty text', async ({
     page,
     mockApi,
   }) => {
@@ -643,23 +720,25 @@ test.describe('Operations audit', () => {
     await expect(empty).toBeVisible();
 
     failing = true;
-    await expect(page.getByText('Requests unavailable.')).toBeVisible({
-      timeout: POLL + 5_000,
-    });
-    await expect(empty).toHaveCount(0);
+    // The alert annotating the failed refresh is fine, and shows it landed.
     await expect(page.getByRole('alert')).toContainText(
-      'Could not refresh requests.'
+      'Could not refresh requests.',
+      { timeout: POLL + 5_000 }
     );
+    await knownDefect('OP-14', async () => {
+      await expect(page.getByText('Requests unavailable.')).toHaveCount(0);
+      await expect(empty).toBeVisible();
+    });
   });
 
-  test('OP-15 The Overdue tile says "Not tracked yet" while loading and on error', async ({
+  test('OP-15 The Overdue tile does not say "Not tracked yet" while loading or on error', async ({
     page,
     mockApi,
   }) => {
     const hold = gate();
     let mode: 'hold' | 'fail' | 'ok' = 'hold';
     const dueView = savedView({ roles: { due: 'due' } });
-    await mockOperations(page, mockApi, {
+    const log = await mockOperations(page, mockApi, {
       views: () => [dueView],
       requests: async (route) => {
         if (mode === 'hold') await hold.opened;
@@ -689,8 +768,11 @@ test.describe('Operations audit', () => {
 
     // A due field IS configured; the answer is simply not in yet.
     const tile = page.getByRole('link', { name: /Overdue/ });
-    await expect(tile).toContainText('Not tracked yet');
-    await expect(tile).toContainText('Choose a due field in a queue');
+    await expect(tile).toBeVisible();
+    await expect.poll(() => log.requests.length).toBeGreaterThan(0);
+    await knownDefect('OP-15', async () => {
+      await expect(tile).not.toContainText('Not tracked yet');
+    });
 
     mode = 'fail';
     hold.open();
@@ -698,7 +780,9 @@ test.describe('Operations audit', () => {
       'Some Operations data could not be refreshed',
       { timeout: 15_000 }
     );
-    await expect(tile).toContainText('Not tracked yet');
+    await knownDefect('OP-15', async () => {
+      await expect(tile).not.toContainText('Not tracked yet');
+    });
 
     // Control: once the same query succeeds, the same tile reports the number.
     mode = 'ok';
