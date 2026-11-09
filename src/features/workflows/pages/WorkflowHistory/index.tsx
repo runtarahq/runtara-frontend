@@ -12,6 +12,7 @@ import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { Loader } from '@/shared/components/loader.tsx';
 import { Button } from '@/shared/components/ui/button';
+import { historyView } from './history-view';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   getWorkflowInstance,
@@ -76,7 +77,7 @@ function WorkflowHistoryContent() {
   const token = useToken();
   const submissions = useManagedInputSubmissions();
 
-  const { data, isLoading, isError } = useCustomQuery({
+  const { data, isLoading, isError, refetch } = useCustomQuery({
     queryKey: queryKeys.workflows.instance(workflowId ?? '', instanceId ?? ''),
     queryFn: (token: string) =>
       getWorkflowInstance(token, workflowId!, instanceId!),
@@ -193,13 +194,18 @@ function WorkflowHistoryContent() {
     }
   };
 
-  // Only show loader on initial load, not during refetches
-  if ((isLoading || !data) && isInitialLoadRef.current) {
+  const view = historyView({
+    hasData: !!data,
+    isLoading,
+    isError,
+    isInitialLoad: isInitialLoadRef.current,
+  });
+  if (view === 'loader') {
     return <Loader />;
   }
 
   // Show error state if fetch failed
-  if (isError) {
+  if (view === 'error') {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-base font-semibold text-foreground">
@@ -208,6 +214,13 @@ function WorkflowHistoryContent() {
         <p className="mt-1 text-sm text-muted-foreground">
           Please try again or go back to workflows.
         </p>
+        <Button
+          variant="secondary"
+          className="mt-4"
+          onClick={() => void refetch()}
+        >
+          Try again
+        </Button>
       </div>
     );
   }
