@@ -8,6 +8,7 @@ import { StepTypeIcon } from '@/features/workflows/components/StepTypeIcon';
 import * as form from '@/features/workflows/components/WorkflowEditor/NodeForm/NodeFormItem.tsx';
 import {
   generateStepId,
+  dirtied,
   useWorkflowStore,
 } from '@/features/workflows/stores/workflowStore.ts';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
@@ -252,11 +253,11 @@ function AiAgentNodeComponent({
           data: { ...n.data, inputMapping: currentMapping },
         };
       });
-      useWorkflowStore.setState({
+      useWorkflowStore.setState((state) => ({
         nodes: updatedNodes,
-        isDirty: true,
+        ...dirtied(state),
         isStructurallyDirty: true,
-      });
+      }));
 
       // Create hidden tool step node positioned off to the right
       const currentPosAbsX =
@@ -406,11 +407,11 @@ function AiAgentNodeComponent({
           data: { ...n.data, inputMapping: currentMapping },
         };
       });
-      useWorkflowStore.setState({
+      useWorkflowStore.setState((state) => ({
         nodes: updatedNodes,
-        isDirty: true,
+        ...dirtied(state),
         isStructurallyDirty: true,
-      });
+      }));
 
       setStepPickerMode(null);
     },

@@ -37,6 +37,17 @@ import {
 import { validateConnection } from '@/features/workflows/utils/graph-validation';
 import { createGraphNodeResolver } from '@/features/workflows/utils/step-node-resolver';
 
+/** Marks the workflow edited. Every edit goes through here or `dirtied`. */
+function markDirty(state: { isDirty: boolean; dirtyRevision: number }) {
+  state.isDirty = true;
+  state.dirtyRevision += 1;
+}
+
+/** The dirty fields for a plain `setState` that edits the workflow. */
+export function dirtied(state: { dirtyRevision: number }) {
+  return { isDirty: true, dirtyRevision: state.dirtyRevision + 1 } as const;
+}
+
 // State holds Sets (stagedNodeIds, stepsWithErrors); renameStep reads them
 // inside an immer draft, which requires the MapSet plugin.
 enableMapSet();
@@ -47,6 +58,7 @@ const initialState = {
   edges: [],
   isDirty: false,
   isStructurallyDirty: false,
+  dirtyRevision: 0,
   selectedNodes: [],
   selectedEdges: [],
   stagedNodeIds: new Set<string>(),
@@ -82,8 +94,16 @@ export const useWorkflowStore = create<WorkflowState>()(
 
       resetState: () => set(() => initialState),
 
-      clearDirtyFlag: () =>
+      clearDirtyFlag: (savedRevision?: number) =>
         set((state) => {
+          // A save clears only what it carried: an edit made while it was in
+          // flight moved the revision on, and is still unsaved.
+          if (
+            savedRevision !== undefined &&
+            savedRevision !== state.dirtyRevision
+          ) {
+            return;
+          }
           state.isDirty = false;
           state.isStructurallyDirty = false;
         }),
@@ -247,7 +267,7 @@ export const useWorkflowStore = create<WorkflowState>()(
             }
           }
 
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         });
@@ -274,7 +294,7 @@ export const useWorkflowStore = create<WorkflowState>()(
               ...updates,
               // Keep inputMapping as array for React Flow nodes
             };
-            state.isDirty = true;
+            markDirty(state);
             state.isStructurallyDirty = true;
             state.saveToHistory();
           }
@@ -305,7 +325,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           node.width = width;
           node.height = height;
           node.style = { ...node.style, width, height };
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         }),
@@ -364,7 +384,7 @@ export const useWorkflowStore = create<WorkflowState>()(
             (e) => !removedNodes.has(e.source) && !removedNodes.has(e.target)
           );
 
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         }),
@@ -536,7 +556,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           }
 
           state.lastStepRename = { oldId, newId };
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         });
@@ -574,7 +594,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           };
 
           state.nodes.push(newNode);
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         });
@@ -600,7 +620,7 @@ export const useWorkflowStore = create<WorkflowState>()(
               height: patch.height,
             };
           }
-          state.isDirty = true;
+          markDirty(state);
           if (recordHistory) state.saveToHistory();
         }),
 
@@ -625,7 +645,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           if (anchorStepId) data.anchorStepId = anchorStepId;
           else delete data.anchorStepId;
           note.data = data;
-          state.isDirty = true;
+          markDirty(state);
           state.saveToHistory();
         }),
 
@@ -658,7 +678,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           };
 
           state.edges.push(newEdge);
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         }),
@@ -699,7 +719,7 @@ export const useWorkflowStore = create<WorkflowState>()(
             state.edges.push(newEdge);
           }
 
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         }),
@@ -722,7 +742,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           }
 
           edge.data = Object.keys(nextData).length > 0 ? nextData : undefined;
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         }),
@@ -738,7 +758,7 @@ export const useWorkflowStore = create<WorkflowState>()(
                 e.sourceHandle === sourceHandle
               )
           );
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         }),
@@ -1046,7 +1066,7 @@ export const useWorkflowStore = create<WorkflowState>()(
             }
           }
 
-          state.isDirty = true;
+          markDirty(state);
           state.isStructurallyDirty = true;
           state.saveToHistory();
         }),
@@ -1093,7 +1113,7 @@ export const useWorkflowStore = create<WorkflowState>()(
 
           // Only update if nodes actually changed
           if (newNodes !== currentState.nodes) {
-            set({ nodes: newNodes, isDirty: true });
+            set({ nodes: newNodes, ...dirtied(currentState) });
           }
           return;
         }
@@ -1349,7 +1369,7 @@ export const useWorkflowStore = create<WorkflowState>()(
               change.type === 'add'
           );
           if (hasUserChanges) {
-            state.isDirty = true;
+            markDirty(state);
             state.isStructurallyDirty = true;
           }
         });
@@ -1373,7 +1393,7 @@ export const useWorkflowStore = create<WorkflowState>()(
             (change) => change.type === 'remove' || change.type === 'add'
           );
           if (hasUserChanges) {
-            state.isDirty = true;
+            markDirty(state);
             state.isStructurallyDirty = true;
           }
         }),
@@ -1494,7 +1514,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           // Merge layouted visible nodes back with hidden nodes (unchanged)
           const layoutedMap = new Map(layoutedNodes.map((n) => [n.id, n]));
           state.nodes = state.nodes.map((n) => layoutedMap.get(n.id) ?? n);
-          state.isDirty = true;
+          markDirty(state);
           state.saveToHistory();
         }),
 

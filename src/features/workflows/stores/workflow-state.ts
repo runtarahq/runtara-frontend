@@ -23,6 +23,8 @@ export interface WorkflowState {
   isDirty: boolean;
   // True only for structural changes (not position/layout-only); used to block execution
   isStructurallyDirty: boolean;
+  // Goes up on every edit, so a save can tell whether more came after it.
+  dirtyRevision: number;
   selectedNodes: string[];
   selectedEdges: string[];
 
@@ -88,7 +90,8 @@ export interface WorkflowState {
   // Actions - State Management
   setExecutionGraph: (graph: ExecutionGraphDto) => void;
   resetState: () => void;
-  clearDirtyFlag: () => void;
+  /** With `savedRevision`, clears only if nothing was edited since then. */
+  clearDirtyFlag: (savedRevision?: number) => void;
   setStagedNodeIds: (ids: Set<string>) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
   setPendingCenterNodeId: (nodeId: string | null) => void;
