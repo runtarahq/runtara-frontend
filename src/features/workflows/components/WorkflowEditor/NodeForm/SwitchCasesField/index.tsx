@@ -232,6 +232,10 @@ function SwitchOutputCell({
   );
 }
 
+// Case edits are user input: mark the field dirty so closing the panel
+// prompts before throwing them away. The empty-array seed below is not.
+const USER_EDIT = { shouldDirty: true } as const;
+
 export function SwitchCasesField(props: any) {
   const { label, name } = props;
   const { setValue } = useFormContext();
@@ -320,7 +324,7 @@ export function SwitchCasesField(props: any) {
         typeHint: 'json',
       });
     }
-    setValue(name, newArray);
+    setValue(name, newArray, USER_EDIT);
   };
 
   const updateDefaultOutput = (newDefault: any) => {
@@ -333,7 +337,7 @@ export function SwitchCasesField(props: any) {
     } else {
       newArray.push({ type: 'default', value: newDefault, typeHint: 'json' });
     }
-    setValue(name, newArray);
+    setValue(name, newArray, USER_EDIT);
   };
 
   // Remove the default output entry entirely so the saved config carries no
@@ -341,7 +345,8 @@ export function SwitchCasesField(props: any) {
   const removeDefaultOutput = () => {
     setValue(
       name,
-      fieldArray.filter((item: any) => item.type !== 'default')
+      fieldArray.filter((item: any) => item.type !== 'default'),
+      USER_EDIT
     );
   };
 
@@ -373,7 +378,7 @@ export function SwitchCasesField(props: any) {
       }
     }
 
-    setValue(name, newArray);
+    setValue(name, newArray, USER_EDIT);
   };
 
   const addCase = () => {
