@@ -11,7 +11,11 @@ import {
   isDraftRow,
   makeDraftInstance,
 } from './draft-row';
-import { dropEditsForRows, recordCellEdit } from './pending-edits';
+import {
+  dropEditsForRows,
+  recordCellEdit,
+  settleSavedRow,
+} from './pending-edits';
 import {
   Breadcrumb,
   ConsoleTableShell,
@@ -340,9 +344,11 @@ export function ObjectInstanceDtosTable({
               properties: dirtyData,
             },
           });
+          // Only what this request sent is saved: a value typed while it was
+          // in flight stays dirty for the next flush.
           setDirtyRows((prev) => {
-            const updated = new Map(prev);
-            updated.delete(rowId);
+            const updated = settleSavedRow(prev, rowId, dirtyData);
+            dirtyRowsRef.current = updated;
             return updated;
           });
           handleRowAnimationTrigger(rowId);
