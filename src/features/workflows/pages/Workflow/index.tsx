@@ -549,6 +549,10 @@ export function Workflow() {
     stagedWorkflowChangesRef.current = stagedWorkflowChanges;
   }, [stagedWorkflowChanges]);
 
+  // The store's dirty revision the in-flight save was built from. Edits made
+  // while it is in flight move the revision on and stay unsaved (WF-1).
+  const savingRevisionRef = useRef<number | undefined>(undefined);
+
   const updateMutation = useCustomMutation({
     mutationFn: updateWorkflow,
     suppressValidationToasts: true, // Use validation panel instead of toasts
@@ -558,8 +562,9 @@ export function Workflow() {
         ? parseInt(response.version, 10)
         : undefined;
 
-      // Clear the dirty flag in the store since we've successfully saved
-      useWorkflowStore.getState().clearDirtyFlag();
+      // Clear the dirty flag for what this save carried; an edit made since
+      // keeps it set.
+      useWorkflowStore.getState().clearDirtyFlag(savingRevisionRef.current);
 
       // Capture staged changes before they get cleared
       const savedStagedChanges = stagedWorkflowChangesRef.current;
@@ -870,6 +875,7 @@ export function Workflow() {
 
     // Get the updated state after applying staged changes
     const finalState = useWorkflowStore.getState();
+    const savedRevision = finalState.dirtyRevision;
     // Build variables object for execution graph
     // Use staged changes if available, otherwise use original data
     // Convert from UI format [{ name, value, type }, ...] to API format { varName: { type, value }, ... }
@@ -1068,6 +1074,7 @@ export function Workflow() {
 
     // Single update call for workflow, metadata, and schemas
     try {
+      savingRevisionRef.current = savedRevision;
       await new Promise((resolve, reject) => {
         updateMutation.mutate(
           {

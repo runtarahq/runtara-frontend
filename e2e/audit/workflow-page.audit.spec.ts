@@ -125,11 +125,18 @@ test.describe('Workflow page audit: saving', () => {
     ).toBeVisible();
     expect(save.saves).toHaveLength(1);
 
-    await knownDefect('WF-1', async () => {
-      await expect(saveClean(page)).toHaveCount(0);
-      await workflowsLink(page).first().click();
-      await expect(unsavedDialog(page)).toBeVisible();
-    });
+    // Fixed: the edit made during the save is still unsaved.
+    await expect(saveClean(page)).toHaveCount(0);
+    await workflowsLink(page).first().click();
+    await expect(unsavedDialog(page)).toBeVisible();
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+
+    // Saving again sends it, and then the page is clean.
+    save.hold = null;
+    await saveEnabled(page).click();
+    await expect.poll(() => save.responded).toBe(2);
+    expect(JSON.stringify(save.saves[1])).toContain('edited during save');
+    await expect(saveClean(page)).toBeVisible({ timeout: 10_000 });
   });
 
   test('WF-2 A settings edit made during a save is still counted as unsaved after the save succeeds', async ({

@@ -631,3 +631,44 @@ describe('workflowStore renameStep with step ids shared across subgraphs', () =>
     expect(generateStepId('Fetch', ids)).toBe('fetch_2');
   });
 });
+
+describe('workflowStore dirty revision (WF-1)', () => {
+  beforeEach(() => {
+    useWorkflowStore.getState().resetState();
+  });
+
+  const addNote = (text: string) =>
+    useWorkflowStore.getState().addNote({ x: 0, y: 0 }, text);
+
+  it('moves the revision on with every edit', () => {
+    const start = useWorkflowStore.getState().dirtyRevision;
+    const id = addNote('a');
+    const afterAdd = useWorkflowStore.getState().dirtyRevision;
+    expect(afterAdd).toBeGreaterThan(start);
+    useWorkflowStore.getState().updateNote(id, { content: 'b' });
+    expect(useWorkflowStore.getState().dirtyRevision).toBeGreaterThan(afterAdd);
+  });
+
+  it('clears when nothing was edited after the saved revision', () => {
+    addNote('a');
+    const saved = useWorkflowStore.getState().dirtyRevision;
+    useWorkflowStore.getState().clearDirtyFlag(saved);
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+    expect(useWorkflowStore.getState().isStructurallyDirty).toBe(false);
+  });
+
+  it('stays dirty when an edit came in after the saved revision', () => {
+    const id = addNote('a');
+    const saved = useWorkflowStore.getState().dirtyRevision;
+    useWorkflowStore.getState().updateNote(id, { content: 'edited' });
+    useWorkflowStore.getState().clearDirtyFlag(saved);
+    expect(useWorkflowStore.getState().isDirty).toBe(true);
+  });
+
+  it('clears unconditionally without a revision, as a discard does', () => {
+    const id = addNote('a');
+    useWorkflowStore.getState().updateNote(id, { content: 'edited' });
+    useWorkflowStore.getState().clearDirtyFlag();
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
+});

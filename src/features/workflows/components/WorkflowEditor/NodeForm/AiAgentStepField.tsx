@@ -35,7 +35,10 @@ import { queryKeys } from '@/shared/queries/query-keys';
 import { getRuntimeBaseUrl } from '@/shared/queries/utils';
 import { getConnections } from '@/features/connections/queries';
 import { getPlatformIcon, getPlatformName } from '@/shared/utils/platform-info';
-import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
+import {
+  dirtied,
+  useWorkflowStore,
+} from '@/features/workflows/stores/workflowStore';
 import {
   SchemaFieldsEditor,
   type SchemaField as EditorSchemaField,
@@ -377,7 +380,10 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
       if (n.id !== providerStepId) return n;
       return { ...n, data: { ...n.data, inputMapping: providerMapping } };
     });
-    useWorkflowStore.setState({ nodes: updatedNodes, isDirty: true });
+    useWorkflowStore.setState((state) => ({
+      nodes: updatedNodes,
+      ...dirtied(state),
+    }));
   }, [stepType, inputMapping]);
 
   if (stepType !== 'AiAgent') {
@@ -624,11 +630,11 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
         ).filter((item: any) => !memoryFieldTypes.has(item.type));
         return { ...n, data: { ...n.data, inputMapping: dataMapping } };
       });
-      useWorkflowStore.setState({
+      useWorkflowStore.setState((state) => ({
         nodes: updatedNodes,
-        isDirty: true,
+        ...dirtied(state),
         isStructurallyDirty: true,
-      });
+      }));
     }
   };
 
