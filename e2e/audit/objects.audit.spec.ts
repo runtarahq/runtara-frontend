@@ -335,22 +335,10 @@ test.describe('Objects audit', () => {
     // the cell shows the server's value, or the rejected one carries a marker.
     await page.mouse.move(0, 0);
     await expect(toast).toHaveCount(0, { timeout: 20_000 });
-    await knownDefect('OB-3', async () => {
-      await expect
-        .poll(async () => {
-          const markers =
-            (await rowAt(page, 0)
-              .locator(
-                '[aria-invalid="true"], [class*="destructive"], [class*="error"], [role="alert"]'
-              )
-              .count()) + (await page.locator('[role="alert"]').count());
-          const shown = (await cell(page, 0).textContent())?.trim();
-          return shown === 'rejected' && markers === 0
-            ? 'rejected value shown with no marker'
-            : 'not presented as saved';
-        })
-        .toBe('not presented as saved');
-    });
+    // Fixed: the rejected value stays, so the input is not lost, and its row
+    // is marked as not saved after the toast has gone.
+    await expect(cell(page, 0)).toHaveText('rejected');
+    await expect(rowAt(page, 0)).toHaveClass(/destructive/);
   });
 
   test('OB-4 A failed row is not re-sent by later outside clicks', async ({

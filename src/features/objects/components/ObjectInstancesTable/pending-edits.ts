@@ -157,3 +157,22 @@ export function settleCreatedDraft(
   }
   return next;
 }
+
+/**
+ * Mark or clear a row whose last save failed. The row keeps its unsaved value,
+ * so the user's input is not lost, and the mark keeps it from looking saved
+ * once the error toast has gone (OB-3).
+ *
+ * Returns the same set when nothing changed.
+ */
+export function withSaveFailed(
+  failedRows: ReadonlySet<string>,
+  rowId: string,
+  failed: boolean
+): ReadonlySet<string> {
+  if (failedRows.has(rowId) === failed) return failedRows;
+  const next = new Set(failedRows);
+  if (failed) next.add(rowId);
+  else next.delete(rowId);
+  return next;
+}

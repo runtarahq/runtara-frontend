@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, memo, useRef, useEffect } from 'react';
+import { cn } from '@/lib/utils';
 import { RowSelectionState, SortingState } from '@tanstack/react-table';
 import { Button } from '@/shared/components/ui/button';
 import { Can } from '@/shared/components/Can';
@@ -17,6 +18,7 @@ import {
   restoreEditsForRows,
   settleCreatedDraft,
   settleSavedRow,
+  withSaveFailed,
 } from './pending-edits';
 import { createRowSaveQueue } from './row-save-queue';
 import {
@@ -112,6 +114,13 @@ export function ObjectInstanceDtosTable({
   const [showBulkInsertDialog, setShowBulkInsertDialog] = useState(false);
   const [pendingRecords, setPendingRecords] = useState<Instance[]>([]);
   const [animatingRowId, setAnimatingRowId] = useState<string | null>(null);
+  // Rows whose last save failed: marked until a save succeeds (OB-3).
+  const [failedRowIds, setFailedRowIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const markSaveFailed = useCallback((rowId: string, failed: boolean) => {
+    setFailedRowIds((prev) => withSaveFailed(prev, rowId, failed));
+  }, []);
 
   // Track which row has unsaved changes
   const [dirtyRows, setDirtyRows] = useState<Map<string, any>>(new Map());
@@ -346,8 +355,10 @@ export function ObjectInstanceDtosTable({
           if (newInstance.id) {
             handleRowAnimationTrigger(newInstance.id);
           }
+          markSaveFailed(rowId, false);
           return newInstance.id ?? null;
         } catch {
+          markSaveFailed(rowId, true);
           toast.error('Failed to create record');
           return null;
         }
@@ -368,6 +379,7 @@ export function ObjectInstanceDtosTable({
             dirtyRowsRef.current = updated;
             return updated;
           });
+          markSaveFailed(rowId, false);
           handleRowAnimationTrigger(rowId);
           return rowId;
         } catch (error) {
@@ -383,12 +395,19 @@ export function ObjectInstanceDtosTable({
             });
             return null;
           }
+          markSaveFailed(rowId, true);
           toast.error('Failed to update record');
           return null;
         }
       }
     },
-    [createRecord, updateRecord, objectSchemaDto.id, handleRowAnimationTrigger]
+    [
+      createRecord,
+      updateRecord,
+      objectSchemaDto.id,
+      handleRowAnimationTrigger,
+      markSaveFailed,
+    ]
   );
 
   const saveDirtyRow = useCallback(
@@ -843,7 +862,11 @@ export function ObjectInstanceDtosTable({
           onRowSelectionChange={setRowSelection}
           getRowId={(row) => row.id || ''}
           getRowClassName={(row) =>
-            row.original.id === animatingRowId ? 'animate-row-flash' : ''
+            cn(
+              row.original.id === animatingRowId && 'animate-row-flash',
+              // Not saved: the server rejected this row's last change.
+              failedRowIds.has(row.original.id ?? '') && 'bg-destructive/10'
+            )
           }
           beforePaginationSlot={
             <Can permission="database:create">
