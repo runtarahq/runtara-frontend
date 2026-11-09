@@ -22,6 +22,7 @@ import {
 } from '@/features/workflows/utils/suspension';
 import { createStepNodeResolver } from '@/features/workflows/utils/step-node-resolver';
 import type { ExecutionStatus } from '@/generated/RuntaraRuntimeApi';
+import { breakpointKey } from './breakpoint-key';
 
 /** Owns run scheduling, polling, breakpoint state, and canvas execution status. */
 export function useWorkflowExecution(workflowId: string | undefined) {
@@ -303,12 +304,15 @@ export function useWorkflowExecution(workflowId: string | undefined) {
               e.eventType === 'custom' && e.subtype === 'breakpoint_hit'
           ) ?? null;
 
+        const hitKey = latestBreakpoint?.payload
+          ? breakpointKey(executingInstanceId, latestBreakpoint)
+          : null;
         if (
           latestBreakpoint?.payload &&
-          latestBreakpoint.payload.step_id !==
-            lastProcessedBreakpointRef.current
+          hitKey &&
+          hitKey !== lastProcessedBreakpointRef.current
         ) {
-          lastProcessedBreakpointRef.current = latestBreakpoint.payload.step_id;
+          lastProcessedBreakpointRef.current = hitKey;
           setSuspended(true, {
             stepId: resolveNodeId(
               latestBreakpoint.payload.step_id,
@@ -566,7 +570,8 @@ export function useWorkflowExecution(workflowId: string | undefined) {
   // ── Resume from breakpoint ──────────────────────────────────────────────
   // Track that we just resumed to prevent stale "suspended" data from re-triggering
   const justResumedRef = useRef(false);
-  // Track the last breakpoint we acted on — persists across resume so dedup works
+  // The last breakpoint hit we acted on (see breakpointKey) — persists across
+  // resume so the same hit is not offered twice
   const lastProcessedBreakpointRef = useRef<string | null>(null);
 
   const resumeMutation = useCustomMutation({
