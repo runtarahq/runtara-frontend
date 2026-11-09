@@ -674,7 +674,11 @@ test.describe('Connections audit', () => {
 
     // Control: the same click on the same dirty form is blocked beforehand.
     await leave.click();
-    await expect(page.getByText('Unsaved changes')).toBeVisible();
+    // The heading, not the text: the save bar's "2 unsaved changes" matches
+    // that too, once it renders first.
+    await expect(
+      page.getByRole('heading', { name: 'Unsaved changes' })
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Keep editing' }).click();
     await expect(page).toHaveURL(/\/connections\/acme_oauth\/create$/);
 
