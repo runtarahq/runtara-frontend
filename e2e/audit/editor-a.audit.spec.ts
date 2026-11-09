@@ -620,28 +620,24 @@ test.describe('Editor audit A', () => {
         name: /Audit Agent → |Other Agent → /,
       });
 
-    // What closing lost with no prompt; a prompt or keeping the edit are fine.
-    const silentlyLost: string[] = [];
     const selectConnection = () =>
       panel(page).getByRole('button', { name: 'Select connection' });
     const auditConnection = () =>
       panel(page).getByRole('button', { name: 'Audit Connection' });
 
+    // Fixed: each change marks the panel dirty, so closing asks first, and
+    // discarding brings back what was there.
+
     // Connection.
     await openStep(page, 'Agent Step');
-    await panel(page)
-      .getByRole('button', { name: 'Select connection' })
-      .click();
+    await selectConnection().click();
     await page.getByRole('button', { name: /Audit Connection/ }).click();
     await expect(auditConnection()).toBeVisible();
-    let prompted = await closePanel(page);
+    expect(await closePanel(page)).toBe(true);
 
     // Capability.
     await openStep(page, 'Agent Step');
-    await expect(selectConnection().or(auditConnection())).toBeVisible();
-    if (!prompted && !(await auditConnection().isVisible())) {
-      silentlyLost.push('connection');
-    }
+    await expect(selectConnection()).toBeVisible();
     await subtitle().click();
     await page
       .getByRole('dialog')
@@ -652,14 +648,11 @@ test.describe('Editor audit A', () => {
       .getByRole('button', { name: /^cap-b/ })
       .click();
     await expect(subtitle()).toContainText('cap-b');
-    prompted = await closePanel(page);
+    expect(await closePanel(page)).toBe(true);
 
     // Agent.
     await openStep(page, 'Agent Step');
-    await expect(subtitle()).toBeVisible();
-    if (!prompted && !(await subtitle().textContent())?.includes('cap-b')) {
-      silentlyLost.push('capability');
-    }
+    await expect(subtitle()).not.toContainText('cap-b');
     await subtitle().click();
     await page
       .getByRole('dialog')
@@ -670,20 +663,10 @@ test.describe('Editor audit A', () => {
       .getByRole('button', { name: /^cap-other/ })
       .click();
     await expect(subtitle()).toContainText('Other Agent → cap-other');
-    prompted = await closePanel(page);
+    expect(await closePanel(page)).toBe(true);
 
     await openStep(page, 'Agent Step');
-    await expect(subtitle()).toBeVisible();
-    if (
-      !prompted &&
-      !(await subtitle().textContent())?.includes('Other Agent')
-    ) {
-      silentlyLost.push('agent');
-    }
-
-    await knownDefect('ED-12', async () => {
-      expect(silentlyLost).toEqual([]);
-    });
+    await expect(subtitle()).toContainText('Audit Agent');
   });
 
   test('ED-13 A non-empty scalar survives entering composite mode', async ({

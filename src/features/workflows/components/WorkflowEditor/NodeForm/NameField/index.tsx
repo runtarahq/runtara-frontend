@@ -20,6 +20,7 @@ import {
 } from '@/features/workflows/stores/workflowStore';
 import { canvasNodeStepId } from '../../CustomNodes/utils.tsx';
 import { NodeFormContext } from '../NodeFormContext';
+import { USER_EDIT } from '../dirty-state';
 import { SuspendsBadge } from '@/features/workflows/components/CapabilityBadges';
 import { CapabilityPickerModal } from '../CapabilityPickerModal';
 import { ConnectionPickerModal } from '../ConnectionPickerModal';
@@ -217,7 +218,7 @@ export function NameField({ name }: { name: string }) {
   }
 
   const handleConnectionChange = (value: string) => {
-    form.setValue('connectionId', value);
+    form.setValue('connectionId', value, USER_EDIT);
   };
 
   const handleCapabilitySelect = (
@@ -236,13 +237,16 @@ export function NameField({ name }: { name: string }) {
     }
 
     if (agentChanged) {
-      form.setValue('agentId', newAgentId);
-      form.setValue('connectionId', ''); // Reset connection when agent changes
+      form.setValue('agentId', newAgentId, USER_EDIT);
+      form.setValue('connectionId', '', USER_EDIT); // Reset connection when agent changes
     }
-    form.setValue('capabilityId', newCapabilityId, { shouldValidate: true });
+    form.setValue('capabilityId', newCapabilityId, {
+      ...USER_EDIT,
+      shouldValidate: true,
+    });
     // Mappings are keyed by the previous capability's field names, so they
     // cannot carry over to a different capability.
-    form.setValue('inputMapping', []);
+    form.setValue('inputMapping', [], USER_EDIT);
   };
 
   // Connection selector link

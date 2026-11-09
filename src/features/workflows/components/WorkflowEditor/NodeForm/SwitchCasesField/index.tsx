@@ -37,6 +37,7 @@ import { Label } from '@/shared/components/ui/label.tsx';
 import { FieldError } from '@/shared/components/ui/form';
 import { Fragment, useContext, useEffect, useState } from 'react';
 import { NodeFormContext } from '../NodeFormContext';
+import { USER_EDIT } from '../dirty-state';
 import { ValueType } from '../TypeHintSelector';
 import { EditorTh } from '@/features/workflows/components/WorkflowEditor/EditorTable';
 import { MappingValueInput } from '../InputMappingField/MappingValueInput';
@@ -231,10 +232,6 @@ function SwitchOutputCell({
     </div>
   );
 }
-
-// Case edits are user input: mark the field dirty so closing the panel
-// prompts before throwing them away. The empty-array seed below is not.
-const USER_EDIT = { shouldDirty: true } as const;
 
 export function SwitchCasesField(props: any) {
   const { label, name } = props;
