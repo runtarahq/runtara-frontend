@@ -34,6 +34,7 @@ import {
 } from './shared';
 import { useOperations } from '../queries';
 import { isActiveStatus } from '@/shared/utils/status-display';
+import { failedWithNothingToShow, refreshFailed } from '../poll-errors';
 
 export function RunPage() {
   const { workflowId = '', instanceId = '' } = useParams();
@@ -83,7 +84,8 @@ export function RunPage() {
     refetchInterval: 10_000,
     placeholderData: undefined,
   });
-  if (run.error)
+  // A failed poll keeps the loaded run, and its form drafts (OP-2).
+  if (failedWithNothingToShow(run))
     return (
       <p role="alert" className="p-6">
         Could not load this run.
@@ -102,6 +104,15 @@ export function RunPage() {
   const current = stage ? data.state?.[stage] : undefined;
   return (
     <div className="mx-auto min-h-full w-full max-w-[1600px] bg-background p-5 lg:px-10 lg:py-7">
+      {refreshFailed(run) && (
+        <p
+          role="status"
+          className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
+        >
+          Could not refresh this run. Showing what was last loaded; it will
+          retry.
+        </p>
+      )}
       <OperationHeader
         title={data.runLabel ?? data.id.slice(0, 8)}
         section="Runs"

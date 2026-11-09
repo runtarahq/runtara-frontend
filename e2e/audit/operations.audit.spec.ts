@@ -221,9 +221,9 @@ test.describe('Operations audit', () => {
       .toBeGreaterThanOrEqual(2);
     await page.waitForTimeout(2_000);
 
-    await knownDefect('OP-1', async () => {
-      await expect(search).toHaveValue('typed before the failure');
-    });
+    // Fixed: the loaded page stays, with a note that the refresh failed.
+    await expect(search).toHaveValue('typed before the failure');
+    await expect(page.getByText('Could not refresh the queue')).toBeVisible();
 
     // Control: the page is back once the poll recovers.
     failing = false;
@@ -261,10 +261,10 @@ test.describe('Operations audit', () => {
       .toBeGreaterThanOrEqual(2);
     await page.waitForTimeout(2_000);
 
-    await knownDefect('OP-2', async () => {
-      await expect(page.getByText('Decision needed')).toBeVisible();
-      await expect(field).toHaveValue('draft answer');
-    });
+    // Fixed: the loaded run stays, draft included, with a note.
+    await expect(page.getByText('Decision needed')).toBeVisible();
+    await expect(field).toHaveValue('draft answer');
+    await expect(page.getByText('Could not refresh this run')).toBeVisible();
 
     // Control: the page is back once the poll recovers.
     run.failInstance = false;
