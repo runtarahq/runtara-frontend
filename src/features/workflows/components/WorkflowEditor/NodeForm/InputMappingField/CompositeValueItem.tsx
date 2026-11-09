@@ -10,6 +10,7 @@
  */
 
 import { useState, useContext, useMemo, useCallback } from 'react';
+import { parseAutoImmediate } from './auto-immediate';
 import {
   Link,
   Pin,
@@ -314,12 +315,7 @@ export function CompositeValueItem({
         // Keep as string but it will be converted on serialization
         parsedValue = inputValue;
       } else if (existingTypeHint === 'auto' || !existingTypeHint) {
-        // Auto-detect: try to parse as number or boolean
-        if (inputValue === 'true') parsedValue = true;
-        else if (inputValue === 'false') parsedValue = false;
-        else if (inputValue !== '' && !isNaN(Number(inputValue))) {
-          parsedValue = Number(inputValue);
-        }
+        parsedValue = parseAutoImmediate(inputValue);
       }
 
       const newValue: CompositeValue = {

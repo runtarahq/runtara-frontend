@@ -434,12 +434,8 @@ test.describe('Editor audit B', () => {
     await expect(input).toHaveValue(/^1\.?5$/);
     const typed = await input.inputValue();
     const graph = await applyAndSave(page, panel, ctl);
-    await knownDefect('ED-22', async () => {
-      expect(typed).toBe('1.5');
-      expect(
-        Number(graph.steps.worker.inputMapping.payload.value.first.value)
-      ).toBe(1.5);
-    });
+    expect(typed).toBe('1.5');
+    expect(graph.steps.worker.inputMapping.payload.value.first.value).toBe(1.5);
   });
 
   test('ED-23 File input with a {{ value in upload mode: Upload is honoured and Reference keeps the value', async ({
