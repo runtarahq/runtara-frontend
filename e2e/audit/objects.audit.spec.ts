@@ -964,13 +964,11 @@ test.describe('Objects audit', () => {
     await expect.poll(() => backend.requests.schemaPut.length).toBe(1);
     const put = backend.requests.schemaPut[0];
     expect(put.connectionId).toBe(B);
-    await knownDefect('OB-18', async () => {
-      expect(put.body.columns.map((c: { name: string }) => c.name)).toEqual([
-        'bravo_col',
-      ]);
-      expect(put.body.description).toBe('desc B');
-      expect(shownColumn).toBe('bravo_col');
-      expect(shownDescription).toBe('desc B');
-    });
+    expect(put.body.columns.map((c: { name: string }) => c.name)).toEqual([
+      'bravo_col',
+    ]);
+    expect(put.body.description).toBe('desc B');
+    expect(shownColumn).toBe('bravo_col');
+    expect(shownDescription).toBe('desc B');
   });
 });

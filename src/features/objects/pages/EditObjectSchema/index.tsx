@@ -17,10 +17,11 @@ export function EditObjectSchema() {
   const navigate = useNavigate();
   const { selectedConnectionId, connectionQuery } =
     useObjectModelConnectionSelection();
-  const { data: objectSchemaDto, isLoading } = useObjectSchemaDtoById(
-    id,
-    selectedConnectionId
-  );
+  const {
+    data: objectSchemaDto,
+    isLoading,
+    isPlaceholderData,
+  } = useObjectSchemaDtoById(id, selectedConnectionId);
   const deleteSchema = useDeleteObjectSchema(selectedConnectionId);
 
   usePageTitle(
@@ -53,7 +54,10 @@ export function EditObjectSchema() {
     }
   };
 
-  if (isLoading) {
+  // After a connection switch the query shows the previous connection's schema
+  // until the new one arrives. The form must not start from that, or saving
+  // would write one database's columns to the other.
+  if (isLoading || isPlaceholderData) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30 dark:bg-background">
         <Spinner className="size-8 text-muted-foreground" />
@@ -75,6 +79,8 @@ export function EditObjectSchema() {
         <ObjectModelConnectionSelector />
       </div>
       <ObjectSchemaDtoForm
+        // The form seeds its state once, so each connection needs its own.
+        key={selectedConnectionId}
         objectSchemaDto={objectSchemaDto}
         onSuccess={handleSuccess}
         onDelete={handleDelete}
