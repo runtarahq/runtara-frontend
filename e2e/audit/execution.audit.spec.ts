@@ -136,10 +136,9 @@ test.describe('Execution audit', () => {
     await expect(page.getByText('Execution in progress')).toBeVisible({
       timeout: 10_000,
     });
-    await knownDefect('EX-1', async () => {
-      await expect(pausedLabel(page)).toBeVisible({ timeout: 6_000 });
-      await expect(continueButton(page)).toBeVisible();
-    });
+    // Fixed: a hit is keyed by run and event, not by step.
+    await expect(pausedLabel(page)).toBeVisible({ timeout: 6_000 });
+    await expect(continueButton(page)).toBeVisible();
   });
 
   test('EX-2 A second pause at the same step (loop) offers Continue', async ({
@@ -167,10 +166,9 @@ test.describe('Execution audit', () => {
     run.status = 'suspended';
     run.suspensionReason = 'paused';
 
-    await knownDefect('EX-2', async () => {
-      await expect(continueButton(page)).toBeVisible({ timeout: 8_000 });
-      await expect(pausedLabel(page)).toBeVisible();
-    });
+    // Fixed: the second hit is a new event, so it offers Continue again.
+    await expect(continueButton(page)).toBeVisible({ timeout: 8_000 });
+    await expect(pausedLabel(page)).toBeVisible();
   });
 
   test('EX-3 A repeat event arriving after the paused status fills in the details', async ({
@@ -206,13 +204,11 @@ test.describe('Execution audit', () => {
       stepId: null,
     });
 
-    // The event arrives, but the dedupe ref still holds this step id.
+    // Fixed: the event arrives, and as a hit of this run it fills the details.
     runs.latest().events = [breakpointEvent(2)];
-    await knownDefect('EX-3', async () => {
-      await expect
-        .poll(() => storeBreakpoint(page), { timeout: 4_000 })
-        .toEqual({ isSuspended: true, stepId: 'log' });
-    });
+    await expect
+      .poll(() => storeBreakpoint(page), { timeout: 4_000 })
+      .toEqual({ isSuspended: true, stepId: 'log' });
   });
 
   test('EX-4 A pause reached during the resume guard is detected once it expires', async ({
