@@ -47,6 +47,7 @@ import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
 
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
+import { dropSavedEntries } from './drop-saved-entries';
 import {
   getCompilationProgress,
   rebuildWorkflowVersion,
@@ -543,11 +544,9 @@ export function Workflow() {
   // Set page title with workflow name
   usePageTitle(data.name ? `Workflows - ${data.name}` : 'Edit Workflow');
 
-  // Track the staged workflow changes at mutation time to update cache correctly
-  const stagedWorkflowChangesRef = useRef(stagedWorkflowChanges);
-  useEffect(() => {
-    stagedWorkflowChangesRef.current = stagedWorkflowChanges;
-  }, [stagedWorkflowChanges]);
+  // The staged workflow changes the in-flight save sent, for the cache update.
+  // Not the live staged changes: those may hold edits made since (WF-2).
+  const savingWorkflowChangesRef = useRef<WorkflowChanges>({});
 
   // The store's dirty revision the in-flight save was built from. Edits made
   // while it is in flight move the revision on and stay unsaved (WF-1).
@@ -567,7 +566,7 @@ export function Workflow() {
       useWorkflowStore.getState().clearDirtyFlag(savingRevisionRef.current);
 
       // Capture staged changes before they get cleared
-      const savedStagedChanges = stagedWorkflowChangesRef.current;
+      const savedStagedChanges = savingWorkflowChangesRef.current;
 
       if (newVersionNumber) {
         // Surface compilation progress for the just-saved version.
@@ -814,6 +813,9 @@ export function Workflow() {
   }, [workflowNodesLength]);
 
   const handleSubmit = async ({ name }: Record<string, any>) => {
+    // What this save sends; see dropSavedEntries.
+    const sentNodeChanges = stagedNodeChanges;
+    const sentWorkflowChanges = stagedWorkflowChanges;
     // Get the current state from Zustand store
     const { nodes, edges, isDirty, syncFromReactFlow } =
       useWorkflowStore.getState();
@@ -1075,6 +1077,7 @@ export function Workflow() {
     // Single update call for workflow, metadata, and schemas
     try {
       savingRevisionRef.current = savedRevision;
+      savingWorkflowChangesRef.current = sentWorkflowChanges;
       await new Promise((resolve, reject) => {
         updateMutation.mutate(
           {
@@ -1089,9 +1092,14 @@ export function Workflow() {
           }
         );
       });
-      // Clear staged changes after successful save
-      setStagedNodeChanges({});
-      setStagedWorkflowChanges({});
+      // Clear the staged changes this save sent. Ones edited while it was in
+      // flight were not sent, so they stay staged and unsaved.
+      setStagedNodeChanges((current) =>
+        dropSavedEntries(current, sentNodeChanges)
+      );
+      setStagedWorkflowChanges((current) =>
+        dropSavedEntries(current, sentWorkflowChanges)
+      );
       // Clear any validation errors from previous failed saves
       useWorkflowStore.getState().clearValidationErrors();
       useValidationStore.getState().clearMessages();
