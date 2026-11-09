@@ -13,12 +13,13 @@ in this project is implicit.
 Each claim below has a stable ID and a verdict from a test against a mock
 backend.
 
-| Verdict     | Meaning                                                                 |
-| ----------- | ----------------------------------------------------------------------- |
-| `CONFIRMED` | The test reproduced the claimed behaviour.                              |
-| `DENIED`    | The test showed the claimed behaviour does not happen.                  |
-| `PARTIAL`   | Part of the claim reproduced; the note says which part.                 |
-| `STATIC`    | No runtime behaviour to observe; settled by reading the code or a grep. |
+| Verdict     | Meaning                                                                                      |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| `FIXED`     | The defect was reproduced and has since been fixed; its test is now a plain regression test. |
+| `CONFIRMED` | The test reproduced the claimed behaviour.                                                   |
+| `DENIED`    | The test showed the claimed behaviour does not happen.                                       |
+| `PARTIAL`   | Part of the claim reproduced; the note says which part.                                      |
+| `STATIC`    | No runtime behaviour to observe; settled by reading the code or a grep.                      |
 
 **Source** says where the claim came from: `direct` was traced by hand, `scan` by
 a code scan, `test` was found while testing another claim.
@@ -172,7 +173,7 @@ Specs in `e2e/audit/`: objects.
 | OB-15 | Bulk insert: Insert stays enabled after success and re-inserts the same payload | `BulkInsertDialog.tsx:137`                                           | scan   | CONFIRMED | Insert stays enabled; a second click gives 2 identical POSTs.                                                                                                                                |
 | OB-16 | Bulk insert: hidden conflict columns are still sent                             | `BulkInsertDialog.tsx:103`                                           | scan   | CONFIRMED | Picker hidden, yet the body has `onConflict: error` and `conflictColumns: [name]`.                                                                                                           |
 | OB-17 | Schema form: name edits overwrite a manually typed table name                   | `src/features/objects/components/ObjectSchemaForm/index.tsx:222`     | scan   | CONFIRMED | "my_custom_table" is replaced by a generated name on the next name edit.                                                                                                                     |
-| OB-18 | Schema form keeps old fields across a connection switch                         | `ObjectSchemaForm/index.tsx:197`                                     | scan   | CONFIRMED | B's schema fetched once, form keeps A's fields; Save sends A's columns to `connectionId=B`. No cached schema is needed.                                                                      |
+| OB-18 | Schema form keeps old fields across a connection switch                         | `ObjectSchemaForm/index.tsx:197`                                     | scan   | FIXED     | The page waits for the new connection's schema and keys the form to the connection. Save now sends B's columns to B.                                                                         |
 
 ### Connections
 
