@@ -14,6 +14,7 @@ import {
 import {
   dropEditsForRows,
   recordCellEdit,
+  restoreEditsForRows,
   settleSavedRow,
 } from './pending-edits';
 import {
@@ -486,14 +487,12 @@ export function ObjectInstanceDtosTable({
     // Drop them before the request goes out: flushes are deferred behind
     // timeouts, so one can still be queued right now, and it must find
     // nothing to write rather than target a row that is about to vanish.
-    const pruned = dropEditsForRows(
-      {
-        dirtyRows: dirtyRowsRef.current,
-        lastFocusedRowId: lastFocusedRowRef.current,
-        editingCellId: editingCellIdRef.current,
-      },
-      selectedIds
-    );
+    const beforeDelete = {
+      dirtyRows: dirtyRowsRef.current,
+      lastFocusedRowId: lastFocusedRowRef.current,
+      editingCellId: editingCellIdRef.current,
+    };
+    const pruned = dropEditsForRows(beforeDelete, selectedIds);
     dirtyRowsRef.current = pruned.dirtyRows;
     setDirtyRows(pruned.dirtyRows);
     lastFocusedRowRef.current = pruned.lastFocusedRowId;
@@ -507,6 +506,19 @@ export function ObjectInstanceDtosTable({
       setRowSelection({});
       setShowBulkDeleteDialog(false);
     } catch (error) {
+      // The rows survived, so their unsaved edits are live again (OB-5).
+      const restored = restoreEditsForRows(
+        {
+          dirtyRows: dirtyRowsRef.current,
+          lastFocusedRowId: lastFocusedRowRef.current,
+        },
+        beforeDelete,
+        selectedIds
+      );
+      dirtyRowsRef.current = restored.dirtyRows;
+      setDirtyRows(restored.dirtyRows);
+      lastFocusedRowRef.current = restored.lastFocusedRowId;
+
       const message =
         (error as any)?.response?.data?.message ||
         (error as Error)?.message ||

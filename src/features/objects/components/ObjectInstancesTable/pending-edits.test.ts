@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dropEditsForRows,
   recordCellEdit,
+  restoreEditsForRows,
   settleSavedRow,
   type PendingEditState,
 } from './pending-edits';
@@ -160,5 +161,46 @@ describe('settleSavedRow (OB-2)', () => {
     const map = rows([['r1', { name: 'AB' }]]);
     expect(settleSavedRow(map, 'r1', { name: 'A' })).toBe(map);
     expect(settleSavedRow(map, 'gone', { name: 'A' })).toBe(map);
+  });
+});
+
+describe('restoreEditsForRows (OB-5)', () => {
+  const before = {
+    dirtyRows: new Map([
+      [ROW_A, { name: 'unsaved' }],
+      [ROW_B, { name: 'kept' }],
+    ]),
+    lastFocusedRowId: ROW_A,
+  };
+
+  it('puts back what a failed delete dropped', () => {
+    const dropped = dropEditsForRows({ ...before, editingCellId: null }, [
+      ROW_A,
+    ]);
+    const restored = restoreEditsForRows(dropped, before, [ROW_A]);
+    expect(restored.dirtyRows.get(ROW_A)).toEqual({ name: 'unsaved' });
+    expect(restored.dirtyRows.get(ROW_B)).toEqual({ name: 'kept' });
+    expect(restored.lastFocusedRowId).toBe(ROW_A);
+  });
+
+  it('keeps an edit made after the drop over the dropped one', () => {
+    const current = {
+      dirtyRows: new Map([[ROW_A, { name: 'newer' }]]),
+      lastFocusedRowId: ROW_B,
+    };
+    const restored = restoreEditsForRows(current, before, [ROW_A]);
+    expect(restored.dirtyRows.get(ROW_A)).toEqual({ name: 'newer' });
+    expect(restored.lastFocusedRowId).toBe(ROW_B);
+  });
+
+  it('returns the same map when there is nothing to restore', () => {
+    const current = { dirtyRows: new Map(), lastFocusedRowId: null };
+    const restored = restoreEditsForRows(
+      current,
+      { dirtyRows: new Map(), lastFocusedRowId: null },
+      [ROW_A]
+    );
+    expect(restored.dirtyRows).toBe(current.dirtyRows);
+    expect(restored.lastFocusedRowId).toBeNull();
   });
 });

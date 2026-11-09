@@ -416,11 +416,11 @@ test.describe('Objects audit', () => {
     await settle(page);
     await clickAway(page);
     await settle(page);
-    await knownDefect('OB-5', async () => {
-      expect(backend.requests.put.map((p) => p.body.properties.name)).toContain(
-        'unsaved'
-      );
-    });
+    // Fixed: the edit came back with the row, and that flush sends it.
+    await expect(cell(page, 0)).toHaveText('unsaved');
+    expect(backend.requests.put.map((p) => p.body.properties.name)).toContain(
+      'unsaved'
+    );
   });
 
   test('OB-6 Select-all does not send the PENDING_ ids of drafts to bulk delete', async ({

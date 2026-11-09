@@ -108,3 +108,29 @@ export function settleSavedRow(
   else next.delete(rowId);
   return next;
 }
+
+/**
+ * Undo `dropEditsForRows` after the delete failed and the rows still exist:
+ * put back the unsaved values it dropped, and the row the next flush targets,
+ * so the edits are not lost. An edit made since wins over the dropped one.
+ * The editor stays closed.
+ */
+export function restoreEditsForRows(
+  current: Pick<PendingEditState, 'dirtyRows' | 'lastFocusedRowId'>,
+  before: Pick<PendingEditState, 'dirtyRows' | 'lastFocusedRowId'>,
+  deletedIds: string[]
+): Pick<PendingEditState, 'dirtyRows' | 'lastFocusedRowId'> {
+  let dirtyRows = current.dirtyRows;
+  for (const id of deletedIds) {
+    const dropped = before.dirtyRows.get(id);
+    if (!dropped || dirtyRows.has(id)) continue;
+    if (dirtyRows === current.dirtyRows) dirtyRows = new Map(dirtyRows);
+    dirtyRows.set(id, dropped);
+  }
+  const lastFocusedRowId =
+    current.lastFocusedRowId ??
+    (before.lastFocusedRowId && deletedIds.includes(before.lastFocusedRowId)
+      ? before.lastFocusedRowId
+      : null);
+  return { dirtyRows, lastFocusedRowId };
+}
