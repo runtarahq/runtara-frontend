@@ -6,6 +6,7 @@ import {
   restoreEditsForRows,
   settleCreatedDraft,
   settleSavedRow,
+  withSaveFailed,
   type PendingEditState,
 } from './pending-edits';
 
@@ -232,5 +233,20 @@ describe('settleCreatedDraft (OB-1)', () => {
   it('returns the same map when the draft has no entry', () => {
     const map = new Map([['r1', { name: 'x' }]]);
     expect(settleCreatedDraft(map, 'PENDING_1', 'r9', {})).toBe(map);
+  });
+});
+
+describe('withSaveFailed (OB-3)', () => {
+  it('marks a row whose save failed, and clears it after a save', () => {
+    const failed = withSaveFailed(new Set(), 'r1', true);
+    expect(failed.has('r1')).toBe(true);
+    expect(withSaveFailed(failed, 'r1', false).has('r1')).toBe(false);
+  });
+
+  it('returns the same set when nothing changed', () => {
+    const none = new Set<string>();
+    expect(withSaveFailed(none, 'r1', false)).toBe(none);
+    const one = new Set(['r1']);
+    expect(withSaveFailed(one, 'r1', true)).toBe(one);
   });
 });
