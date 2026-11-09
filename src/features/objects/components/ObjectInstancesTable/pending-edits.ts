@@ -79,3 +79,32 @@ export function recordCellEdit(
   else next.delete(rowId);
   return next;
 }
+
+/**
+ * Settle a row after a save of `sent` succeeded: drop the values it carried,
+ * and keep any typed while it was in flight, so they are still unsaved and the
+ * next flush sends them.
+ *
+ * Returns the same map when nothing changed.
+ */
+export function settleSavedRow(
+  dirtyRows: Map<string, Record<string, unknown>>,
+  rowId: string,
+  sent: Record<string, unknown>
+): Map<string, Record<string, unknown>> {
+  const current = dirtyRows.get(rowId);
+  if (!current) return dirtyRows;
+
+  const remaining: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(current)) {
+    if (!(key in sent) || !Object.is(sent[key], value)) remaining[key] = value;
+  }
+  if (Object.keys(remaining).length === Object.keys(current).length) {
+    return dirtyRows;
+  }
+
+  const next = new Map(dirtyRows);
+  if (Object.keys(remaining).length > 0) next.set(rowId, remaining);
+  else next.delete(rowId);
+  return next;
+}

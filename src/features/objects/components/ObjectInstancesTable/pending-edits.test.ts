@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dropEditsForRows,
   recordCellEdit,
+  settleSavedRow,
   type PendingEditState,
 } from './pending-edits';
 
@@ -114,5 +115,50 @@ describe('recordCellEdit', () => {
     recordCellEdit(dirty, ROW_A, { name: 'old' }, SERVER);
 
     expect(dirty.get(ROW_A)).toEqual({ name: 'new' });
+  });
+});
+
+describe('settleSavedRow (OB-2)', () => {
+  const rows = (entries: [string, Record<string, unknown>][]) =>
+    new Map(entries);
+
+  it('clears the row when nothing was typed during the save', () => {
+    const sent = { name: 'A' };
+    const next = settleSavedRow(rows([['r1', sent]]), 'r1', sent);
+    expect(next.has('r1')).toBe(false);
+  });
+
+  it('keeps a value typed during the save', () => {
+    const next = settleSavedRow(rows([['r1', { name: 'AB' }]]), 'r1', {
+      name: 'A',
+    });
+    expect(next.get('r1')).toEqual({ name: 'AB' });
+  });
+
+  it('keeps a column first edited during the save, drops the sent one', () => {
+    const next = settleSavedRow(
+      rows([['r1', { name: 'A', city: 'Kyiv' }]]),
+      'r1',
+      { name: 'A' }
+    );
+    expect(next.get('r1')).toEqual({ city: 'Kyiv' });
+  });
+
+  it('leaves other rows alone', () => {
+    const next = settleSavedRow(
+      rows([
+        ['r1', { name: 'A' }],
+        ['r2', { name: 'B' }],
+      ]),
+      'r1',
+      { name: 'A' }
+    );
+    expect(next.get('r2')).toEqual({ name: 'B' });
+  });
+
+  it('returns the same map when there is nothing to settle', () => {
+    const map = rows([['r1', { name: 'AB' }]]);
+    expect(settleSavedRow(map, 'r1', { name: 'A' })).toBe(map);
+    expect(settleSavedRow(map, 'gone', { name: 'A' })).toBe(map);
   });
 });

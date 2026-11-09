@@ -303,12 +303,11 @@ test.describe('Objects audit', () => {
     await page.reload();
     await expect(rowAt(page, 0)).toBeVisible({ timeout: 15_000 });
 
-    await knownDefect('OB-2', async () => {
-      expect(backend.requests.put.map((p) => p.body.properties.name)).toContain(
-        'AB'
-      );
-      await expect(cell(page, 0)).toHaveText('AB');
-    });
+    // Fixed: the later text is still dirty after the success, so it is sent.
+    expect(backend.requests.put.map((p) => p.body.properties.name)).toContain(
+      'AB'
+    );
+    await expect(cell(page, 0)).toHaveText('AB');
   });
 
   test('OB-3 A failed save does not leave the rejected value looking saved once the toast is gone', async ({
