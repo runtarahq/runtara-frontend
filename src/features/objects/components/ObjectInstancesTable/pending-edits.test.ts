@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { dropEditsForRows, type PendingEditState } from './pending-edits';
+import {
+  dropEditsForRows,
+  recordCellEdit,
+  type PendingEditState,
+} from './pending-edits';
 
 const ROW_A = '3f8a2c1d-9b4e-4f6a-8c2d-1e5b7a9c3d0f';
 const ROW_B = '7c2e5b8a-1d4f-4a9c-b6e3-0f8d2a5c7e1b';
@@ -63,5 +67,52 @@ describe('dropEditsForRows', () => {
     expect(result.dirtyRows.size).toBe(0);
     expect(result.lastFocusedRowId).toBeNull();
     expect(result.editingCellId).toBeNull();
+  });
+});
+
+describe('recordCellEdit', () => {
+  const SERVER = { name: 'old', qty: 1 };
+
+  it('records a value that differs from the server', () => {
+    const result = recordCellEdit(new Map(), ROW_A, { name: 'new' }, SERVER);
+
+    expect(result.get(ROW_A)).toEqual({ name: 'new' });
+  });
+
+  it('leaves nothing to flush when an edit is reverted', () => {
+    const dirty = recordCellEdit(new Map(), ROW_A, { name: 'new' }, SERVER);
+
+    const reverted = recordCellEdit(dirty, ROW_A, { name: 'old' }, SERVER);
+
+    expect(reverted.has(ROW_A)).toBe(false);
+  });
+
+  it('keeps the row other edits still need', () => {
+    const dirty = new Map([[ROW_A, { name: 'new', qty: 2 }]]);
+
+    const reverted = recordCellEdit(dirty, ROW_A, { name: 'old' }, SERVER);
+
+    expect(reverted.get(ROW_A)).toEqual({ qty: 2 });
+  });
+
+  it('returns the same map when nothing changed', () => {
+    const dirty = new Map([[ROW_A, { name: 'new' }]]);
+
+    expect(recordCellEdit(dirty, ROW_A, { name: 'new' }, SERVER)).toBe(dirty);
+    expect(recordCellEdit(dirty, ROW_B, { qty: 1 }, SERVER)).toBe(dirty);
+  });
+
+  it('counts every value on a draft, which has no server copy', () => {
+    const result = recordCellEdit(new Map(), ROW_A, { name: '' });
+
+    expect(result.get(ROW_A)).toEqual({ name: '' });
+  });
+
+  it('does not mutate the input map', () => {
+    const dirty = new Map([[ROW_A, { name: 'new' }]]);
+
+    recordCellEdit(dirty, ROW_A, { name: 'old' }, SERVER);
+
+    expect(dirty.get(ROW_A)).toEqual({ name: 'new' });
   });
 });

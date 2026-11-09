@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { Instance } from '@/generated/RuntaraRuntimeApi';
@@ -62,5 +62,30 @@ describe('EditableCell', () => {
 
     expect(props.onCommitRow).not.toHaveBeenCalled();
     expect(props.setIsEditing).toHaveBeenCalledWith(false);
+    // The last write puts the original value back.
+    expect(props.onUpdate).toHaveBeenLastCalledWith('row-1', {
+      properties: { label: 'before' },
+    });
+  });
+
+  it('closes the editor when focus leaves it', async () => {
+    const user = userEvent.setup();
+    const props = renderCell();
+
+    await user.click(screen.getByRole('textbox'));
+    await user.tab();
+
+    expect(props.setIsEditing).toHaveBeenCalledWith(false);
+  });
+
+  it('stays open when only the window loses focus', () => {
+    const props = renderCell();
+
+    const input = screen.getByRole('textbox');
+    input.focus();
+    fireEvent.blur(input);
+
+    expect(document.activeElement).toBe(input);
+    expect(props.setIsEditing).not.toHaveBeenCalled();
   });
 });

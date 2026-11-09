@@ -2,7 +2,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Instance, Schema } from '@/generated/RuntaraRuntimeApi';
 import { isDraftRow } from './draft-row';
-import { EditableCell } from './EditableCell';
+import { GridCell } from './GridCell';
 import { formatDate } from '@/lib/utils';
 import { IdColumnCell } from '@/shared/components/table/IdColumnCell';
 import {
@@ -17,8 +17,6 @@ interface ObjectInstancesColumnsProps {
   onCellFocus?: (rowId: string) => void;
   /** Flush a row's pending edits to the server now. */
   onCommitRow?: (rowId: string) => void;
-  editingCellId: string | null;
-  setEditingCellId: (cellId: string | null) => void;
 }
 
 export const objectInstancesColumns = ({
@@ -27,8 +25,6 @@ export const objectInstancesColumns = ({
   enableSelection = false,
   onCellFocus,
   onCommitRow,
-  editingCellId,
-  setEditingCellId,
 }: ObjectInstancesColumnsProps): ColumnDef<Instance>[] => {
   const columns: ColumnDef<Instance>[] = [];
 
@@ -129,23 +125,16 @@ export const objectInstancesColumns = ({
         meta: {
           cellClassName: 'p-0',
         },
-        cell: (props) => {
-          const cellId = `${props.row.original.id}-${column.name}`;
-          return (
-            <EditableCell
-              {...props}
-              onUpdate={onUpdate}
-              dataType={dataType}
-              enumValues={enumValues}
-              onFocus={() => onCellFocus?.(props.row.original.id!)}
-              onCommitRow={() => onCommitRow?.(props.row.original.id!)}
-              isEditing={editingCellId === cellId}
-              setIsEditing={(editing) =>
-                setEditingCellId(editing ? cellId : null)
-              }
-            />
-          );
-        },
+        cell: (props) => (
+          <GridCell
+            {...props}
+            onUpdate={onUpdate}
+            dataType={dataType}
+            enumValues={enumValues}
+            onFocus={() => onCellFocus?.(props.row.original.id!)}
+            onCommitRow={() => onCommitRow?.(props.row.original.id!)}
+          />
+        ),
       });
     });
   }
