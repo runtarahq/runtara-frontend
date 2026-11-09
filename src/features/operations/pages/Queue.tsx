@@ -44,6 +44,7 @@ import { DeleteQueue } from '../components/DeleteQueue';
 import { ViewEditor, StateFilters } from '../components/ViewEditor';
 import { overdueFilters } from '../attention-requests';
 import { OperationHeader, RunRows, RefreshControls } from './shared';
+import { failedWithNothingToShow, refreshFailed } from '../poll-errors';
 
 const requestKey = (r: OperationRequest) =>
   JSON.stringify([r.instanceId, r.requestId]);
@@ -75,7 +76,8 @@ export function QueuePage() {
             formats: {},
           }
         : undefined);
-  if (queues.error || views.error || processes.error)
+  // A failed poll keeps the loaded page, and what was typed into it (OP-1).
+  if (failedWithNothingToShow(queues, views, processes))
     return (
       <p role="alert" className="p-6">
         Could not load queue. Refresh to try again.
@@ -90,13 +92,26 @@ export function QueuePage() {
       </div>
     );
   return (
-    <QueueContent
-      key={viewId ?? `${workflowId}/${actionKey}`}
-      initial={initial}
-      schema={process?.stateSchema ?? queue?.stateSchema ?? {}}
-      saved={saved}
-      workflowName={process?.name}
-    />
+    <>
+      {refreshFailed(queues, views, processes) && (
+        <div className="px-6 pt-4">
+          <p
+            role="status"
+            className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
+          >
+            Could not refresh the queue. Showing what was last loaded; it will
+            retry.
+          </p>
+        </div>
+      )}
+      <QueueContent
+        key={viewId ?? `${workflowId}/${actionKey}`}
+        initial={initial}
+        schema={process?.stateSchema ?? queue?.stateSchema ?? {}}
+        saved={saved}
+        workflowName={process?.name}
+      />
+    </>
   );
 }
 
