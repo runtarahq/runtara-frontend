@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import {
   buildAgentInfo,
   buildCapabilityInfo,
@@ -10,7 +10,7 @@ import {
   test,
 } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json, openWorkflow } from './helpers';
+import { api, json, knownDefect, openWorkflow } from './helpers';
 
 // Wide enough that the docked panel leaves the canvas clickable.
 test.use({ viewport: { width: 1700, height: 1000 } });
@@ -22,8 +22,16 @@ const srcDir = path.join(
   '../../src/features/workflows/components/WorkflowEditor'
 );
 const source = (file: string) => readFileSync(path.join(srcDir, file), 'utf8');
-const countOf = (text: string, pattern: RegExp) =>
-  (text.match(pattern) ?? []).length;
+const mentions = (file: string, name: string) =>
+  file.split('\n').filter((l) => new RegExp(`\\b${name}\\b`).test(l));
+/** A ref is dead when it is still there but only declared and assigned. */
+const isDeadRef = (file: string, name: string) => {
+  const written = new RegExp(
+    `const ${name} = useRef|^\\s*${name}\\.current = `
+  );
+  const uses = mentions(file, name);
+  return uses.length > 0 && uses.every((l) => written.test(l));
+};
 
 const panel = (page: Page) => page.getByTestId('node-config-dialog');
 const step = (page: Page, name: string) =>
@@ -52,11 +60,48 @@ async function pickNewStep(page: Page, after: string, stepType: string) {
   await expect(panel(page)).toBeVisible({ timeout: 10_000 });
 }
 
-/** Clicks Cancel and asserts the panel closes with no discard prompt. */
-async function cancelWithoutPrompt(page: Page) {
+/**
+ * Clicks Cancel, confirms the discard prompt if one comes up, and returns
+ * whether it did. Waits until one or the other has happened.
+ */
+async function closePanel(page: Page) {
   await panel(page).getByTestId('node-config-cancel').click();
+  await expect
+    .poll(
+      async () =>
+        (await discardPrompt(page).count()) > 0 ||
+        (await panel(page).count()) === 0
+    )
+    .toBe(true);
+  const prompted = await discardPrompt(page).isVisible();
+  if (prompted) await page.getByRole('button', { name: 'Discard' }).click();
   await expect(panel(page)).toHaveCount(0);
-  await expect(discardPrompt(page)).toHaveCount(0);
+  return prompted;
+}
+
+/** Waits until the panel has either re-anchored to `nodeId` or prompted. */
+async function panelMovedOrPrompted(page: Page, nodeId: string) {
+  await expect(
+    page
+      .locator(`[data-testid="node-config-dialog"][data-node-id="${nodeId}"]`)
+      .or(discardPrompt(page))
+      .first()
+  ).toBeVisible();
+  // The form resets just after the panel re-anchors.
+  await page.waitForTimeout(500);
+  return discardPrompt(page).isVisible();
+}
+
+/** Clicks Add step or Apply; waits until it is accepted or `refusal` shows. */
+async function submitPanel(page: Page, refusal: () => Locator) {
+  await panel(page).getByTestId('node-config-save').click();
+  await expect
+    .poll(
+      async () =>
+        (await panel(page).count()) === 0 || (await refusal().count()) > 0,
+      { timeout: 10_000 }
+    )
+    .toBe(true);
 }
 
 async function applyPanel(page: Page) {
@@ -203,7 +248,7 @@ const row = (page: Page, label: RegExp) =>
   panel(page).locator('tr').filter({ hasText: label });
 
 test.describe('Editor audit A', () => {
-  test('ED-1 Double-clicking a node while configuring a new step shows two config panels', async ({
+  test('ED-1 Double-clicking a node while configuring a new step leaves one config panel', async ({
     page,
     mockApi,
   }) => {
@@ -216,14 +261,14 @@ test.describe('Editor audit A', () => {
 
     await step(page, 'First').first().dblclick();
 
-    await expect(panel(page)).toHaveCount(2);
-    await expect(
-      page.locator('[data-testid="node-config-dialog"][data-node-id="first"]')
-    ).toHaveCount(1);
-    await expect(panel(page).getByText(/^New /)).toHaveCount(1);
+    // One panel is already showing, so give the double-click time to land.
+    await page.waitForTimeout(1_000);
+    await knownDefect('ED-1', async () => {
+      await expect(panel(page)).toHaveCount(1);
+    });
   });
 
-  test('ED-2 Deleting the edited node leaves the panel armed: a later single click opens one', async ({
+  test('ED-2 After deleting the edited node, a single click only selects', async ({
     page,
     mockApi,
   }) => {
@@ -244,13 +289,15 @@ test.describe('Editor audit A', () => {
     await expect(step(page, 'First')).toHaveCount(0);
     await expect(panel(page)).toHaveCount(0);
 
-    // The same single click as the control now opens an editor.
+    // The same single click as the control must still open nothing.
     await step(page, 'Second').first().click();
-    await expect(panel(page)).toBeVisible();
-    await expect(panel(page)).toHaveAttribute('data-node-id', 'second');
+    await page.waitForTimeout(1_000);
+    await knownDefect('ED-2', async () => {
+      await expect(panel(page)).toHaveCount(0);
+    });
   });
 
-  test('ED-3 Clicking another node discards unsaved panel edits without a prompt', async ({
+  test('ED-3 Clicking another node does not silently discard unsaved panel edits', async ({
     page,
     mockApi,
   }) => {
@@ -262,23 +309,23 @@ test.describe('Editor audit A', () => {
     await expect(messageBox(page)).toHaveValue('EDITED');
 
     await step(page, 'Second').first().click();
-    await expect(panel(page)).toHaveAttribute('data-node-id', 'second');
-    await expect(discardPrompt(page)).toHaveCount(0);
-    await expect(messageBox(page)).toHaveValue('second msg');
+    const prompted = await panelMovedOrPrompted(page, 'second');
 
-    await step(page, 'First').first().click();
-    await expect(panel(page)).toHaveAttribute('data-node-id', 'first');
-    await expect(messageBox(page)).toHaveValue('first msg');
-    await expect(page.getByTitle('No changes to save')).toBeVisible();
-
-    await panel(page).getByTestId('node-config-cancel').click();
-    await page.getByTitle('Add note').click();
-    const graph = await capture.save();
-    expect(graph.steps.first.message).toBe('first msg');
-    expect(JSON.stringify(graph)).not.toContain('EDITED');
+    // Without a prompt the edit must be kept: go back, apply, read the payload.
+    let message: unknown;
+    if (!prompted) {
+      await step(page, 'First').first().click();
+      await expect(panel(page)).toHaveAttribute('data-node-id', 'first');
+      await applyPanel(page);
+      await page.getByTitle('Add note').click();
+      message = (await capture.save()).steps.first.message;
+    }
+    await knownDefect('ED-3', async () => {
+      if (!prompted) expect(message).toBe('EDITED');
+    });
   });
 
-  test('ED-4 Renaming a step id discards other unsaved panel edits', async ({
+  test('ED-4 Renaming a step id does not discard other unsaved panel edits', async ({
     page,
     mockApi,
   }) => {
@@ -292,16 +339,19 @@ test.describe('Editor audit A', () => {
     await panel(page).getByLabel('Step id', { exact: true }).fill('renamed');
     await panel(page).getByRole('button', { name: 'Confirm step id' }).click();
 
-    await expect(panel(page)).toHaveAttribute('data-node-id', 'renamed');
-    await expect(messageBox(page)).toHaveValue('first msg');
-    await expect(discardPrompt(page)).toHaveCount(0);
+    const prompted = await panelMovedOrPrompted(page, 'renamed');
 
-    await applyPanel(page);
-    const graph = await capture.save();
-    expect(graph.steps.renamed.message).toBe('first msg');
+    let message: unknown;
+    if (!prompted) {
+      await applyPanel(page);
+      message = (await capture.save()).steps.renamed.message;
+    }
+    await knownDefect('ED-4', async () => {
+      if (!prompted) expect(message).toBe('EDITED');
+    });
   });
 
-  test('ED-5 Panel Cancel does not revert a step id rename', async ({
+  test('ED-5 Panel Cancel reverts a step id rename', async ({
     page,
     mockApi,
   }) => {
@@ -314,78 +364,87 @@ test.describe('Editor audit A', () => {
     await panel(page).getByRole('button', { name: 'Confirm step id' }).click();
     await expect(panel(page)).toHaveAttribute('data-node-id', 'renamed');
 
-    await cancelWithoutPrompt(page);
+    await closePanel(page);
 
+    // A reverted rename leaves nothing to save, so make a change of our own.
+    await page.getByTitle('Add note').click();
     const graph = await capture.save();
-    expect(Object.keys(graph.steps).sort()).toEqual(['renamed', 'second']);
+    await knownDefect('ED-5', async () => {
+      expect(Object.keys(graph.steps).sort()).toEqual(['first', 'second']);
+    });
   });
 
-  test('ED-6 onStagedChange is never invoked through the config panel', async ({
+  test('ED-6 onStagedChange can be invoked through the config panel, or is gone', async ({
     page,
     mockApi,
   }) => {
-    // Static: the panel only calls it for isCreate, and only the edit panel
-    // (which never sets isCreate) receives the prop.
     const editor = source('index.tsx');
-    expect(countOf(editor, /onStagedChange=/g)).toBe(1);
     const panels = editor.split('<NodeConfigPanel').slice(1);
     expect(panels).toHaveLength(2);
     const [editPanel, createPanel] = panels;
-    expect(editPanel).toContain('onStagedChange={onStagedNodeChange}');
-    expect(editPanel).not.toMatch(/\bisCreate\b/);
-    expect(createPanel).toMatch(/\bisCreate\b/);
-    expect(createPanel).not.toContain('onStagedChange');
-    expect(source('NodeConfigPanel/index.tsx')).toMatch(
-      /if \(isCreate\) \{\s*onStagedChange\?\.\(nodeId, data\);/
-    );
+    // The panel only calls it for isCreate, and only the edit panel (which
+    // never sets isCreate) receives the prop.
+    const neverInvoked =
+      editPanel.includes('onStagedChange={onStagedNodeChange}') &&
+      !/\bisCreate\b/.test(editPanel) &&
+      !createPanel.includes('onStagedChange') &&
+      /if \(isCreate\) \{\s*onStagedChange\?\.\(nodeId, data\);/.test(
+        source('NodeConfigPanel/index.tsx')
+      );
+    await knownDefect('ED-6', async () => {
+      expect(neverInvoked).toBe(false);
+    });
 
-    // Runtime: an edit in the panel never reaches the page's staged changes.
     const wf = twoLogs('wf_ed6');
     await open(page, mockApi, wf);
     await openStep(page, 'First');
     await messageBox(page).fill('EDITED');
     await expect(messageBox(page)).toHaveValue('EDITED');
-    await page.waitForTimeout(500);
-    await expect(page.getByTitle('No changes to save')).toBeVisible();
 
     // Control: applying the panel does mark the page unsaved.
     await applyPanel(page);
     await expect(page.getByTitle('Save changes')).toBeEnabled();
   });
 
-  test('ED-7 STATIC stagedDataRef is never read and prevOpenRef only guards writing it', async () => {
+  test('ED-7 stagedDataRef and prevOpenRef have a reader or are gone', async () => {
     const file = source('NodeConfigPanel/index.tsx');
-    const uses = file.split('\n').filter((l) => /stagedDataRef/.test(l));
-    expect(uses.map((l) => l.trim())).toEqual([
-      'const stagedDataRef = useRef<form.SchemaType>(nodeData);',
-      'stagedDataRef.current = nodeData;',
-      'stagedDataRef.current = data;',
-      'stagedDataRef.current = originalNodeData;',
-    ]);
-    const prevOpen = file.split('\n').filter((l) => /prevOpenRef/.test(l));
-    expect(prevOpen.map((l) => l.trim())).toEqual([
-      'const prevOpenRef = useRef(false);',
-      'if (open && !prevOpenRef.current) {',
-      'prevOpenRef.current = open;',
-    ]);
+    const stagedDead = isDeadRef(file, 'stagedDataRef');
+    // prevOpenRef's one read guards this block, so it is only as alive as what
+    // the block does.
+    const guarded =
+      /if \(open && !prevOpenRef\.current\) \{([\s\S]*?)\n\s*\}/.exec(
+        file
+      )?.[1] ?? '';
+    const onlyWritesStaged = guarded
+      .split('\n')
+      .every((l) => !l.trim() || /^\s*stagedDataRef\.current = /.test(l));
+    const dead = [
+      ...(stagedDead ? ['stagedDataRef'] : []),
+      ...(isDeadRef(file, 'prevOpenRef') ||
+      (mentions(file, 'prevOpenRef').length > 0 &&
+        onlyWritesStaged &&
+        (stagedDead || !mentions(file, 'stagedDataRef').length))
+        ? ['prevOpenRef']
+        : []),
+    ];
+    await knownDefect('ED-7', async () => {
+      expect(dead).toEqual([]);
+    });
   });
 
-  test('ED-8 STATIC isInitializedRef and previousNodeDataRef are written but never read', async () => {
+  test('ED-8 isInitializedRef and previousNodeDataRef have a reader or are gone', async () => {
     const file = source(
       'NodeForm/InputMappingField/SimpleInputMappingEditor.tsx'
     );
-    const uses = file
-      .split('\n')
-      .filter((l) => /isInitializedRef|previousNodeDataRef/.test(l));
-    expect(uses.map((l) => l.trim())).toEqual([
-      'const isInitializedRef = useRef(false);',
-      "const previousNodeDataRef = useRef<string>('');",
-      'isInitializedRef.current = true;',
-      'previousNodeDataRef.current = JSON.stringify(nodeData);',
-    ]);
+    const dead = ['isInitializedRef', 'previousNodeDataRef'].filter((name) =>
+      isDeadRef(file, name)
+    );
+    await knownDefect('ED-8', async () => {
+      expect(dead).toEqual([]);
+    });
   });
 
-  test('ED-9 A new Filter step displays a default condition that is not in the form value', async ({
+  test('ED-9 A new Filter step can be added with the default condition it displays', async ({
     page,
     mockApi,
   }) => {
@@ -417,13 +476,15 @@ test.describe('Editor audit A', () => {
       panel(page).getByText('data.items', { exact: false })
     ).not.toHaveCount(0);
 
-    // The displayed condition is not in the form, so the step has no config.
-    await panel(page).getByTestId('node-config-save').click();
-    await expect(
+    // The displayed condition must be in the form, so the step has a config.
+    const missingConfig = () =>
       page
         .getByTestId('validation-message')
-        .getByText('Failed to parse graph: missing field `config`')
-    ).toBeVisible({ timeout: 10_000 });
+        .getByText('Failed to parse graph: missing field `config`');
+    await submitPanel(page, missingConfig);
+    await knownDefect('ED-9', async () => {
+      await expect(missingConfig()).toHaveCount(0);
+    });
     await expect(panel(page)).toHaveCount(1);
     await expect(step(page, 'Filter')).toHaveCount(0);
 
@@ -440,7 +501,7 @@ test.describe('Editor audit A', () => {
     });
   });
 
-  test('ED-10 Add on-wait flow on an unsaved step is a no-op', async ({
+  test('ED-10 Add on-wait flow on an unsaved step adds the flow', async ({
     page,
     mockApi,
   }) => {
@@ -479,12 +540,14 @@ test.describe('Editor audit A', () => {
       .click();
     await expect(addFlow()).toBeVisible();
     await addFlow().click();
-    await page.waitForTimeout(500);
-    await expect(addFlow()).toBeVisible();
-    await expect(panel(page).getByText(flowHelp)).toHaveCount(0);
+    await knownDefect('ED-10', async () => {
+      await expect(panel(page).getByText(flowHelp)).toBeVisible({
+        timeout: 500,
+      });
+    });
   });
 
-  test('ED-11 Switch case edits do not mark the panel dirty, so closing discards them silently', async ({
+  test('ED-11 Closing the panel does not silently discard Switch case edits', async ({
     page,
     mockApi,
   }) => {
@@ -518,13 +581,16 @@ test.describe('Editor audit A', () => {
       'CHANGED'
     );
 
-    await cancelWithoutPrompt(page);
+    const prompted = await closePanel(page);
 
     await openStep(page, 'Switch Step');
-    await expect(panel(page).getByTestId('switch-case-match-0')).toHaveValue(
-      'orig'
-    );
-    await expect(panel(page).getByTestId('switch-case-match-1')).toHaveCount(0);
+    await knownDefect('ED-11', async () => {
+      if (!prompted) {
+        await expect(
+          panel(page).getByTestId('switch-case-match-0')
+        ).toHaveValue('CHANGED');
+      }
+    });
 
     // Control: a name edit on the same panel does raise the prompt.
     await panel(page).getByPlaceholder('Step name').fill('Renamed Switch');
@@ -532,7 +598,7 @@ test.describe('Editor audit A', () => {
     await expect(discardPrompt(page)).toBeVisible();
   });
 
-  test('ED-12 Changing connection, agent or capability does not mark the panel dirty', async ({
+  test('ED-12 Closing the panel does not silently discard a connection, agent or capability change', async ({
     page,
     mockApi,
   }) => {
@@ -557,22 +623,28 @@ test.describe('Editor audit A', () => {
         name: /Audit Agent → |Other Agent → /,
       });
 
+    // What closing lost with no prompt; a prompt or keeping the edit are fine.
+    const silentlyLost: string[] = [];
+    const selectConnection = () =>
+      panel(page).getByRole('button', { name: 'Select connection' });
+    const auditConnection = () =>
+      panel(page).getByRole('button', { name: 'Audit Connection' });
+
     // Connection.
     await openStep(page, 'Agent Step');
     await panel(page)
       .getByRole('button', { name: 'Select connection' })
       .click();
     await page.getByRole('button', { name: /Audit Connection/ }).click();
-    await expect(
-      panel(page).getByRole('button', { name: 'Audit Connection' })
-    ).toBeVisible();
-    await cancelWithoutPrompt(page);
+    await expect(auditConnection()).toBeVisible();
+    let prompted = await closePanel(page);
 
     // Capability.
     await openStep(page, 'Agent Step');
-    await expect(
-      panel(page).getByRole('button', { name: 'Select connection' })
-    ).toBeVisible();
+    await expect(selectConnection().or(auditConnection())).toBeVisible();
+    if (!prompted && !(await auditConnection().isVisible())) {
+      silentlyLost.push('connection');
+    }
     await subtitle().click();
     await page
       .getByRole('dialog')
@@ -583,11 +655,14 @@ test.describe('Editor audit A', () => {
       .getByRole('button', { name: /^cap-b/ })
       .click();
     await expect(subtitle()).toContainText('cap-b');
-    await cancelWithoutPrompt(page);
+    prompted = await closePanel(page);
 
     // Agent.
     await openStep(page, 'Agent Step');
-    await expect(subtitle()).toContainText('cap-a');
+    await expect(subtitle()).toBeVisible();
+    if (!prompted && !(await subtitle().textContent())?.includes('cap-b')) {
+      silentlyLost.push('capability');
+    }
     await subtitle().click();
     await page
       .getByRole('dialog')
@@ -598,13 +673,23 @@ test.describe('Editor audit A', () => {
       .getByRole('button', { name: /^cap-other/ })
       .click();
     await expect(subtitle()).toContainText('Other Agent → cap-other');
-    await cancelWithoutPrompt(page);
+    prompted = await closePanel(page);
 
     await openStep(page, 'Agent Step');
-    await expect(subtitle()).toContainText('Audit Agent → cap-a');
+    await expect(subtitle()).toBeVisible();
+    if (
+      !prompted &&
+      !(await subtitle().textContent())?.includes('Other Agent')
+    ) {
+      silentlyLost.push('agent');
+    }
+
+    await knownDefect('ED-12', async () => {
+      expect(silentlyLost).toEqual([]);
+    });
   });
 
-  test('ED-13 A non-empty scalar is dropped on entering composite mode, despite the comment', async ({
+  test('ED-13 A non-empty scalar survives entering composite mode', async ({
     page,
     mockApi,
   }) => {
@@ -620,18 +705,17 @@ test.describe('Editor audit A', () => {
     await r.getByRole('button', { name: 'Switch to reference mode' }).click();
     await expect(r.getByText('keep me', { exact: true })).toBeVisible();
     await r.getByRole('button', { name: 'Switch to composite mode' }).click();
-    await expect(r.getByText('Object · 0 fields')).toBeVisible();
-    await expect(panel(page).getByText('keep me')).toHaveCount(0);
 
     await applyPanel(page);
     const graph = await capture.save();
-    expect(graph.steps.agent.inputMapping.alpha_text).toEqual({
-      valueType: 'composite',
-      value: {},
+    const saved = graph.steps.agent.inputMapping.alpha_text;
+    expect(saved.valueType).toBe('composite');
+    await knownDefect('ED-13', async () => {
+      expect(JSON.stringify(saved)).toContain('keep me');
     });
   });
 
-  test('ED-14 Composite to string to composite loses the structure', async ({
+  test('ED-14 Composite to string to composite keeps the structure', async ({
     page,
     mockApi,
   }) => {
@@ -652,22 +736,20 @@ test.describe('Editor audit A', () => {
     await panel(page)
       .getByRole('button', { name: /Click to configure/ })
       .click();
-    await expect(panel(page).getByText('keep', { exact: true })).toHaveCount(0);
     await panel(page)
       .getByRole('button', { name: 'Build', exact: true })
       .click();
-    await expect(panel(page).getByText('(0 fields)')).toBeVisible();
-    await expect(panel(page).getByText('keep', { exact: true })).toHaveCount(0);
 
     await applyPanel(page);
     const graph = await capture.save();
-    expect(graph.steps.agent.inputMapping.blob).toEqual({
-      valueType: 'composite',
-      value: {},
+    const saved = graph.steps.agent.inputMapping.blob;
+    expect(saved.valueType).toBe('composite');
+    await knownDefect('ED-14', async () => {
+      expect(JSON.stringify(saved)).toContain('kept');
     });
   });
 
-  test('ED-15 PARTIAL: null reaches the form under template and reference, but is never saved as null', async ({
+  test('ED-15 A literal null does not reach the form under template or reference, and is never saved as null', async ({
     page,
     mockApi,
   }) => {
@@ -715,31 +797,35 @@ test.describe('Editor audit A', () => {
     };
     const finishRow = (name: RegExp) => panel(page).getByRole('row', { name });
 
-    // Finish, template: accepted, and the null is saved as text.
+    // Finish, template: accepted, and not saved as null.
     await openStep(page, 'Finish Step');
     const tpl = finishRow(/out_tpl/);
     await tpl.getByTitle('Set literal null').click();
     await tpl.getByRole('button', { name: 'Switch to template mode' }).click();
     await applyPanel(page);
     const finishGraph = await capture.save();
-    // Not null on the wire: the text "null", as a template.
-    expect(finishGraph.steps.finish.inputMapping.out_tpl).toEqual({
-      valueType: 'template',
-      value: 'null',
-    });
+    const savedTpl = finishGraph.steps.finish.inputMapping.out_tpl;
+    expect(savedTpl.valueType).toBe('template');
+    expect(savedTpl.value).not.toBeNull();
 
-    // Finish, reference: the form really holds null, which the validator refuses.
+    // Finish, reference: the form must not hold null for the validator to refuse.
     await openStep(page, 'Finish Step');
     const ref = finishRow(/out_ref/);
     await ref.getByTitle('Set literal null').click();
     await ref.getByRole('button', { name: 'Switch to template mode' }).click();
     await ref.getByRole('button', { name: 'Switch to reference mode' }).click();
-    await panel(page).getByTestId('node-config-save').click();
-    await expect(nullError()).toBeVisible({ timeout: 10_000 });
+    await submitPanel(page, () =>
+      page
+        .getByTestId('validation-message')
+        .filter({ hasText: 'Step: Finish Step' })
+    );
+    await knownDefect('ED-15', async () => {
+      await expect(nullError()).toHaveCount(0);
+    });
     await expect(panel(page)).toHaveCount(1);
     await discardFinish();
 
-    // Agent custom field, template: saved, but as '' rather than null.
+    // Agent custom field, template: saved, and not as null.
     await openStep(page, 'Agent Step');
     const one = row(page, /custom_one/);
     await one.getByRole('button', { name: 'auto' }).click();
@@ -749,10 +835,9 @@ test.describe('Editor audit A', () => {
     await one.getByRole('button', { name: 'Switch to template mode' }).click();
     await applyPanel(page);
     const graph = await capture.save();
-    expect(graph.steps.agent.inputMapping.custom_one).toEqual({
-      valueType: 'template',
-      value: '',
-    });
+    const savedOne = graph.steps.agent.inputMapping.custom_one;
+    expect(savedOne.valueType).toBe('template');
+    expect(savedOne.value).not.toBeNull();
 
     // Agent custom field, reference: refused as an empty path.
     await openStep(page, 'Agent Step');
@@ -771,7 +856,7 @@ test.describe('Editor audit A', () => {
     await expect(panel(page)).toHaveCount(1);
   });
 
-  test('ED-16 Mapping-object rows wipe the value on every mode switch', async ({
+  test('ED-16 Mapping-object rows keep the value across a mode switch', async ({
     page,
     mockApi,
   }) => {
@@ -828,29 +913,39 @@ test.describe('Editor audit A', () => {
     await rowToggle('a_imm').click(); // immediate -> template
     await rowToggle('b_ref').click(); // reference -> composite
     await rowToggle('c_tpl').click(); // template -> reference
-    await expect(
-      panel(page).getByRole('button', { name: 'Click to select a variable...' })
-    ).toBeVisible();
     await rowToggle('c_tpl').click(); // an empty reference would not validate
     await rowToggle('d_cmp').click(); // composite -> immediate
-    await expect(
-      panel(page).getByText('data.foo', { exact: true })
-    ).toHaveCount(0);
-    await expect(panel(page).getByText('inner', { exact: true })).toHaveCount(
-      0
-    );
 
     await applyPanel(page);
     const graph = await capture.save();
-    expect(graph.steps.first.context).toEqual({
-      a_imm: { valueType: 'template', value: '' },
-      b_ref: { valueType: 'composite', value: {} },
-      c_tpl: { valueType: 'composite', value: {} },
-      d_cmp: { valueType: 'immediate', value: '' },
+    const context: Record<string, { valueType: string }> =
+      graph.steps.first.context;
+    // Control: every toggle landed.
+    expect(
+      Object.fromEntries(
+        Object.entries(context).map(([key, v]) => [key, v.valueType])
+      )
+    ).toEqual({
+      a_imm: 'template',
+      b_ref: 'composite',
+      c_tpl: 'composite',
+      d_cmp: 'immediate',
+    });
+    const originals = {
+      a_imm: 'keep me',
+      b_ref: 'data.foo',
+      c_tpl: 'keep {{ data.foo }}',
+      d_cmp: 'kept',
+    };
+    const wiped = Object.entries(originals)
+      .filter(([key, value]) => !JSON.stringify(context[key]).includes(value))
+      .map(([key]) => key);
+    await knownDefect('ED-16', async () => {
+      expect(wiped).toEqual([]);
     });
   });
 
-  test('ED-17 Value to Build to Value returns an empty JSON box', async ({
+  test('ED-17 Value to Build to Value keeps the JSON value', async ({
     page,
     mockApi,
   }) => {
@@ -869,16 +964,15 @@ test.describe('Editor audit A', () => {
     await panel(page)
       .getByRole('button', { name: 'Value', exact: true })
       .click();
-    await expect(box).toHaveValue('');
-    await expect(
-      panel(page).getByText('Empty: saving the step leaves this input out.')
-    ).toBeVisible();
+    await expect(box).toBeVisible();
     await applyPanel(page);
     const graph = await capture.save();
-    expect(graph.steps.agent.inputMapping?.blob).toBeUndefined();
+    await knownDefect('ED-17', async () => {
+      expect(graph.steps.agent.inputMapping?.blob?.value).toEqual({ a: 1 });
+    });
   });
 
-  test('ED-18 Switch output: Reference and Value cannot leave composite, and they wipe the data', async ({
+  test('ED-18 Switch output: Reference and Value leave composite without wiping the data', async ({
     page,
     mockApi,
   }) => {
@@ -910,23 +1004,27 @@ test.describe('Editor audit A', () => {
 
     await c0.getByRole('button', { name: 'Reference', exact: true }).click();
     await c1.getByRole('button', { name: 'Value', exact: true }).click();
-    // Still the Build editor, now empty: neither click left composite.
-    for (const cell of [c0, c1]) {
-      await expect(cell.getByText('(0 fields)')).toBeVisible();
-      await expect(
-        cell.getByText('No fields yet.', { exact: false })
-      ).toBeVisible();
-    }
-    await expect(c0.getByText('one', { exact: true })).toHaveCount(0);
-    await expect(c1.getByText('two', { exact: true })).toHaveCount(0);
-    await expect(
-      panel(page).getByRole('button', { name: 'Click to select a variable...' })
-    ).toHaveCount(0);
+    // Both clicks had a re-render to do before the Build editors are read.
+    await page.waitForTimeout(500);
+    const stuckInBuild = [
+      await c0.getByText('(0 fields)').count(),
+      await c1.getByText('(0 fields)').count(),
+    ];
 
-    await applyPanel(page);
-    const graph = await capture.save();
-    expect(
-      graph.steps.sw.config.cases.map((c: { output: unknown }) => c.output)
-    ).toEqual([{}, {}]);
+    // An empty reference may fairly be refused, which leaves no payload to read.
+    await submitPanel(page, () => page.getByTestId('validation-message'));
+    let valueOutputKept = true;
+    if ((await panel(page).count()) === 0) {
+      const graph = await capture.save();
+      valueOutputKept = JSON.stringify(
+        graph.steps.sw.config.cases[1].output
+      ).includes('second');
+    }
+    await knownDefect('ED-18', async () => {
+      expect({ stuckInBuild, valueOutputKept }).toEqual({
+        stuckInBuild: [0, 0],
+        valueOutputKept: true,
+      });
+    });
   });
 });

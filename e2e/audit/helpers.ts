@@ -1,4 +1,4 @@
-import { expect, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 import { buildWorkflow } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
 
@@ -77,4 +77,44 @@ export async function openWorkflow(
   await expect(page.locator('.react-flow__node').first()).toBeVisible({
     timeout: 15_000,
   });
+}
+
+/**
+ * Holds the correct-behaviour assertions for a defect that exists today.
+ *
+ * `correct` must fail, on an assertion, for the test to pass. If it passes, the
+ * defect is gone: the test fails and asks for this wrapper to be removed, which
+ * leaves a plain regression test. Anything other than a failed assertion, such
+ * as a click timing out, is rethrown, so a broken scenario is not mistaken for
+ * the defect. The failure is kept as an annotation to show why it failed.
+ *
+ * Only the assertions that show the defect go inside; setup and controls stay
+ * outside, so they still have to pass.
+ */
+export async function knownDefect(id: string, correct: () => Promise<void>) {
+  try {
+    await correct();
+  } catch (error) {
+    if (!isAssertionFailure(error)) throw error;
+    test.info().annotations.push({
+      type: 'known-defect',
+      description: `${id}: ${(error as Error).message}`,
+    });
+    return;
+  }
+  throw new Error(
+    `${id} no longer reproduces. Remove knownDefect() from this test and mark the claim fixed in docs/implicit-state.md.`
+  );
+}
+
+/** Playwright's `expect` and `expect.poll` report failures in different shapes. */
+function isAssertionFailure(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  if ('matcherResult' in error) return true;
+  const message = String((error as Error).message ?? '').replace(
+    // eslint-disable-next-line no-control-regex
+    /\u001b\[[0-9;]*m/g,
+    ''
+  );
+  return /^(Error: )?expect[.(]/.test(message);
 }

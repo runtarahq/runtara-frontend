@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test, buildWorkflow, type MockApi } from '../fixtures';
-import { api, json, logWorkflow, openWorkflow } from './helpers';
+import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
 
 const WF = 'wf_hist';
 const INST = 'inst_hist';
@@ -169,7 +169,7 @@ const rowOf = (page: Page, name: string) =>
   page.getByRole('row').filter({ hasText: name });
 
 test.describe('History audit', () => {
-  test('HI-1 A first-load failure on run history spins forever', async ({
+  test('HI-1 A first-load failure on run history shows the error', async ({
     page,
     mockApi,
   }) => {
@@ -178,17 +178,15 @@ test.describe('History audit', () => {
 
     // Attempt + one retry from the QueryClient default (1 s), then idle.
     await expect.poll(() => run.gets.length).toBe(2);
-    await page.waitForTimeout(8_000);
 
+    await knownDefect('HI-1', async () => {
+      await expect(page.getByText(FAILED_COPY)).toBeVisible({ timeout: 8_000 });
+      await expect(page.locator('.animate-spin')).toHaveCount(0);
+    });
     expect(run.gets.length, 'no further attempts').toBe(2);
-    await expect(page.locator('.animate-spin').first()).toBeVisible();
-    await expect(page.getByText(FAILED_COPY)).toHaveCount(0);
-    await expect(
-      page.getByRole('heading', { name: 'Workflow Execution Details' })
-    ).toHaveCount(0);
   });
 
-  test('HI-2 One failed poll replaces a loaded run history page', async ({
+  test('HI-2 One failed poll keeps a loaded run history page', async ({
     page,
     mockApi,
   }) => {
@@ -203,18 +201,26 @@ test.describe('History audit', () => {
     await search.fill('world');
     await expect(search).toHaveValue('world');
 
+    const before = run.gets.length;
     run.fail = true;
-    const failed = page.getByText(FAILED_COPY);
-    await expect(failed).toBeVisible({ timeout: POLL + 5_000 });
-    await expect(heading).toHaveCount(0);
+    // Two failures in a row, as the client retries once; then let them land.
+    await expect
+      .poll(() => run.gets.length - before, { timeout: POLL + 5_000 })
+      .toBeGreaterThanOrEqual(2);
+    await page.waitForTimeout(2_000);
 
+    await knownDefect('HI-2', async () => {
+      await expect(heading).toBeVisible();
+      await expect(search).toHaveValue('world');
+    });
+
+    // Control: the page is back once the poll recovers.
     run.fail = false;
     await expect(heading).toBeVisible({ timeout: POLL + 5_000 });
-    await expect(failed).toHaveCount(0);
-    await expect(page.getByLabel('Search keys and values')).toHaveValue('');
+    await expect(page.getByText(FAILED_COPY)).toHaveCount(0);
   });
 
-  test('HI-3 The timeline poll never runs: requests come at 10 s, not 5 s', async ({
+  test('HI-3 The timeline poll runs: instance requests come about every 5 s', async ({
     page,
     mockApi,
   }) => {
@@ -235,10 +241,12 @@ test.describe('History audit', () => {
     expect(run.pendingGets - pendingBefore).toBeGreaterThanOrEqual(8);
     expect(gaps.length).toBeGreaterThanOrEqual(3);
     // A live 5 s poll on the shared key would show gaps near 5 s.
-    for (const gap of gaps) expect(gap).toBeGreaterThan(8_000);
+    await knownDefect('HI-3', async () => {
+      expect(Math.min(...gaps)).toBeLessThanOrEqual(8_000);
+    });
   });
 
-  test('HI-4 Stale pending inputs still feed the timeline after a run finishes', async ({
+  test('HI-4 Stale pending inputs stop feeding the timeline after a run finishes', async ({
     page,
     mockApi,
   }) => {
@@ -291,11 +299,13 @@ test.describe('History audit', () => {
     expect(run.pendingGets, 'pending-input polling stopped').toBe(
       pendingAtFinish
     );
-    // Finished, nothing pending on the server, and the timeline still waits.
-    await expect(page.getByText('waiting for input')).toBeVisible();
+    // Finished, nothing pending on the server: nothing should still be waiting.
+    await knownDefect('HI-4', async () => {
+      await expect(page.getByText('waiting for input')).toHaveCount(0);
+    });
   });
 
-  test('HI-5 An empty history list shows a skeleton on every poll', async ({
+  test('HI-5 An empty history list stays in place during a poll', async ({
     page,
     mockApi,
   }) => {
@@ -316,16 +326,22 @@ test.describe('History audit', () => {
     const before = requests;
 
     const skeleton = page.locator('.animate-pulse');
-    await expect(skeleton.first()).toBeVisible({ timeout: POLL + 5_000 });
-    expect(requests).toBeGreaterThan(before);
-    await expect(empty).toHaveCount(0);
+    // The poll has gone out and is held open.
+    await expect
+      .poll(() => requests, { timeout: POLL + 5_000 })
+      .toBeGreaterThan(before);
+    await page.waitForTimeout(500);
+    await knownDefect('HI-5', async () => {
+      await expect(empty).toBeVisible();
+      await expect(skeleton).toHaveCount(0);
+    });
 
     hold.open();
     await expect(empty).toBeVisible();
     await expect(skeleton).toHaveCount(0);
   });
 
-  test('HI-6 A failed history list reads as "No executions yet"', async ({
+  test('HI-6 A failed history list does not read as "No executions yet"', async ({
     page,
     mockApi,
   }) => {
@@ -340,18 +356,18 @@ test.describe('History audit', () => {
 
     await page.getByRole('button', { name: /History/ }).click();
     await expect.poll(() => requests).toBeGreaterThanOrEqual(2);
+    // Let the failure land: the text is absent while the list is still loading.
+    await page.waitForTimeout(1_500);
 
-    await expect(page.getByText('No executions yet')).toBeVisible();
-    await expect(
-      page.getByText('Run the workflow to see history here')
-    ).toBeVisible();
-    await expect(
-      page.getByText(/could not|failed to|unavailable/i)
-    ).toHaveCount(0);
-    await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
+    // One read, not a retrying toHaveCount: the 10 s poll swaps the text for a
+    // skeleton (HI-5), which would satisfy a retry without the defect being gone.
+    const emptyText = await page.getByText('No executions yet').count();
+    await knownDefect('HI-6', async () => {
+      expect(emptyText).toBe(0);
+    });
   });
 
-  test('HI-7 A filter change first requests the new filters on the old page', async ({
+  test('HI-7 A filter change requests the new filters on the first page only', async ({
     page,
     mockApi,
   }) => {
@@ -362,15 +378,15 @@ test.describe('History audit', () => {
 
     const start = list.length;
     await page.getByRole('button', { name: /^Failed/ }).click();
-    await expect
-      .poll(() => list.slice(start).map((q) => q.get('page')))
-      .toEqual(['1', '0']);
+    // Wait until it has reached the first page, then read how it got there.
+    await expect.poll(() => list.at(-1)?.get('page')).toBe('0');
 
     const seen = list.slice(start);
-    expect(seen.map((q) => q.get('status'))).toEqual([
-      'failed,timeout',
-      'failed,timeout',
-    ]);
+    for (const query of seen)
+      expect(query.get('status')).toBe('failed,timeout');
+    await knownDefect('HI-7', async () => {
+      expect(seen.map((q) => q.get('page'))).toEqual(['0']);
+    });
     // Control: it settles on the first page of the new filter.
     await expect(page).toHaveURL(/status=failed/);
     await expect(
@@ -378,7 +394,7 @@ test.describe('History audit', () => {
     ).toBeVisible();
   });
 
-  test('HI-8 Typing during the search debounce can lose a trailing space', async ({
+  test('HI-8 Typing during the search debounce keeps a trailing space', async ({
     page,
     mockApi,
   }) => {
@@ -391,18 +407,19 @@ test.describe('History audit', () => {
     await search.pressSequentially('foo ', { delay: 20 });
     await expect(search).toHaveValue('foo ');
     await expect
-      .poll(() => list.some((q) => q.get('search') === 'foo'))
+      .poll(() => list.some((q) => q.get('search')?.trim() === 'foo'))
       .toBe(true);
-
-    // The URL write-back replaced the box's copy, eating the space.
-    await expect(search).toHaveValue('foo');
+    // Past the debounce and the URL write-back, before typing on.
+    await page.waitForTimeout(500);
     await search.pressSequentially('bar', { delay: 20 });
-    await expect(search).toHaveValue('foobar');
-    await expect.poll(() => list.at(-1)?.get('search')).toBe('foobar');
-    expect(list.some((q) => q.get('search') === 'foo bar')).toBe(false);
+
+    await knownDefect('HI-8', async () => {
+      await expect(search).toHaveValue('foo bar');
+      await expect.poll(() => list.at(-1)?.get('search')).toBe('foo bar');
+    });
   });
 
-  test('HI-9 ?range=all&createdFrom= shows "All time" but filters by date', async ({
+  test('HI-9 ?range=all&createdFrom= shows a range that matches the date filter', async ({
     page,
     mockApi,
   }) => {
@@ -410,17 +427,25 @@ test.describe('History audit', () => {
     const from = '2026-01-01T00:00:00Z';
     await page.goto(`/operations/runs?range=all&createdFrom=${from}`);
 
-    await expect(page.getByRole('button', { name: 'Time range' })).toHaveText(
-      /All time/
-    );
     await expect(
       page.getByRole('link', { name: 'RUN-p0', exact: true }).first()
     ).toBeVisible();
     expect(list.length).toBeGreaterThan(0);
-    for (const query of list) expect(query.get('createdFrom')).toBe(from);
+    const label = await page
+      .getByRole('button', { name: 'Time range' })
+      .innerText();
+
+    // Dropping the filter and changing the label both make them agree.
+    await knownDefect('HI-9', async () => {
+      expect(
+        /All time/.test(label) &&
+          list.some((q) => q.get('createdFrom') === from),
+        'says "All time" while filtering by date'
+      ).toBe(false);
+    });
   });
 
-  test('HI-10 Retrying execute leaves the old error visible', async ({
+  test('HI-10 Retrying execute clears the old error', async ({
     page,
     mockApi,
   }) => {
@@ -450,15 +475,17 @@ test.describe('History audit', () => {
       dialog.getByRole('button', { name: 'Executing...' })
     ).toBeVisible();
     await expect.poll(() => attempts).toBe(2);
-    // The retry is in flight and the previous failure is still on screen.
-    await expect(dialog.getByText('boom-1')).toBeVisible();
+    // The retry is in flight, so the previous failure should be gone.
+    await knownDefect('HI-10', async () => {
+      await expect(dialog.getByText('boom-1')).toHaveCount(0);
+    });
 
     hold.open();
     await expect(dialog.getByText('boom-2')).toBeVisible();
     await expect(dialog.getByText('boom-1')).toHaveCount(0);
   });
 
-  test('HI-11 Delete and move close their dialogs on failure, while execute stays open', async ({
+  test('HI-11 Delete and move keep their dialogs open on failure, as execute does', async ({
     page,
     mockApi,
   }) => {
@@ -483,8 +510,13 @@ test.describe('History audit', () => {
     await row.getByTitle('Delete').click();
     await page.getByRole('button', { name: 'Confirm' }).click();
     await expect.poll(() => hits.delete).toBe(1);
-    await expect(page.getByRole('button', { name: 'Confirm' })).toHaveCount(0);
+    // The failure has landed; let a closing dialog finish closing.
     await expect(page.getByText('delete-boom').first()).toBeVisible();
+    await page.waitForTimeout(500);
+    await knownDefect('HI-11', async () => {
+      await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible();
+    });
+    await page.keyboard.press('Escape');
 
     await row.hover();
     await row.getByTitle('Move to folder').click();
@@ -493,8 +525,12 @@ test.describe('History audit', () => {
     await move.getByPlaceholder('Enter folder name...').fill('ops');
     await move.getByRole('button', { name: 'Create & Move' }).click();
     await expect.poll(() => hits.move).toBe(1);
-    await expect(page.getByText('Move workflow')).toHaveCount(0);
     await expect(page.getByText('move-boom').first()).toBeVisible();
+    await page.waitForTimeout(500);
+    await knownDefect('HI-11', async () => {
+      await expect(page.getByText('Move workflow')).toBeVisible();
+    });
+    await page.keyboard.press('Escape');
 
     await row.hover();
     await row.getByTitle('Start').click();
@@ -506,7 +542,7 @@ test.describe('History audit', () => {
     await expect(execute.getByRole('textbox')).toHaveValue('value');
   });
 
-  test('HI-12 DENIED: moving a root workflow to root cannot be confirmed; the button is disabled', async ({
+  test('HI-12 Moving a root workflow to root cannot be confirmed; the button is disabled', async ({
     page,
     mockApi,
   }) => {

@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { expect, type Page } from '@playwright/test';
 import { test, buildWorkflow } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json } from './helpers';
+import { api, json, knownDefect } from './helpers';
 
 declare global {
   interface Window {
@@ -158,7 +158,7 @@ async function send(page: Page, text: string) {
 }
 
 test.describe('Chat audit', () => {
-  test('CH-1 Chat status done is never set, so Completed never renders', async ({
+  test('CH-1 A chat whose stream has ended reaches status done and renders Completed', async ({
     page,
     mockApi,
   }) => {
@@ -167,7 +167,6 @@ test.describe('Chat audit', () => {
       { encoding: 'utf8' }
     ).trim();
     console.log(`CH-1 non-test writes of 'done': ${grep ? grep : 'none'}`);
-    expect(grep).toBe('');
 
     await openChat(page, mockApi);
     await sessionCreated(page);
@@ -180,19 +179,18 @@ test.describe('Chat audit', () => {
     await push(page, 'done', { status: 'completed' });
     await expect(cursor(page)).toHaveCount(0);
     await expect(thinking(page)).toHaveCount(0);
-    expect((await chatState(page)).status).toBe('idle');
-    await expect(completed(page)).toHaveCount(0);
-    await expect(page.getByPlaceholder('Chat completed')).toHaveCount(0);
-    await expect(input(page)).toBeEnabled();
 
-    // Nor after the stream ends.
+    // `done` alone ends a turn in session mode. The stream ending ends the chat.
     await closeStream(page);
-    await page.waitForTimeout(500);
-    expect((await chatState(page)).status).toBe('idle');
-    await expect(completed(page)).toHaveCount(0);
+    await knownDefect('CH-1', async () => {
+      await expect
+        .poll(async () => (await chatState(page)).status, { timeout: 2_000 })
+        .toBe('done');
+      await expect(completed(page)).toBeVisible();
+    });
   });
 
-  test('CH-2 Sending a message sets idle while the stream is still open', async ({
+  test('CH-2 After a send, the chat is not idle while the stream is open and chunks arrive', async ({
     page,
     mockApi,
   }) => {
@@ -214,32 +212,36 @@ test.describe('Chat audit', () => {
     await expect.poll(() => ctl.posts.length).toBe(1);
     await expect(bubble(page, 'first question')).toBeVisible();
 
-    // Stream open, reply on its way, and the page reads as idle.
     expect(await page.evaluate(() => window.__sse.closed)).toBe(0);
-    expect((await chatState(page)).status).toBe('idle');
-    await expect(thinking(page)).toHaveCount(0);
-    await expect(input(page)).toBeEnabled();
 
     await push(page, 'llm_start');
     await push(page, 'message', { content: 'Working on it' });
     await expect(page.getByText('Working on it')).toBeVisible();
     await expect(cursor(page)).toBeVisible();
-    expect((await chatState(page)).status).toBe('idle');
-    await expect(thinking(page)).toHaveCount(0);
-    await expect(input(page)).toBeEnabled();
+    // Stream open, a reply arriving: what the page calls this.
+    const whileReplying = (await chatState(page)).status;
     await push(page, 'done');
 
-    // The write itself: from `error`, a send moves status to `idle`.
+    // The write itself: a send from `error`, with the stream still open.
     await push(page, 'error', { message: 'turn failed' });
     await expect.poll(async () => (await chatState(page)).status).toBe('error');
     await send(page, 'second question');
     await expect.poll(() => ctl.posts.length).toBe(2);
     await expect(bubble(page, 'second question')).toBeVisible();
-    await expect.poll(async () => (await chatState(page)).status).toBe('idle');
     expect(await page.evaluate(() => window.__sse.closed)).toBe(0);
+
+    await knownDefect('CH-2', async () => {
+      expect(whileReplying).not.toBe('idle');
+      // `error` is what the send left behind: not leaving it proves nothing.
+      await expect
+        .poll(async () =>
+          ['idle', 'error'].includes((await chatState(page)).status)
+        )
+        .toBe(false);
+    });
   });
 
-  test('CH-3 If the stream then closes without done, the streaming cursor stays on', async ({
+  test('CH-3 If the stream closes without done after a send, the streaming cursor clears', async ({
     page,
     mockApi,
   }) => {
@@ -269,14 +271,14 @@ test.describe('Chat audit', () => {
 
     await closeStream(page);
     expect(await page.evaluate(() => window.__sse.closed)).toBe(1);
-    await page.waitForTimeout(5_000);
-    await expect(cursor(page)).toBeVisible();
-    const state = await chatState(page);
-    expect(state.status).toBe('idle');
-    expect(state.streaming).toBe(1);
+    await knownDefect('CH-3', async () => {
+      await expect(cursor(page)).toHaveCount(0, { timeout: 5_000 });
+      expect((await chatState(page)).streaming).toBe(0);
+    });
+    expect((await chatState(page)).status).toBe('idle');
   });
 
-  test('CH-4 Only one unconfirmed message is kept: a new send drops the earlier retry', async ({
+  test('CH-4 A new send keeps the earlier unconfirmed message on offer for retry', async ({
     page,
     mockApi,
   }) => {
@@ -301,18 +303,18 @@ test.describe('Chat audit', () => {
     // Let the retry settle: a send during it is ignored by the enqueue guard.
     await page.waitForTimeout(300);
 
-    // B fails too: only one retry is on offer, and it is B's.
+    // B fails too: A must still be on offer.
     await send(page, 'message B');
     await expect(banner('message B')).toBeVisible();
-    await expect(banner('message A')).toHaveCount(0);
-    await expect(retry).toHaveCount(1);
+    await knownDefect('CH-4', async () => {
+      await expect(banner('message A')).toHaveCount(1);
+    });
 
-    // B goes through: nothing is left to retry, A is forgotten.
+    // B goes through.
     ctl.nextStatus = () => 200;
     await retry.click();
     await expect(bubble(page, 'message B')).toBeVisible();
-    await expect(retry).toHaveCount(0);
-    await expect(banner('message A')).toHaveCount(0);
+    await expect(banner('message B')).toHaveCount(0);
 
     // Typing A again is a new message, which the server cannot match to the
     // first attempt.

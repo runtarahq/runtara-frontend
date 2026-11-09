@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from '../fixtures';
-import { api, json, logWorkflow, openWorkflow } from './helpers';
+import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
 
 type RunState = {
   status: string;
@@ -112,7 +112,7 @@ const storeBreakpoint = (page: Page) =>
   });
 
 test.describe('Execution audit', () => {
-  test('EX-1 Stop, then a new debug run pausing at the same step gets no Continue', async ({
+  test('EX-1 After Stop, a new debug run pausing at the same step offers Continue', async ({
     page,
     mockApi,
   }) => {
@@ -136,12 +136,13 @@ test.describe('Execution audit', () => {
     await expect(page.getByText('Execution in progress')).toBeVisible({
       timeout: 10_000,
     });
-    await page.waitForTimeout(6_000);
-    await expect(pausedLabel(page)).toHaveCount(0);
-    await expect(continueButton(page)).toHaveCount(0);
+    await knownDefect('EX-1', async () => {
+      await expect(pausedLabel(page)).toBeVisible({ timeout: 6_000 });
+      await expect(continueButton(page)).toBeVisible();
+    });
   });
 
-  test('EX-2 A second pause at the same step (loop) gets no Continue', async ({
+  test('EX-2 A second pause at the same step (loop) offers Continue', async ({
     page,
     mockApi,
   }) => {
@@ -166,12 +167,13 @@ test.describe('Execution audit', () => {
     run.status = 'suspended';
     run.suspensionReason = 'paused';
 
-    await page.waitForTimeout(8_000);
-    await expect(continueButton(page)).toHaveCount(0);
-    await expect(pausedLabel(page)).toHaveCount(0);
+    await knownDefect('EX-2', async () => {
+      await expect(continueButton(page)).toBeVisible({ timeout: 8_000 });
+      await expect(pausedLabel(page)).toBeVisible();
+    });
   });
 
-  test('EX-3 Paused status before the repeat event gives Continue without details', async ({
+  test('EX-3 A repeat event arriving after the paused status fills in the details', async ({
     page,
     mockApi,
   }) => {
@@ -206,15 +208,14 @@ test.describe('Execution audit', () => {
 
     // The event arrives, but the dedupe ref still holds this step id.
     runs.latest().events = [breakpointEvent(2)];
-    await page.waitForTimeout(4_000);
-    expect(await storeBreakpoint(page)).toEqual({
-      isSuspended: true,
-      stepId: null,
+    await knownDefect('EX-3', async () => {
+      await expect
+        .poll(() => storeBreakpoint(page), { timeout: 4_000 })
+        .toEqual({ isSuspended: true, stepId: 'log' });
     });
-    await expect(continueButton(page)).toBeVisible();
   });
 
-  test('EX-4 A pause during the resume guard stays undetected after it expires', async ({
+  test('EX-4 A pause reached during the resume guard is detected once it expires', async ({
     page,
     mockApi,
   }) => {
@@ -250,8 +251,12 @@ test.describe('Execution audit', () => {
     await continueButton(page).click();
 
     // Well past the 5 s guard, with polls still returning identical data.
-    await page.waitForTimeout(12_000);
+    // The resume took effect, so a Continue seen below is a new one.
     await expect(continueButton(page)).toHaveCount(0);
-    await expect(pausedLabel(page)).toHaveCount(0);
+
+    await knownDefect('EX-4', async () => {
+      await expect(continueButton(page)).toBeVisible({ timeout: 12_000 });
+      await expect(pausedLabel(page)).toBeVisible();
+    });
   });
 });
