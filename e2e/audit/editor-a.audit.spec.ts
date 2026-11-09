@@ -581,16 +581,13 @@ test.describe('Editor audit A', () => {
       'CHANGED'
     );
 
-    const prompted = await closePanel(page);
+    // Fixed: case edits mark the panel dirty, so closing asks first.
+    expect(await closePanel(page)).toBe(true);
 
     await openStep(page, 'Switch Step');
-    await knownDefect('ED-11', async () => {
-      if (!prompted) {
-        await expect(
-          panel(page).getByTestId('switch-case-match-0')
-        ).toHaveValue('CHANGED');
-      }
-    });
+    await expect(panel(page).getByTestId('switch-case-match-0')).toHaveValue(
+      'orig'
+    );
 
     // Control: a name edit on the same panel does raise the prompt.
     await panel(page).getByPlaceholder('Step name').fill('Renamed Switch');
