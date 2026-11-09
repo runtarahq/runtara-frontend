@@ -134,3 +134,26 @@ export function restoreEditsForRows(
       : null);
   return { dirtyRows, lastFocusedRowId };
 }
+
+/**
+ * Settle a draft after its create of `sent` succeeded as record `newId`: the
+ * draft's entry goes, and any value typed while the POST was in flight moves
+ * to the new record, so the next flush PUTs it instead of losing it.
+ *
+ * Returns the same map when nothing changed.
+ */
+export function settleCreatedDraft(
+  dirtyRows: Map<string, Record<string, unknown>>,
+  draftId: string,
+  newId: string | undefined,
+  sent: Record<string, unknown>
+): Map<string, Record<string, unknown>> {
+  if (!dirtyRows.has(draftId)) return dirtyRows;
+  const remaining = settleSavedRow(dirtyRows, draftId, sent).get(draftId);
+  const next = new Map(dirtyRows);
+  next.delete(draftId);
+  if (remaining && newId) {
+    next.set(newId, { ...next.get(newId), ...remaining });
+  }
+  return next;
+}

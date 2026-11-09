@@ -4,6 +4,7 @@ import {
   dropEditsForRows,
   recordCellEdit,
   restoreEditsForRows,
+  settleCreatedDraft,
   settleSavedRow,
   type PendingEditState,
 } from './pending-edits';
@@ -202,5 +203,34 @@ describe('restoreEditsForRows (OB-5)', () => {
     );
     expect(restored.dirtyRows).toBe(current.dirtyRows);
     expect(restored.lastFocusedRowId).toBeNull();
+  });
+});
+
+describe('settleCreatedDraft (OB-1)', () => {
+  it('drops the draft once its values were created', () => {
+    const sent = { name: 'Ann' };
+    const next = settleCreatedDraft(
+      new Map([['PENDING_1', sent]]),
+      'PENDING_1',
+      'r9',
+      sent
+    );
+    expect([...next.keys()]).toEqual([]);
+  });
+
+  it('moves values typed during the create to the new record', () => {
+    const next = settleCreatedDraft(
+      new Map([['PENDING_1', { name: 'Anna', city: 'Kyiv' }]]),
+      'PENDING_1',
+      'r9',
+      { name: 'Ann' }
+    );
+    expect(next.has('PENDING_1')).toBe(false);
+    expect(next.get('r9')).toEqual({ name: 'Anna', city: 'Kyiv' });
+  });
+
+  it('returns the same map when the draft has no entry', () => {
+    const map = new Map([['r1', { name: 'x' }]]);
+    expect(settleCreatedDraft(map, 'PENDING_1', 'r9', {})).toBe(map);
   });
 });
