@@ -712,9 +712,10 @@ test.describe('Editor audit A', () => {
     await panel(page)
       .getByRole('button', { name: 'Value', exact: true })
       .click();
-    // Leaving Build collapses the editor; open it again to come back.
+    // Leaving Build collapses the editor; open it again to come back. With
+    // the value kept, the summary names its field count.
     await panel(page)
-      .getByRole('button', { name: /Click to configure/ })
+      .getByRole('button', { name: /Click to configure|^\d+ fields?$/ })
       .click();
     await panel(page)
       .getByRole('button', { name: 'Build', exact: true })
@@ -724,9 +725,8 @@ test.describe('Editor audit A', () => {
     const graph = await capture.save();
     const saved = graph.steps.agent.inputMapping.blob;
     expect(saved.valueType).toBe('composite');
-    await knownDefect('ED-14', async () => {
-      expect(JSON.stringify(saved)).toContain('kept');
-    });
+    // Fixed: the structure carries over Build → Value → Build.
+    expect(JSON.stringify(saved)).toContain('kept');
   });
 
   test('ED-15 A literal null does not reach the form under template or reference, and is never saved as null', async ({
@@ -954,9 +954,8 @@ test.describe('Editor audit A', () => {
     await expect(box).toBeVisible();
     await applyPanel(page);
     const graph = await capture.save();
-    await knownDefect('ED-17', async () => {
-      expect(graph.steps.agent.inputMapping?.blob?.value).toEqual({ a: 1 });
-    });
+    // Fixed with ED-14: the JSON carries over Value → Build → Value.
+    expect(graph.steps.agent.inputMapping?.blob?.value).toEqual({ a: 1 });
   });
 
   test('ED-18 Switch output: Reference and Value leave composite without wiping the data', async ({
