@@ -675,7 +675,8 @@ test.describe('Objects audit', () => {
     await page.goForward();
     await expect(page).toHaveURL(/\/connections/);
     await settle(page);
-    await knownDefect('OB-12', () => warnedOrFlushed('unsaved-forward', 0));
+    // Fixed: leaving the table saves its unsaved rows.
+    await warnedOrFlushed('unsaved-forward', 0);
     await page.goBack();
     await expect(rowAt(page, 0)).toBeVisible({ timeout: 15_000 });
 
@@ -684,9 +685,8 @@ test.describe('Objects audit', () => {
     await typeInto(page, 0, 'unsaved-reload');
     await page.reload();
     await expect(rowAt(page, 0)).toBeVisible({ timeout: 15_000 });
-    await knownDefect('OB-12', () =>
-      warnedOrFlushed('unsaved-reload', dialogsBeforeReload)
-    );
+    // Fixed: a reload with unsaved rows warns first.
+    await warnedOrFlushed('unsaved-reload', dialogsBeforeReload);
 
     // A clicked link: its mousedown counts as an outside click and the
     // deferred flush still runs after the page has unmounted.
