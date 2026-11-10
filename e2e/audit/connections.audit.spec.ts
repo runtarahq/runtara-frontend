@@ -1,7 +1,7 @@
 import { expect, type Page, type Route } from '@playwright/test';
 import { test, buildConnection, buildConnectionType } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json, knownDefect } from './helpers';
+import { api, json } from './helpers';
 
 const LANDING = 'http://localhost:8081/oauth-complete.html';
 const INTEGRATION = 'acme_oauth';
