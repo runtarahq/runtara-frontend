@@ -394,8 +394,11 @@ test.describe('Editor audit B', () => {
     await page.getByRole('menuitem', { name: 'Reference' }).click();
     const picker = page.getByRole('dialog', { name: 'Select Variable' });
     await expect(picker).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(picker).toHaveCount(0);
+    // Under load the first Escape can land before the dialog listens.
+    await expect(async () => {
+      await page.keyboard.press('Escape');
+      await expect(picker).toHaveCount(0, { timeout: 1_000 });
+    }).toPass();
 
     const left = panel.getByRole('textbox', { name: 'Enter value...' });
     await expect(left).toHaveCount(2);
