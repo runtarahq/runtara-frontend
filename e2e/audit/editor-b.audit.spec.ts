@@ -1016,24 +1016,9 @@ test.describe('Editor audit B', () => {
     }
     await page.waitForTimeout(800);
 
-    // Two recording actions ran. Each calls saveToHistory() inside its own
-    // immer `set`, and the outer set overwrites what the inner one wrote.
-    // Removing the unused history code would be just as correct.
+    // Fixed by removal: the history code never recorded and had no caller,
+    // so it is gone rather than half working.
     const after = await history(page);
-    await knownDefect('ED-36', async () => {
-      if (after.length !== null) expect(after.length).toBeGreaterThan(0);
-    });
-
-    // Control: the probe reads the live store, and a direct call does record.
-    if (after.length !== null) {
-      const direct = await page.evaluate(async () => {
-        const m = await import(
-          '/src/features/workflows/stores/workflowStore.ts' as string
-        );
-        m.useWorkflowStore.getState().saveToHistory();
-        return m.useWorkflowStore.getState().history.length;
-      });
-      expect(direct).toBeGreaterThan(after.length);
-    }
+    expect(after.length).toBeNull();
   });
 });

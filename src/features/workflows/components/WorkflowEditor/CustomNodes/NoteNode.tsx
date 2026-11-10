@@ -62,7 +62,7 @@ const NoteNodeComponent = ({ id, data, selected, dragging }: NodeProps) => {
       // Always snap to grid when resizing for consistency
       const width = snapToGrid(params.width);
       const height = snapToGrid(params.height);
-      updateNote(id, { width, height }, false);
+      updateNote(id, { width, height });
       return { width, height };
     },
     [id, updateNote]
