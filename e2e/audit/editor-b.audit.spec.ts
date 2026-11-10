@@ -398,16 +398,23 @@ test.describe('Editor audit B', () => {
     await expect(picker).toHaveCount(0);
 
     const left = panel.getByRole('textbox', { name: 'Enter value...' });
-    await knownDefect('ED-21', async () => {
-      await expect(left).toHaveCount(2);
-      await expect(left.first()).toHaveValue('keep-me');
-      await expect(panel.getByText('Click to select variable...')).toHaveCount(
-        0
-      );
-      // With the value back there is no empty reference for E011 to refuse.
-      await panel.getByTestId('node-config-save').click();
-      await expect(panel).toHaveCount(0, { timeout: 10_000 });
-    });
+    await expect(left).toHaveCount(2);
+    await expect(left.first()).toHaveValue('keep-me');
+    await expect(panel.getByText('Click to select variable...')).toHaveCount(0);
+    // With the value back there is no empty reference for E011 to refuse.
+    // Control: picking a variable does make it a reference.
+    const again = await openPanel(page, 'Worker');
+    await again.getByRole('button', { name: 'immediate' }).first().click();
+    await page.getByRole('menuitem', { name: 'Reference' }).click();
+    await picker
+      .getByRole('button')
+      .filter({ hasText: /^data/ })
+      .first()
+      .click();
+    await expect(picker).toHaveCount(0);
+    await expect(
+      again.getByRole('textbox', { name: 'Enter value...' })
+    ).toHaveCount(1);
   });
 
   test('ED-22 Decimals can be typed into auto-typed composite items', async ({

@@ -268,7 +268,8 @@ export function CompositeValueItem({
         return;
       }
       if (newType === 'reference') {
-        onChange({ valueType: 'reference', value: '' });
+        // The value changes when a variable is picked; cancelling the picker
+        // used to leave an empty reference with the value gone (ED-21).
         setIsPickerOpen(true);
       } else if (newType === 'immediate') {
         onChange({ valueType: 'immediate', value: '' });
