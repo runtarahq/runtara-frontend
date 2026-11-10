@@ -176,3 +176,16 @@ export function withSaveFailed(
   else next.delete(rowId);
   return next;
 }
+
+/**
+ * Whether a row's unsaved values are the very ones its last save failed with,
+ * so a flush should not send them again (OB-4). Each edit makes a new object,
+ * so after an edit this is false and the row goes out.
+ */
+export function isUnchangedFailure(
+  failedValues: ReadonlyMap<string, Record<string, unknown>>,
+  rowId: string,
+  dirtyValues: Record<string, unknown> | undefined
+): boolean {
+  return dirtyValues !== undefined && failedValues.get(rowId) === dirtyValues;
+}
