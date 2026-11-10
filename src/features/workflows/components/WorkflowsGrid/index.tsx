@@ -369,11 +369,11 @@ export function WorkflowsGrid({
   const handleConfirmDelete = useCallback(() => {
     if (!deleteTarget?.id) return;
     setPendingAction({ id: deleteTarget.id, type: 'delete' });
+    // Close only on success, as execute does: a failure keeps the dialog for
+    // a retry (HI-11).
     removeMutation.mutate(deleteTarget.id, {
-      onSettled: () => {
-        setPendingAction(null);
-        setDeleteTarget(null);
-      },
+      onSuccess: () => setDeleteTarget(null),
+      onSettled: () => setPendingAction(null),
     });
   }, [deleteTarget, removeMutation]);
 
@@ -473,10 +473,8 @@ export function WorkflowsGrid({
       moveMutation.mutate(
         { workflowId: moveTarget.id, path: targetPath },
         {
-          onSettled: () => {
-            setPendingAction(null);
-            setMoveTarget(null);
-          },
+          onSuccess: () => setMoveTarget(null),
+          onSettled: () => setPendingAction(null),
         }
       );
     },
