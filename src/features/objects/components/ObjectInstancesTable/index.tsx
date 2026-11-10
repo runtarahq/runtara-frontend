@@ -111,6 +111,15 @@ export function ObjectInstanceDtosTable({
   const [pageSize, setPageSize] = useState(20);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  // A selection belongs to the rows on screen. It used to survive page, sort
+  // and filter changes, so Delete removed rows the user could no longer see
+  // (OB-11). Cleared in the render that sees the change.
+  const viewKey = JSON.stringify([filterCondition, page, pageSize, sorting]);
+  const [selectionView, setSelectionView] = useState(viewKey);
+  if (selectionView !== viewKey) {
+    setSelectionView(viewKey);
+    if (Object.keys(rowSelection).length) setRowSelection({});
+  }
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [showBulkEditDialog, setShowBulkEditDialog] = useState(false);
   const [showBulkInsertDialog, setShowBulkInsertDialog] = useState(false);
