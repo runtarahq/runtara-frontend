@@ -83,7 +83,7 @@ function AiAgentNodeComponent({
     'tool' | 'memory' | null
   >(null);
 
-  const { openNodeConfig } = useNodeConfigContext();
+  const { openNodeConfig, configureNewMemory } = useNodeConfigContext();
 
   const executionStatus = useExecutionStore((state) =>
     state.nodeExecutionStatus.get(id)
@@ -302,7 +302,12 @@ function AiAgentNodeComponent({
   // "Add memory" → create hidden memory provider node directly (no config dialog), enable memory
   const handleAddMemorySelect = useCallback(
     (result: StepPickerResult) => {
-      const { nodes: storeNodes } = useWorkflowStore.getState();
+      const { nodes: storeNodes, ...before } = useWorkflowStore.getState();
+      // The dirty state before the pick, for Cancel to return to (ED-30).
+      const wasDirty = {
+        isDirty: before.isDirty,
+        isStructurallyDirty: before.isStructurallyDirty,
+      };
       const currentNode = storeNodes.find((n) => n.id === id) as Node & {
         positionAbsolute?: { x: number; y: number };
       };
@@ -373,9 +378,8 @@ function AiAgentNodeComponent({
       addStoreEdge(id, newNodeId, 'memory');
 
       // Enable memory + set all defaults on the AI Agent's inputMapping
-      const currentMapping = [
-        ...((currentNode.data as any).inputMapping || []),
-      ];
+      const previousMapping = (currentNode.data as any).inputMapping || [];
+      const currentMapping = [...previousMapping];
 
       const setOrAdd = (
         key: string,
@@ -413,9 +417,27 @@ function AiAgentNodeComponent({
         isStructurallyDirty: true,
       }));
 
+      const afterAdd = useWorkflowStore.getState().dirtyRevision;
       setStepPickerMode(null);
+      // The memory needs a conversation id: open the agent's editor on it.
+      // Leaving without Save takes the provider and the agent's memory
+      // settings back out (ED-30).
+      configureNewMemory(id, () => {
+        const store = useWorkflowStore.getState();
+        // Nothing else changed since: back to the state before the pick.
+        const untouched = store.dirtyRevision === afterAdd;
+        store.removeNode(newNodeId);
+        useWorkflowStore.setState((state) => ({
+          nodes: state.nodes.map((n) =>
+            n.id === id
+              ? { ...n, data: { ...n.data, inputMapping: previousMapping } }
+              : n
+          ),
+          ...(untouched ? wasDirty : {}),
+        }));
+      });
     },
-    [id, addNode, addStoreEdge]
+    [id, addNode, addStoreEdge, configureNewMemory]
   );
 
   // Execution status icon for header

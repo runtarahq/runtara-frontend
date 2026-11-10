@@ -698,42 +698,30 @@ test.describe('Editor audit B', () => {
 
     await page.getByRole('button', { name: 'Add memory to Brain' }).click();
     await page.getByTestId('step-picker-agent-memstore').click();
-
-    // The pick has been handled once the picker has gone.
     await expect(page.getByTestId('step-picker-agent-memstore')).toHaveCount(0);
-    const prompted =
-      (await page.getByRole('dialog').count()) > 0 ||
-      (await page.getByTestId('node-config-dialog').count()) > 0;
+
+    // The pick opens the agent's editor on the memory it needs configured.
+    const panel = page.getByTestId('node-config-dialog');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText('Conversation ID *')).toBeVisible();
+    const provider = (await storeNodes(page)).find(
+      (n: any) => n.id !== 'brain'
+    );
+    expect(provider?.id).toContain('memstore');
+
+    // Cancel backs the memory out, provider and agent settings both.
+    await panel.getByRole('button', { name: 'Cancel' }).click();
+    const discard = page.getByRole('button', { name: 'Discard' });
+    if (await discard.isVisible().catch(() => false)) await discard.click();
+    await expect(panel).toHaveCount(0);
     const nodes = await storeNodes(page);
-    const provider = nodes.find((n: any) => n.id !== 'brain');
-
-    // Correct if the pick prompts, or waits to write, or if Cancel backs it out.
-    let kept: string[] = [];
-    if (!prompted && provider) {
-      await expect(page.getByTitle('Save changes')).toBeEnabled();
-      const brain = nodes.find((n: any) => n.id === 'brain');
-      expect(brain.inputMapping.map((i: any) => i.type)).toEqual(
-        expect.arrayContaining([
-          'memoryEnabled',
-          'memoryProviderStepId',
-          'memoryConversationId',
-        ])
-      );
-      expect(provider.id).toContain('memstore');
-
-      const panel = await openAiPanel(page);
-      await expect(panel.getByText('Conversation ID *')).toBeVisible();
-      await panel.getByRole('button', { name: 'Cancel' }).click();
-      const discard = page.getByRole('button', { name: 'Discard' });
-      if (await discard.isVisible().catch(() => false)) await discard.click();
-      await expect(panel).toHaveCount(0);
-      kept = (await storeNodes(page)).map((n: any) => n.id);
-      expect(ctl.saves()).toBe(0);
-    }
-
-    await knownDefect('ED-30', async () => {
-      expect(kept).not.toContain(provider?.id);
-    });
+    expect(nodes.map((n: any) => n.id)).not.toContain(provider?.id);
+    const brain = nodes.find((n: any) => n.id === 'brain');
+    expect(brain.inputMapping.map((i: any) => i.type)).not.toContain(
+      'memoryEnabled'
+    );
+    await expect(page.getByTitle('No changes to save')).toBeVisible();
+    expect(ctl.saves()).toBe(0);
   });
 
   test('ED-31 A late test response for an old capability does not populate results for the new one', async ({

@@ -274,9 +274,21 @@ function WorkflowEditorContent({
     },
     [workflow, readOnly, setPendingNewNode, editNode]
   );
-  const nodeConfigContextValue = useMemo(
-    () => ({ openNodeConfig }),
+  // Memory picked for an AI Agent, until its editor is saved or left. It
+  // used to go straight into the workflow with no way to back out (ED-30).
+  const memoryDraftRef = useRef<{ agentId: string; revert: () => void } | null>(
+    null
+  );
+  const configureNewMemory = useCallback(
+    (agentId: string, revert: () => void) => {
+      memoryDraftRef.current = { agentId, revert };
+      openNodeConfig(agentId);
+    },
     [openNodeConfig]
+  );
+  const nodeConfigContextValue = useMemo(
+    () => ({ openNodeConfig, configureNewMemory }),
+    [openNodeConfig, configureNewMemory]
   );
 
   const ref = useRef(null);
@@ -1188,6 +1200,7 @@ function WorkflowEditorContent({
           nodes: synced,
           ...dirtied(state),
         }));
+      memoryDraftRef.current = null;
       closeNodeConfig();
       return true;
     },
@@ -1573,7 +1586,12 @@ function WorkflowEditorContent({
         <NodeConfigPanel
           open={!!editingNodeId}
           onOpenChange={(open) => {
-            if (!open) closeNodeConfig();
+            if (open) return;
+            // Closed without Save (a Save clears the draft first).
+            const draft = memoryDraftRef.current;
+            memoryDraftRef.current = null;
+            if (draft && draft.agentId === editingNodeId) draft.revert();
+            closeNodeConfig();
           }}
           nodeId={editingNodeData.id}
           parentNodeId={editingNodeData.parentId}
