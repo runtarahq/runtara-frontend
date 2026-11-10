@@ -807,11 +807,10 @@ test.describe('Objects audit', () => {
     await expect(insertTitle(page)).toBeVisible();
     await expect(records(page)).toHaveValue('');
     await settle(page);
-    await knownDefect('OB-14', async () => {
-      await expect(page.getByRole('dialog')).not.toContainText(
-        '1 created, 0 skipped'
-      );
-    });
+    // Fixed: a result for a closed dialog is not shown on reopen.
+    await expect(page.getByRole('dialog')).not.toContainText(
+      '1 created, 0 skipped'
+    );
   });
 
   test('OB-15 Bulk insert: Insert after a success does not re-insert the same payload', async ({

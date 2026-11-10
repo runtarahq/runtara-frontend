@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Schema } from '@/generated/RuntaraRuntimeApi';
 import { Button } from '@/shared/components/ui/button';
 import { Checkbox } from '@/shared/components/ui/checkbox';
@@ -57,6 +57,10 @@ export function BulkInsertDialog({
   const [onError, setOnError] = useState<BulkValidationMode>('stop');
   const [conflictCols, setConflictCols] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<BulkCreateResult | null>(null);
+  // Each opening of the dialog is a session. A result for a session that was
+  // closed belongs to no form on screen, so it is not shown when the dialog
+  // reopens (OB-14).
+  const sessionRef = useRef(0);
 
   const columnNames = useMemo(
     () => getWritableObjectColumns(schema.columns).map((c) => c.name),
@@ -96,17 +100,19 @@ export function BulkInsertDialog({
       return;
     }
 
+    const session = sessionRef.current;
     const out = await onSubmit(
       parsed,
       onConflict,
       onError,
       Array.from(conflictCols)
     );
-    if (out) setResult(out);
+    if (out && session === sessionRef.current) setResult(out);
   };
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
+      sessionRef.current += 1;
       setRawJson('');
       setParseError(null);
       setResult(null);
