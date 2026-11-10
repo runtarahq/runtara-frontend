@@ -93,24 +93,30 @@ export function useCreateObjectInstanceDto(connectionId?: string | null) {
   >({
     mutationFn: (token, { data }) => createInstance(token, data, connectionId),
     onSuccess: (newInstance, variables) => {
-      // Optimistically add the new instance to all matching queries
+      const queryKey = queryKeys.objects.instances.bySchema(
+        variables.schemaId,
+        connectionId
+      );
+      // Count the new instance everywhere, but show it only on a last page,
+      // where a new record lands; it used to be appended to every cached page,
+      // whatever its filter or position (OB-10). A refetch then puts it where
+      // the server says it belongs.
       queryClient.setQueriesData<PageObjectInstance>(
-        {
-          queryKey: queryKeys.objects.instances.bySchema(
-            variables.schemaId,
-            connectionId
-          ),
-        },
+        { queryKey },
         (oldData) => {
           if (!oldData) return oldData;
-
+          const lastPage =
+            oldData.number >= Math.max(0, oldData.totalPages - 1);
           return {
             ...oldData,
-            content: [...oldData.content, newInstance],
+            content: lastPage
+              ? [...oldData.content, newInstance]
+              : oldData.content,
             totalElements: oldData.totalElements + 1,
           };
         }
       );
+      void queryClient.invalidateQueries({ queryKey });
     },
   });
 }
