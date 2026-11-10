@@ -517,9 +517,8 @@ test.describe('Shared audit', () => {
     await page.waitForTimeout(500);
 
     // State's request is still in flight, so it should still say so.
-    await knownDefect('SH-7', async () => {
-      await expect(panelNote('Loading…')).toBeVisible();
-    });
+    // Fixed: the other section's load keeps its own indicator.
+    await expect(panelNote('Loading…')).toBeVisible();
 
     gates[1].open();
     await expect(page.getByText('Loaded the full state')).toBeVisible();
@@ -579,10 +578,9 @@ test.describe('Shared audit', () => {
 
     await dialog.getByRole('button', { name: 'Execute' }).click();
     await expect.poll(() => bodies.length).toBe(1);
-    await knownDefect('SH-8', async () => {
-      expect(JSON.stringify(bodies[0])).toContain('second.txt');
-      expect(JSON.stringify(bodies[0])).not.toContain('first.txt');
-    });
+    // Fixed: the last file chosen wins.
+    expect(JSON.stringify(bodies[0])).toContain('second.txt');
+    expect(JSON.stringify(bodies[0])).not.toContain('first.txt');
   });
 
   test('SH-9 A 429 entitlement denial gets the entitlement toast', async ({
