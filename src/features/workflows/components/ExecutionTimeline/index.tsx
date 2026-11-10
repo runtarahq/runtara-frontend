@@ -151,7 +151,12 @@ function ExecutionTimelineContent({
         input.request.instanceId === instanceId &&
         input.request.requestId === requestId
     );
-  const pendingInputs = (pendingInputData ?? []).filter(
+  // A finished run waits for nothing: the last poll's pending inputs are
+  // stale once it ends, and used to keep a step "waiting for input" (HI-4).
+  const livePendingInputs = isActiveStatus(instanceData?.status)
+    ? (pendingInputData ?? [])
+    : [];
+  const pendingInputs = livePendingInputs.filter(
     (input) =>
       !forTarget(input.requestId).some(
         (submission) => submission.state === 'accepted'

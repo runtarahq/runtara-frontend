@@ -306,9 +306,8 @@ test.describe('History audit', () => {
       pendingAtFinish
     );
     // Finished, nothing pending on the server: nothing should still be waiting.
-    await knownDefect('HI-4', async () => {
-      await expect(page.getByText('waiting for input')).toHaveCount(0);
-    });
+    // Fixed: a finished run's stale pending inputs are ignored.
+    await expect(page.getByText('waiting for input')).toHaveCount(0);
   });
 
   test('HI-5 An empty history list stays in place during a poll', async ({
