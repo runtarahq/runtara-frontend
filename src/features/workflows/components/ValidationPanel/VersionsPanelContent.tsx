@@ -17,7 +17,7 @@ interface VersionsPanelContentProps {
   onVersionRebuild?: (version: number) => void;
   /** Version currently being rebuilt — disables its Rebuild button and
    *  switches the spinner on so the row reflects the in-flight state. */
-  rebuildingVersion?: number;
+  rebuildingVersions?: number[];
   isLoading?: boolean;
 }
 
@@ -50,7 +50,7 @@ export function VersionsPanelContent({
   onVersionChange,
   onVersionActivate,
   onVersionRebuild,
-  rebuildingVersion,
+  rebuildingVersions,
   isLoading = false,
 }: VersionsPanelContentProps) {
   const sortedVersions = useMemo(
@@ -97,7 +97,8 @@ export function VersionsPanelContent({
             // Rebuild button. Treat an in-flight rebuild of this version
             // as still-compiled for layout purposes — the user clicked
             // the button on a compiled row and shouldn't see it vanish.
-            const isRebuilding = rebuildingVersion === version.versionNumber;
+            const isRebuilding =
+              rebuildingVersions?.includes(version.versionNumber) ?? false;
             const isCompiled = version.compiled || isRebuilding;
             // A row is "failed" when the worker recorded a failure and we
             // are NOT currently mid-rebuild (the rebuild click should
