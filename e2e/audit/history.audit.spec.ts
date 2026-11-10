@@ -384,9 +384,7 @@ test.describe('History audit', () => {
     const seen = list.slice(start);
     for (const query of seen)
       expect(query.get('status')).toBe('failed,timeout');
-    await knownDefect('HI-7', async () => {
-      expect(seen.map((q) => q.get('page'))).toEqual(['0']);
-    });
+    expect(seen.map((q) => q.get('page'))).toEqual(['0']);
     // Control: it settles on the first page of the new filter.
     await expect(page).toHaveURL(/status=failed/);
     await expect(

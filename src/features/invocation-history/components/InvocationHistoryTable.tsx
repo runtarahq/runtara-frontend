@@ -70,6 +70,16 @@ export function InvocationHistoryTable({
     [visibleExtraColumns]
   );
   const { pagination, setPagination } = usePagination();
+  // Reset to the first page whenever the active filters change, during the
+  // render that sees them: an effect let one query go out with the new
+  // filters on the old page first (HI-7).
+  const filtersKey = JSON.stringify(filters);
+  const [pagedFilters, setPagedFilters] = useState(filtersKey);
+  if (pagedFilters !== filtersKey) {
+    setPagedFilters(filtersKey);
+    if (pagination.pageIndex !== 0)
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }
   const [search, setSearch] = useState(filters.search ?? '');
   useEffect(() => {
     setSearch(filters.search ?? '');
@@ -128,12 +138,6 @@ export function InvocationHistoryTable({
   const totalPages = query.data?.totalPages ?? 0;
   const totalElements = query.data?.totalElements ?? 0;
   const isFetching = query.isFetching;
-
-  // Reset to the first page whenever the active filters change
-  useEffect(() => {
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
 
   const handleSortingChange = useCallback(
     (updater: SortingState | ((old: SortingState) => SortingState)) => {
