@@ -889,9 +889,7 @@ test.describe('Objects audit', () => {
     await expect(name).toHaveValue('CustomerV2');
     // Give the name-to-table sync time to run before reading the result.
     await settle(page);
-    await knownDefect('OB-17', async () => {
-      await expect(table).toHaveValue('my_custom_table');
-    });
+    await expect(table).toHaveValue('my_custom_table');
   });
 
   test('OB-18 Schema form loads the new schema across a connection switch', async ({
