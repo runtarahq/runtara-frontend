@@ -6,6 +6,8 @@ import { Spinner } from '@/shared/components/ui/spinner';
 export function ConnectionConflictNotice({
   message,
   loadingLatest,
+  latestFailed = false,
+  onRetryLatest,
   changedFields,
   canRecover,
   applying,
@@ -14,6 +16,9 @@ export function ConnectionConflictNotice({
 }: {
   message: string;
   loadingLatest: boolean;
+  /** The latest version could not be loaded, so its changes are unknown. */
+  latestFailed?: boolean;
+  onRetryLatest?: () => void;
   changedFields: readonly string[];
   canRecover: boolean;
   applying: boolean;
@@ -36,6 +41,11 @@ export function ConnectionConflictNotice({
             <p className="flex items-center gap-2 text-sm">
               <Spinner className="size-4" /> Loading the latest version…
             </p>
+          ) : latestFailed ? (
+            <p className="text-sm">
+              The latest version could not be loaded, so its changes are not
+              known yet. Your submitted draft is still in the form.
+            </p>
           ) : (
             <p className="text-sm">
               {changedFields.length > 0
@@ -50,8 +60,9 @@ export function ConnectionConflictNotice({
               size="sm"
               variant="secondary"
               bordered
-              disabled={!canRecover}
-              onClick={onReload}
+              // After a failed load, Reload latest tries the load again.
+              disabled={!canRecover && !(latestFailed && onRetryLatest)}
+              onClick={latestFailed && onRetryLatest ? onRetryLatest : onReload}
             >
               Reload latest
             </Button>

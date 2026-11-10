@@ -43,6 +43,8 @@ interface ConnectionConflictState {
   pending: UpdateConnectionInput;
   latest?: ConnectionRecord;
   loadingLatest: boolean;
+  /** Loading the latest version failed: nothing is known about it yet. */
+  latestFailed?: boolean;
 }
 
 function changedReadableFields(opened: unknown, latest: unknown): string[] {
@@ -152,6 +154,28 @@ export function Connection() {
   // connection's stored credentials (no re-entry).
   const { authorize, isAuthorizing } = useConnectionOAuth();
 
+  // Load the newest version for a conflict. A failure is said as such, with a
+  // way to try again (CN-4, CN-5): the notice used to describe changes it had
+  // never seen, and left both recovery buttons disabled for good.
+  const loadLatest = (pending: UpdateConnectionInput) => {
+    if (!id) return;
+    void getConnectionById(auth.user?.access_token ?? '', id)
+      .then((latest) => {
+        setConflict((current) =>
+          current?.pending === pending
+            ? { ...current, latest, loadingLatest: false, latestFailed: false }
+            : current
+        );
+      })
+      .catch(() => {
+        setConflict((current) =>
+          current?.pending === pending
+            ? { ...current, loadingLatest: false, latestFailed: true }
+            : current
+        );
+      });
+  };
+
   const mutation = useCustomMutation({
     mutationFn: updateConnection,
     suppressConflictToasts: true,
@@ -173,25 +197,7 @@ export function Connection() {
         error.response.data?.error ??
         'This connection changed after you opened it.';
       setConflict({ message, pending: variables, loadingLatest: true });
-      void getConnectionById(auth.user?.access_token ?? '', id)
-        .then((latest) => {
-          setConflict((current) =>
-            current?.pending === variables
-              ? { ...current, latest, loadingLatest: false }
-              : current
-          );
-        })
-        .catch(() => {
-          setConflict((current) =>
-            current?.pending === variables
-              ? {
-                  ...current,
-                  message: `${current.message} The latest version could not be loaded; try again.`,
-                  loadingLatest: false,
-                }
-              : current
-          );
-        });
+      loadLatest(variables);
     },
   });
 
@@ -328,6 +334,15 @@ export function Connection() {
     <ConnectionConflictNotice
       message={conflict.message}
       loadingLatest={conflict.loadingLatest}
+      latestFailed={Boolean(conflict.latestFailed)}
+      onRetryLatest={() => {
+        setConflict((current) =>
+          current
+            ? { ...current, loadingLatest: true, latestFailed: false }
+            : current
+        );
+        loadLatest(conflict.pending);
+      }}
       changedFields={conflictChanges}
       canRecover={Boolean(conflict.latest && latestVersion)}
       applying={mutation.isPending}

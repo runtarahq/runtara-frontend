@@ -50,4 +50,27 @@ describe('ConnectionConflictNotice', () => {
     expect(onReload).toHaveBeenCalledTimes(1);
     expect(onReapply).toHaveBeenCalledTimes(1);
   });
+
+  it('says a failed load is unknown, and Reload latest retries it (CN-4, CN-5)', () => {
+    const onRetryLatest = vi.fn();
+    render(
+      <ConnectionConflictNotice
+        message="Connection changed since it was opened"
+        loadingLatest={false}
+        latestFailed
+        onRetryLatest={onRetryLatest}
+        changedFields={[]}
+        canRecover={false}
+        applying={false}
+        onReload={vi.fn()}
+        onReapply={vi.fn()}
+      />
+    );
+    expect(
+      screen.queryByText(/fields that are not readable/)
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/could not be loaded/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reload latest' }));
+    expect(onRetryLatest).toHaveBeenCalledOnce();
+  });
 });
