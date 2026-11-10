@@ -80,6 +80,7 @@ import {
 } from '@/features/workflows/components/WorkflowEditor/editor-preferences';
 import type { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
 import { MEMORY_PRESET_MIB } from '@/features/workflows/utils/memory';
+import { isActiveStatus } from '@/shared/utils/status-display';
 
 function hasOwn(object: object, key: string) {
   return Object.prototype.hasOwnProperty.call(object, key);
@@ -1618,12 +1619,7 @@ export function Workflow() {
         onCanvasDetailChange={setCanvasDetail}
         onAddNote={handleAddNote}
         isExecuting={!!executingInstanceId}
-        isExecutionActive={
-          executionInstanceData?.status &&
-          ['queued', 'compiling', 'running', 'suspended'].includes(
-            executionInstanceData.status
-          )
-        }
+        isExecutionActive={isActiveStatus(executionInstanceData?.status)}
         isDirty={hasStructuralUnsavedChanges}
         hasUnsavedChanges={hasUnsavedChanges}
         onStop={handleStop}
