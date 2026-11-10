@@ -918,15 +918,11 @@ test.describe('Connections audit', () => {
     await openConnection(page, 'conn_a');
     await expect(page.getByText('Waiting for your confirmation')).toBeVisible();
     // Disabled or gone: either way, no enabled Reconnect.
-    await knownDefect('CN-16', async () => {
-      await expect(
-        cardButton(page, 'Reconnect').and(page.locator(':enabled'))
-      ).toHaveCount(0, { timeout: 1_000 });
-    });
+    await expect(
+      cardButton(page, 'Reconnect').and(page.locator(':enabled'))
+    ).toHaveCount(0, { timeout: 1_000 });
 
-    await cardButton(page, 'Reconnect').click();
-    await popupOpened(ctl);
-    expect(ctl.counts.authorize).toEqual(['conn_a']);
+    expect(ctl.counts.authorize).toEqual([]);
     await expect(page.getByText('Waiting for your confirmation')).toBeVisible();
   });
 

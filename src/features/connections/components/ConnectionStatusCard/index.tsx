@@ -155,7 +155,11 @@ export function ConnectionStatusCard({
     onReconnect?.();
   };
 
-  const reconnectButton = isOAuth && onReconnect && (
+  // An authorization waiting for confirmation is decided first: a reconnect
+  // would start another one beside it (CN-16).
+  // The generated status type predates this state; the API sends it.
+  const awaitingDecision = (status as string) === 'PENDING_CONFIRMATION';
+  const reconnectButton = isOAuth && onReconnect && !awaitingDecision && (
     <Button
       type="button"
       size="sm"
