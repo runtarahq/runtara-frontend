@@ -20,6 +20,23 @@
   };
 
   var params = new URLSearchParams(window.location.search);
+  var title = document.getElementById('title');
+  var detail = document.getElementById('detail');
+  var close = document.getElementById('close');
+
+  // No outcome in the query: a reload, after the first visit removed it.
+  // Report nothing; reading it as a failure failed whatever flow was running
+  // elsewhere (CN-3).
+  if (!params.get('result')) {
+    title.textContent = 'Authorization finished';
+    detail.textContent = 'You can close this window.';
+    close.hidden = false;
+    close.addEventListener('click', function () {
+      window.close();
+    });
+    return;
+  }
+
   var pending = params.get('result') === 'pending';
   var success = params.get('result') === 'ok' || pending;
   var message = {
@@ -47,9 +64,6 @@
     }
   }
 
-  var title = document.getElementById('title');
-  var detail = document.getElementById('detail');
-  var close = document.getElementById('close');
   if (pending) {
     title.textContent = 'Authorization received';
     title.className = 'success';

@@ -349,13 +349,11 @@ test.describe('Connections audit', () => {
         'Finishing authorization…'
       );
       await page.waitForTimeout(300);
-      await knownDefect('CN-3', async () => {
-        const reported = (await received()).slice(before);
-        expect(reported.filter((message) => !message.success)).toEqual([]);
-        await expect(tab.locator('#title')).not.toHaveText(
-          'Authorization failed'
-        );
-      });
+      const reported = (await received()).slice(before);
+      expect(reported.filter((message) => !message.success)).toEqual([]);
+      await expect(tab.locator('#title')).not.toHaveText(
+        'Authorization failed'
+      );
       await tab.close();
     }
 
@@ -374,15 +372,13 @@ test.describe('Connections audit', () => {
       'Finishing authorization…'
     );
     await page.waitForTimeout(1_000);
-    await knownDefect('CN-3', async () => {
-      // Read once: a retrying toHaveCount(0) would pass when the toast expires.
-      expect(
-        await toast(
-          page,
-          'Reconnect failed: OAuth authorization failed (server_error)'
-        ).count()
-      ).toBe(0);
-    });
+    // Read once: a retrying toHaveCount(0) would pass when the toast expires.
+    expect(
+      await toast(
+        page,
+        'Reconnect failed: OAuth authorization failed (server_error)'
+      ).count()
+    ).toBe(0);
   });
 
   async function conflictWithFailedLatest(page: Page, mockApi: MockApi) {
