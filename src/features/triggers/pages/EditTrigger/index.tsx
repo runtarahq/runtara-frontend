@@ -119,8 +119,10 @@ export function EditTrigger() {
         });
         break;
       case 'APPLICATION':
+        // Every key of an Application trigger is a pair in the form, so the
+        // form's configuration is the whole of it: merging the loaded one
+        // underneath brought a removed pair back (TR-2).
         finalConfiguration = {
-          ...existingConfiguration,
           ...(configuration || {}),
           applicationName,
           eventType,
