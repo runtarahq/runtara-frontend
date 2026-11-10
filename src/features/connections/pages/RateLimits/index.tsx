@@ -120,6 +120,9 @@ export function RateLimits() {
   };
 
   const handleSelectConnection = (connection: RateLimitStatusDto) => {
+    // The deep link's scroll is for arriving from the link only. Left armed
+    // when its connection was missing, it fired on a later card click (AN-3).
+    scrollToHistory.current = false;
     if (selectedConnectionId === connection.connectionId) {
       setSelectedConnectionId(null);
     } else {
