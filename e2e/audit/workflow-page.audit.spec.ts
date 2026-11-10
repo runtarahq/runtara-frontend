@@ -527,12 +527,11 @@ test.describe('Workflow page audit: compilation watch', () => {
     // "gone" check would pass once the toast timed out on its own.
     await page.waitForTimeout(1_000);
     expect(answered).toBe(false);
-    await knownDefect('WF-6', async () => {
-      expect(await failureToast(page).count()).toBe(0);
-      expect(
-        await page.locator('header').getByText('Compile failed').count()
-      ).toBe(0);
-    });
+    // Fixed: the last attempt's cached failure is dropped on rebuild.
+    expect(await failureToast(page).count()).toBe(0);
+    expect(
+      await page.locator('header').getByText('Compile failed').count()
+    ).toBe(0);
 
     held.release();
     await expect.poll(() => answered).toBe(true);
