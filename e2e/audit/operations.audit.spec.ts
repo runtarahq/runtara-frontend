@@ -401,18 +401,18 @@ test.describe('Operations audit', () => {
 
     // The poll has landed: the old pager and the old row went with it.
     await expect(last).toHaveCount(0, { timeout: POLL + 5_000 });
-    // Control: 25 requests still exist.
-    await expect(page.getByRole('tab', { name: /Open\s*25/ })).toBeVisible();
 
     // Rows, a pager or the empty text: anything but a bare table header.
-    await knownDefect('OP-6', async () => {
-      await expect(
-        page
-          .locator('table tbody tr')
-          .or(page.getByRole('button', { name: 'Previous page' }))
-          .or(page.getByText('No requests waiting for an answer.'))
-          .first()
-      ).toBeVisible();
+    await expect(
+      page
+        .locator('table tbody tr')
+        .or(page.getByRole('button', { name: 'Previous page' }))
+        .or(page.getByText('No requests waiting for an answer.'))
+        .first()
+    ).toBeVisible();
+    // Control: 25 requests still exist, and the next poll counts them.
+    await expect(page.getByRole('tab', { name: /Open\s*25/ })).toBeVisible({
+      timeout: POLL + 5_000,
     });
   });
 
