@@ -119,7 +119,7 @@ export function useOAuthPopup() {
           fn();
         };
 
-        const onResult = (data: unknown) => {
+        const onResult = (data: unknown, fromThisPopup: boolean) => {
           const result = data as Partial<OAuthResult> & { type?: string };
           if (result?.type !== 'oauth-complete') return;
           if (result.success) {
@@ -132,6 +132,15 @@ export function useOAuthPopup() {
               })
             );
           } else {
+            // A failure names no connection, and over the channel it reached
+            // every tab's flow, rejecting this one for another tab's denied
+            // consent (CN-2). Take it from this popup, or when it names this
+            // flow's connection, or when the flow has none to tell by.
+            const ours =
+              fromThisPopup ||
+              !connectionId ||
+              result.connectionId === connectionId;
+            if (!ours) return;
             settle(() => reject(new Error(describeOAuthError(result.error))));
           }
         };
@@ -139,14 +148,14 @@ export function useOAuthPopup() {
         // The landing page is on the console's origin: anything else isn't it.
         const handler = (event: MessageEvent) => {
           if (event.origin !== window.location.origin) return;
-          onResult(event.data);
+          onResult(event.data, event.source === popup);
         };
 
         // What the next flow calls on taking the popup over: settle this one.
         cleanupRef.current = () =>
           settle(() => reject(new OAuthPopupSupersededError()));
         window.addEventListener('message', handler);
-        if (channel) channel.onmessage = (event) => onResult(event.data);
+        if (channel) channel.onmessage = (event) => onResult(event.data, false);
 
         const abandon = () => settle(() => reject(new OAuthPopupClosedError()));
 
