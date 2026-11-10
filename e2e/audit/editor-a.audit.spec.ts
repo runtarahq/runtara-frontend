@@ -482,18 +482,9 @@ test.describe('Editor audit A', () => {
         .getByTestId('validation-message')
         .getByText('Failed to parse graph: missing field `config`');
     await submitPanel(page, missingConfig);
-    await knownDefect('ED-9', async () => {
-      await expect(missingConfig()).toHaveCount(0);
-    });
-    await expect(panel(page)).toHaveCount(1);
-    await expect(step(page, 'Filter')).toHaveCount(0);
-
-    // Control: typing and clearing an operand leaves the same blank condition
-    // on screen, but now it is in the form, and the identical step is accepted.
-    const arg1 = panel(page).getByPlaceholder('Arg 1');
-    await arg1.fill('x');
-    await arg1.fill('');
-    await applyPanel(page);
+    await expect(missingConfig()).toHaveCount(0);
+    // The step is added with the condition it displayed.
+    await expect(panel(page)).toHaveCount(0);
     const graph = await capture.save();
     expect(graph.steps.filter.config.condition).toMatchObject({
       type: 'operation',

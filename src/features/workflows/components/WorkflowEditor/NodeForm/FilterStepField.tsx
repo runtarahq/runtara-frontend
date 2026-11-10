@@ -1,10 +1,11 @@
-import { useContext, useEffect, useMemo, useRef } from 'react';
+import { useContext, useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { NodeFormContext } from './NodeFormContext';
 import { Label } from '@/shared/components/ui/label';
 import { ConditionEditor } from '@/shared/components/ui/condition-editor';
 import { composeConditionSuggestions } from './InputMappingValueField/VariableSuggestions';
 import { SourceMappingValueField } from './SourceMappingValueField';
+import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 
 type FilterStepFieldProps = {
   name: string;
@@ -52,8 +53,6 @@ export function FilterStepField({ name }: FilterStepFieldProps) {
     control: form.control,
   });
 
-  const hasInitializedRef = useRef(false);
-
   const defaultCondition = useMemo(
     () => ({
       type: 'operation',
@@ -98,17 +97,21 @@ export function FilterStepField({ name }: FilterStepFieldProps) {
     return suggestions;
   }, [previousSteps]);
 
+  // A step being added already has an id but is not on the canvas yet. Only
+  // a step on the canvas is in edit mode; testing the id skipped the default
+  // for every new step, which then showed a condition the form did not have
+  // (ED-9).
+  const onCanvas = useWorkflowStore((state) =>
+    Boolean(nodeId && state.nodes.some((n) => n.id === nodeId))
+  );
+
   // Initialize default condition for new Filter steps
   useEffect(() => {
     if (stepType !== 'Filter') return;
-    if (nodeId) return; // Don't reset in edit mode
-    if (hasInitializedRef.current) return;
-
-    if (!filterCondition) {
-      hasInitializedRef.current = true;
-      form.setValue('filterCondition', defaultCondition);
-    }
-  }, [stepType, nodeId, filterCondition, form, defaultCondition]);
+    if (onCanvas) return; // Don't reset in edit mode
+    // Again if a form reset clears it: the editor never sets it to nothing.
+    if (!filterCondition) form.setValue('filterCondition', defaultCondition);
+  }, [stepType, onCanvas, filterCondition, form, defaultCondition]);
 
   if (stepType !== 'Filter') {
     return null;
