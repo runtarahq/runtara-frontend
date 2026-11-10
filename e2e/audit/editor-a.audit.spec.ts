@@ -263,9 +263,9 @@ test.describe('Editor audit A', () => {
 
     // One panel is already showing, so give the double-click time to land.
     await page.waitForTimeout(1_000);
-    await knownDefect('ED-1', async () => {
-      await expect(panel(page)).toHaveCount(1);
-    });
+    await expect(panel(page)).toHaveCount(1);
+    // And it is still the new step's.
+    await expect(panel(page)).toContainText('New ');
   });
 
   test('ED-2 After deleting the edited node, a single click only selects', async ({
