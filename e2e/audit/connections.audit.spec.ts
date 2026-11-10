@@ -237,11 +237,13 @@ test.describe('Connections audit', () => {
     await openList(page, 'Conn A');
 
     await rowReconnect(page, 'Conn A').click();
-    const popup = await popupOpened(ctl);
+    const first = await popupOpened(ctl);
     await rowReconnect(page, 'Conn B').click();
-    // The second flow reuses the named window: A's consent page is gone.
+    // The second flow closes A's window and opens its own, so the new one
+    // starts with B's flow id (CN-2): A's consent page is gone.
+    const popup = await popupOpened(ctl, 2);
+    await expect.poll(() => first.isClosed()).toBe(true);
     await expect.poll(() => popup.url()).toContain('c=conn_b');
-    expect(ctl.popups).toHaveLength(1);
     expect(ctl.counts.authorize).toEqual(['conn_a', 'conn_b']);
     // Fixed: taking over the popup settles A, and the user is told.
     await expect(
@@ -273,7 +275,7 @@ test.describe('Connections audit', () => {
     // Control: the same jump does time out a flow that is still listening.
     await expect(rowReconnect(page, 'Conn A')).toBeEnabled();
     await rowReconnect(page, 'Conn A').click();
-    await popupOpened(ctl, 2);
+    await popupOpened(ctl, 3);
     await page.clock.fastForward(301_000);
     await expect(toast(page, 'OAuth authorization timed out')).toHaveCount(1);
   });

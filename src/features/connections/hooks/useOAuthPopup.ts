@@ -43,6 +43,11 @@ const CLOSED_GRACE_MS = 1500;
 const WAIT_AFTER_CLOSE_MS = 120000;
 // Backstop for a popup that is neither completed nor closed (e.g. detached).
 const TIMEOUT_MS = 300000;
+// A popup opened with an opener starts with a copy of the opener's
+// sessionStorage, and keeps it across the provider's pages. The landing page
+// reads this flow id from it and sends it back, which tells this tab's popup
+// from another tab's when no connection is named.
+const FLOW_KEY = 'runtara-oauth-flow';
 
 // The console's OAuth landing page (public/oauth-complete.js) reports on this
 // channel and to window.opener; see there.
@@ -64,6 +69,7 @@ function describeOAuthError(code: unknown): string {
 
 export function useOAuthPopup() {
   const cleanupRef = useRef<(() => void) | null>(null);
+  const popupRef = useRef<Window | null>(null);
 
   const openOAuthPopup = useCallback(
     (
@@ -76,7 +82,20 @@ export function useOAuthPopup() {
         // The previous flow loses the shared popup: settle it, which also
         // stops it listening.
         cleanupRef.current?.();
+        // A reused window keeps the copy of sessionStorage from when it was
+        // first opened, so it would carry the old flow's id: open a new one.
+        if (popupRef.current && !popupRef.current.closed)
+          popupRef.current.close();
 
+        const flow =
+          typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : String(Math.random());
+        try {
+          sessionStorage.setItem(FLOW_KEY, flow);
+        } catch {
+          // No sessionStorage: failures then fall back to the checks below.
+        }
         const popup = window.open(
           authorizationUrl,
           'oauth-popup',
@@ -92,6 +111,7 @@ export function useOAuthPopup() {
           return;
         }
 
+        popupRef.current = popup;
         let settled = false;
         let closedGraceTimer: ReturnType<typeof setTimeout> | undefined;
         let waitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -120,7 +140,10 @@ export function useOAuthPopup() {
         };
 
         const onResult = (data: unknown, fromThisPopup: boolean) => {
-          const result = data as Partial<OAuthResult> & { type?: string };
+          const result = data as Partial<OAuthResult> & {
+            type?: string;
+            flow?: string;
+          };
           if (result?.type !== 'oauth-complete') return;
           if (result.success) {
             if (connectionId && result.connectionId !== connectionId) return;
@@ -134,10 +157,12 @@ export function useOAuthPopup() {
           } else {
             // A failure names no connection, and over the channel it reached
             // every tab's flow, rejecting this one for another tab's denied
-            // consent (CN-2). Take it from this popup, or when it names this
-            // flow's connection, or when the flow has none to tell by.
+            // consent (CN-2). Take it from this popup, when it carries this
+            // flow's id or names its connection, or when the flow has no
+            // connection to tell by.
             const ours =
               fromThisPopup ||
+              result.flow === flow ||
               !connectionId ||
               result.connectionId === connectionId;
             if (!ours) return;
