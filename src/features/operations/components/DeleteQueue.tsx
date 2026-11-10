@@ -39,8 +39,11 @@ export function DeleteQueue({
         'DELETE'
       );
       setOpen(false);
-      await client.invalidateQueries({ queryKey: ['operations'] });
+      // Leave the deleted queue's page before the lists refresh: refreshing
+      // first showed "Queue not found" there until the slowest list answered
+      // (OP-8).
       onDeleted?.();
+      await client.invalidateQueries({ queryKey: ['operations'] });
     } catch (e) {
       setError(message(e));
     } finally {

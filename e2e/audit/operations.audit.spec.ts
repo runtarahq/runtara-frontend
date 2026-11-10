@@ -511,9 +511,8 @@ test.describe('Operations audit', () => {
     // Let the invalidation refresh the views while the queues list is held.
     await expect.poll(() => deleted).toBe(true);
     await page.waitForTimeout(1_000);
-    await knownDefect('OP-8', async () => {
-      await expect(page.getByText('Queue not found.')).toHaveCount(0);
-    });
+    // Fixed: the page is left before the lists refresh.
+    await expect(page.getByText('Queue not found.')).toHaveCount(0);
 
     hold.open();
     await expect(page).toHaveURL(/\/operations\/queues$/);
@@ -576,11 +575,10 @@ test.describe('Operations audit', () => {
     const navigated = page.url().endsWith(`/runs/${WF}/inst_new`);
 
     // Refusing to close and not navigating after a close are both fine.
-    await knownDefect('OP-10', async () => {
-      expect(closed && navigated, 'closed mid-request, then navigated').toBe(
-        false
-      );
-    });
+    // Fixed: a dialog closed mid-request does not navigate when it answers.
+    expect(closed && navigated, 'closed mid-request, then navigated').toBe(
+      false
+    );
   });
 
   test('OP-11 Retrying a queue delete after a revision conflict sends the current revision', async ({
