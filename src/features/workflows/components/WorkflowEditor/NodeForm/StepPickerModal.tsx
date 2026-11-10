@@ -197,7 +197,9 @@ export function StepPickerPanel({
     if (searchQuery.trim()) {
       setViewMode('search');
     } else if (viewMode === 'search') {
-      setViewMode('browse');
+      // Back to where the search started: an open toolkit's capabilities,
+      // which a cleared query used to drop for the browse list (ED-28).
+      setViewMode(selectedAgent ? 'capabilities' : 'browse');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- viewMode is read but should not trigger this effect
   }, [searchQuery]);

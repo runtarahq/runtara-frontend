@@ -621,12 +621,10 @@ test.describe('Editor audit B', () => {
     await expect(dialog.getByText('Toolkit Capabilities')).toHaveCount(0);
     await search.fill('');
 
-    await knownDefect('ED-28', async () => {
-      await expect(dialog.getByText('Toolkit Capabilities')).toBeVisible();
-      await expect(dialog.getByText('Step Types', { exact: true })).toHaveCount(
-        0
-      );
-    });
+    await expect(dialog.getByText('Toolkit Capabilities')).toBeVisible();
+    await expect(dialog.getByText('Step Types', { exact: true })).toHaveCount(
+      0
+    );
   });
 
   test('ED-29 A disabled agent is never held by the picker, so nothing is dropped on close', async ({
