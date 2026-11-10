@@ -87,7 +87,7 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
     [workflowId]
   );
 
-  const { data, isFetching } = useTableQuery({
+  const { data, isPending } = useTableQuery({
     queryKey: queryKeys.executions.list({
       pageIndex: 0,
       pageSize: MAX_INSTANCES,
@@ -138,7 +138,9 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
 
   const stepSummaries = (stepSummariesData?.data?.steps || []) as StepSummary[];
 
-  if (isFetching && (!data || data.length === 0)) {
+  // Only the first load shows a skeleton; a poll keeps what is on screen
+  // (HI-5).
+  if (isPending) {
     return (
       <div className="flex-1 overflow-hidden p-3">
         <div className="space-y-2">

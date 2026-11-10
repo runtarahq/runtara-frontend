@@ -390,7 +390,7 @@ export function useTableQuery<T = unknown>({
     ...options,
   };
 
-  const { data, isFetching, refetch, isLoading } = useQuery({
+  const { data, isFetching, refetch, isLoading, isPending, error } = useQuery({
     queryKey,
     queryFn: customQueryFn,
     enabled: (!!token || !isOidcAuth) && (enabled ?? true),
@@ -413,6 +413,9 @@ export function useTableQuery<T = unknown>({
     totalElements,
     totalPages,
     isFetching: isFetching || isLoading,
+    /** True only until the first answer, so a poll does not read as loading. */
+    isPending,
+    error,
     refetch,
   };
 }

@@ -336,10 +336,8 @@ test.describe('History audit', () => {
       .poll(() => requests, { timeout: POLL + 5_000 })
       .toBeGreaterThan(before);
     await page.waitForTimeout(500);
-    await knownDefect('HI-5', async () => {
-      await expect(empty).toBeVisible();
-      await expect(skeleton).toHaveCount(0);
-    });
+    await expect(empty).toBeVisible();
+    await expect(skeleton).toHaveCount(0);
 
     hold.open();
     await expect(empty).toBeVisible();
