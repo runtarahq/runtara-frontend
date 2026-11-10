@@ -255,6 +255,18 @@ export function CompositeValueItem({
         | 'composite-array'
         | 'template'
     ) => {
+      // Picking the type the item already has is not a request to clear it
+      // (ED-20).
+      const currentType =
+        value.valueType === 'composite'
+          ? Array.isArray(value.value)
+            ? 'composite-array'
+            : 'composite-object'
+          : (value.valueType as string);
+      if (newType === currentType) {
+        if (newType === 'reference') setIsPickerOpen(true);
+        return;
+      }
       if (newType === 'reference') {
         onChange({ valueType: 'reference', value: '' });
         setIsPickerOpen(true);
@@ -268,7 +280,7 @@ export function CompositeValueItem({
         onChange(makeCompositeTemplateValue(''));
       }
     },
-    [onChange]
+    [onChange, value]
   );
 
   // Point the reference at a new path. Its `typeHint` / `defaultValue` (the
