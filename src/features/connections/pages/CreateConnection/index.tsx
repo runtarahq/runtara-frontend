@@ -55,9 +55,16 @@ export function CreateConnection() {
         navigate('/connections');
         return;
       }
+      // The flow's own navigation below must not trip the blocker that
+      // guarded the page while the popup was open (CN-10).
+      const release = () =>
+        flushSync(() => {
+          useNavigationBlockerStore.getState().setBlocker(false);
+        });
       try {
         const authUrl = await getOAuthAuthorizeUrl(token, connectionId);
         const result = await openOAuthPopup(authUrl, connectionId);
+        release();
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
         if (result.pending) {
           // Authorized, but it waits for a member's confirmation: its page
@@ -70,6 +77,7 @@ export function CreateConnection() {
         navigate('/connections');
         toast.success('Connection authorized and ready.');
       } catch (error) {
+        release();
         // The connection was created but not authorized. Land on its edit page
         // where the status card owns the recovery (Connect), rather than
         // stranding the user or dead-ending on the list.
@@ -98,16 +106,19 @@ export function CreateConnection() {
     mutationFn: createConnection,
     onSuccess: (connectionId: string) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
-      // The connection exists now: leaving must not trip the
-      // unsaved-changes blocker. flushSync forces useBlocker to re-subscribe
-      // with shouldBlock=false before the navigate below runs.
-      flushSync(() => {
-        useNavigationBlockerStore.getState().setBlocker(false);
-      });
       if (isOAuthType && connectionId) {
+        // The authorization is still to come: leaving now asks first, as it
+        // did before Create; the popup's outcome releases the blocker
+        // (CN-10).
         setAuthorizing(true);
         startOAuthFlow(connectionId);
       } else {
+        // The connection exists now: leaving must not trip the
+        // unsaved-changes blocker. flushSync forces useBlocker to
+        // re-subscribe with shouldBlock=false before the navigate below runs.
+        flushSync(() => {
+          useNavigationBlockerStore.getState().setBlocker(false);
+        });
         navigate('/connections');
         toast.success('Connection created.');
       }
