@@ -73,6 +73,8 @@ type DynamicConnectionFormProps = {
 export interface ConnectionFormOperations {
   clearSecrets: string[];
   dirtyFields: string[];
+  /** The user asked for "Save & Reconnect": reconnect once the save lands. */
+  reconnect?: boolean;
 }
 
 const frameSchema = z
@@ -242,6 +244,7 @@ export function DynamicConnectionForm({
   // values for untouched fields and keeps the edits, whose save then meets
   // the version check if they really conflict.
   const savedSinceVersionRef = useRef(false);
+  const saveAndReconnectRef = useRef(false);
 
   // On our own save: re-sync to the fresh projection and drop staged edits so
   // secret inputs empty out and the save bar collapses. The controlled
@@ -296,6 +299,7 @@ export function DynamicConnectionForm({
   // until a submit attempt — count this as one so they surface. Every submit
   // path reports it, the status card's Save & Reconnect too (CN-15).
   const handleInvalid = (errors: FieldErrors<Record<string, unknown>>) => {
+    saveAndReconnectRef.current = false;
     setSubmitAttempt((attempt) => attempt + 1);
     reportFirstFormError(form, errors);
   };
@@ -337,7 +341,13 @@ export function DynamicConnectionForm({
         ? onPlatformApp(kept, platformApp)
         : kept;
     savedSinceVersionRef.current = true;
+    // "Save & Reconnect", from the save bar or the status card's guard, used
+    // to only save (CN-14).
+    const reconnect =
+      saveAndReconnectRef.current || (mode === 'edit' && hasReauthChanges);
+    saveAndReconnectRef.current = false;
     onSubmit(submission, {
+      reconnect,
       clearSecrets: [...clearedSecrets].sort(),
       dirtyFields: Object.entries(form.formState.dirtyFields)
         .filter(([, dirty]) => dirty === true)
@@ -460,9 +470,10 @@ export function DynamicConnectionForm({
                 }
                 isOAuth={Boolean(showReconnect)}
                 onReconnect={onReconnect}
-                onSaveAndReconnect={() =>
-                  form.handleSubmit(handleSubmit, handleInvalid)()
-                }
+                onSaveAndReconnect={() => {
+                  saveAndReconnectRef.current = true;
+                  void form.handleSubmit(handleSubmit, handleInvalid)();
+                }}
                 isReconnecting={isReconnecting}
                 hasParamChanges={hasParamChanges}
                 hasReauthChanges={hasReauthChanges}

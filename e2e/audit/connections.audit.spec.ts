@@ -477,7 +477,14 @@ test.describe('Connections audit', () => {
       await page
         .getByRole('button', { name: 'Clear stored Client Secret' })
         .click();
+      const before = ctl.popups.length;
       await page.getByRole('button', { name: 'Save & Reconnect' }).click();
+      // The save starts the reconnect itself (CN-14); closing its window
+      // leaves the prompt armed.
+      const auto = await popupOpened(ctl, before + 1);
+      await auto.close();
+      const wait = toast(page, 'Waiting for the sign-in to finish');
+      await wait.getByRole('button', { name: 'Cancel' }).click();
       await expect(prompt()).toBeVisible();
       await expect(cardButton(page, 'Connect')).toBeVisible();
 
@@ -822,28 +829,32 @@ test.describe('Connections audit', () => {
     const conn = oauthConn('conn_a', 'Conn A');
     const ctl = await mockBackend(page, mockApi, [conn]);
     await openConnection(page, 'conn_a');
-    const reconnects = async () => {
-      const authorizations = ctl.counts.authorize.length;
-      const popups = ctl.popups.length;
+    const counts = () => ({
+      authorizations: ctl.counts.authorize.length,
+      popups: ctl.popups.length,
+    });
+    const reconnected = async (before: ReturnType<typeof counts>) => {
       await expect
         .poll(() => ctl.counts.authorize.length, { timeout: 1_500 })
-        .toBeGreaterThan(authorizations);
-      await expect.poll(() => ctl.popups.length).toBeGreaterThan(popups);
+        .toBeGreaterThan(before.authorizations);
+      await expect.poll(() => ctl.popups.length).toBeGreaterThan(before.popups);
     };
 
     // The guard dialog's button.
     await clientId(page).fill('cid-edited');
     await cardButton(page, 'Reconnect').click();
+    let before = counts();
     await guard(page).getByRole('button', { name: 'Save & Reconnect' }).click();
     await expect.poll(() => ctl.counts.put).toBe(1);
     await expect(toast(page, 'Connection saved.')).toHaveCount(1);
-    await knownDefect('CN-14', reconnects);
+    await reconnected(before);
 
     // The save bar's button, under the same label.
     await clientId(page).fill('cid-edited-again');
+    before = counts();
     await page.getByRole('button', { name: 'Save & Reconnect' }).click();
     await expect.poll(() => ctl.counts.put).toBe(2);
-    await knownDefect('CN-14', reconnects);
+    await reconnected(before);
   });
 
   test('CN-15 "Save & Reconnect" on an invalid form gives feedback', async ({
@@ -1026,6 +1037,11 @@ test.describe('Connections audit', () => {
     await clientId(page).fill('cid-edited');
     await page.getByRole('button', { name: 'Save & Reconnect' }).click();
     await expect.poll(() => ctl.counts.put).toBe(1);
+    // The save starts a reconnect itself (CN-14); close it to try the card.
+    const auto = await popupOpened(ctl, 2);
+    await auto.close();
+    await wait.getByRole('button', { name: 'Cancel' }).click();
+    await expect(cardButton(page, 'Reconnect')).toBeEnabled();
     await expect(saveButton).toHaveCount(0);
     await expect(page.getByText(/unsaved change/)).toHaveCount(0);
     await expect(clientId(page)).toHaveValue('cid-edited');
@@ -1042,10 +1058,24 @@ test.describe('Connections audit', () => {
     await cardButton(page, 'Reconnect').click();
     await knownDefect('CN-19', reconnectsDirectly);
 
-    // Saving from the dialog settles nothing: Reconnect still does not go through.
-    await guard(page).getByRole('button', { name: 'Save & Reconnect' }).click();
-    await expect.poll(() => ctl.counts.put).toBe(2);
-    await page.waitForTimeout(1_000);
+    // Saving from the dialog reconnects (CN-14); closing that window, the
+    // card's Reconnect must still go straight through.
+    if ((await guard(page).count()) > 0) {
+      const opened = ctl.popups.length;
+      await guard(page)
+        .getByRole('button', { name: 'Save & Reconnect' })
+        .click();
+      await expect.poll(() => ctl.counts.put).toBe(2);
+      const again = await popupOpened(ctl, opened + 1);
+      await again.close();
+      await wait.getByRole('button', { name: 'Cancel' }).click();
+    } else {
+      // No guard: the card already reconnected; close that window.
+      const direct = await popupOpened(ctl, 3);
+      await direct.close();
+      await wait.getByRole('button', { name: 'Cancel' }).click();
+    }
+    await expect(cardButton(page, 'Reconnect')).toBeEnabled();
     await cardButton(page, 'Reconnect').click();
     await knownDefect('CN-19', reconnectsDirectly);
   });

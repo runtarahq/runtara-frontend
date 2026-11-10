@@ -87,6 +87,8 @@ export function Connection() {
   // promoted on success (never on a 409); the notice renders only once the
   // refetched status confirms the flip.
   const reauthLabelsRef = useRef<string[]>([]);
+  // Set by "Save & Reconnect": the save's success starts the reconnect.
+  const reconnectAfterSaveRef = useRef(false);
   const [pendingReauthLabels, setPendingReauthLabels] = useState<
     string[] | null
   >(null);
@@ -190,6 +192,12 @@ export function Connection() {
         queryKey: queryKeys.connections.byId(id ?? ''),
       });
       toast.success('Connection saved.');
+      // The click that asked for this is a few moments old, inside the
+      // browser's allowance for opening a popup. If it is blocked anyway,
+      // the reconnect prompt stays to start it with a fresh click (CN-14).
+      if (reconnectAfterSaveRef.current && id && isOAuthAuthCode)
+        authorize(id, { onSuccess: () => setPendingReauthLabels(null) });
+      reconnectAfterSaveRef.current = false;
     },
     onError: (error, variables) => {
       if (error.response?.status !== 409 || !id) return;
@@ -242,6 +250,7 @@ export function Connection() {
     data: Record<string, unknown>,
     operations: ConnectionFormOperations
   ) => {
+    reconnectAfterSaveRef.current = Boolean(operations.reconnect);
     const descriptor = (
       currentConnectionType as ConnectionTypeDto & {
         formDefinition?: FormDefinition;
