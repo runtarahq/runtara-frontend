@@ -336,7 +336,7 @@ async function mockCompilation(page: Page, workflowId: string) {
   const ctl = {
     polls: [] as { version: number; at: number }[],
     rebuilds: [] as number[],
-    answer: (async (_version: number) => ({
+    answer: (async () => ({
       status: 200,
       body: { status: 'in_progress' } as unknown,
     })) as (version: number) => Promise<{ status: number; body: unknown }>,
