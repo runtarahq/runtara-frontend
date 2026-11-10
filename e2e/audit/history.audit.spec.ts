@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test, buildWorkflow, type MockApi } from '../fixtures';
-import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
+import { api, json, logWorkflow, openWorkflow } from './helpers';
 
 const WF = 'wf_hist';
 const INST = 'inst_hist';
@@ -504,9 +504,7 @@ test.describe('History audit', () => {
     // The failure has landed; let a closing dialog finish closing.
     await expect(page.getByText('delete-boom').first()).toBeVisible();
     await page.waitForTimeout(500);
-    await knownDefect('HI-11', async () => {
-      await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible();
-    });
+    await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible();
     await page.keyboard.press('Escape');
 
     await row.hover();
@@ -518,9 +516,7 @@ test.describe('History audit', () => {
     await expect.poll(() => hits.move).toBe(1);
     await expect(page.getByText('move-boom').first()).toBeVisible();
     await page.waitForTimeout(500);
-    await knownDefect('HI-11', async () => {
-      await expect(page.getByText('Move workflow')).toBeVisible();
-    });
+    await expect(page.getByText('Move workflow')).toBeVisible();
     await page.keyboard.press('Escape');
 
     await row.hover();
