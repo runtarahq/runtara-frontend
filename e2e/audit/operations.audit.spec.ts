@@ -637,9 +637,7 @@ test.describe('Operations audit', () => {
       await expect(save).toBeEnabled();
     }
 
-    await knownDefect('OP-12', async () => {
-      expect(puts.map((p) => p.status)).toContain(200);
-    });
+    expect(puts.map((p) => p.status)).toContain(200);
   });
 
   test('OP-13 A queue count change keeps the Requests rows on screen', async ({

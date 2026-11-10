@@ -11,7 +11,12 @@ import type {
 import { useToken } from '@/shared/hooks';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
-import { operationsRequest, message } from '../queries';
+import {
+  currentRevision,
+  isRevisionConflict,
+  operationsRequest,
+  message,
+} from '../queries';
 import { type StateField } from './StateValue';
 import { RUN_STATUS_OPTIONS } from '@/features/invocation-history/status-options';
 
@@ -31,8 +36,9 @@ export function ViewEditor({
   onCancel: () => void;
 }) {
   const [view, setView] = useState(initial);
-  // Save against the revision this form was opened with, even if discovery refreshes.
-  const [revision] = useState(saved?.revision);
+  // Save against the revision this form was opened with, even if discovery
+  // refreshes; only a conflict the user has seen moves it on (OP-12).
+  const [revision, setRevision] = useState(saved?.revision);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const statuses = (view.where?.status ?? '')
@@ -59,7 +65,15 @@ export function ViewEditor({
       await client.invalidateQueries({ queryKey: ['operations'] });
       onSaved(result);
     } catch (e) {
-      setError(message(e));
+      if (saved && isRevisionConflict(e)) {
+        const latest = await currentRevision(token, saved.id).catch(
+          () => undefined
+        );
+        if (latest !== undefined) setRevision(latest);
+        setError(
+          `${message(e)}. Someone else changed this queue; saving again replaces their changes.`
+        );
+      } else setError(message(e));
     } finally {
       setSaving(false);
     }
