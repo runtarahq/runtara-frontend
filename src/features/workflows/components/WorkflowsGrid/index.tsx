@@ -418,6 +418,8 @@ export function WorkflowsGrid({
       if (!executeTarget?.id) return;
 
       setPendingAction({ id: executeTarget.id, type: 'schedule' });
+      // A retry starts clean: the last failure stayed up while it ran (HI-10).
+      setExecuteError(null);
       try {
         await scheduleMutation.mutateAsync({
           workflowId: executeTarget.id,

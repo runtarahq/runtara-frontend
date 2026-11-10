@@ -469,9 +469,7 @@ test.describe('History audit', () => {
     ).toBeVisible();
     await expect.poll(() => attempts).toBe(2);
     // The retry is in flight, so the previous failure should be gone.
-    await knownDefect('HI-10', async () => {
-      await expect(dialog.getByText('boom-1')).toHaveCount(0);
-    });
+    await expect(dialog.getByText('boom-1')).toHaveCount(0);
 
     hold.open();
     await expect(dialog.getByText('boom-2')).toBeVisible();
