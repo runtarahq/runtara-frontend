@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -34,6 +34,16 @@ export function CreateConnection() {
   const [authorizing, setAuthorizing] = useState(false);
   const auth = useAuth();
   const token = auth.user?.access_token;
+  // Where this page is. The popup's outcome can arrive after the user has
+  // moved on, and used to pull them back from wherever they had gone (CN-11).
+  const here = useRef(window.location.pathname);
+  const isAway = () => window.location.pathname !== here.current;
+  const go = useCallback(
+    (to: string) => {
+      if (window.location.pathname === here.current) navigate(to);
+    },
+    [navigate]
+  );
 
   const { data: connectionTypes, isFetching } = useCustomQuery({
     queryKey: queryKeys.connections.types(),
@@ -66,15 +76,24 @@ export function CreateConnection() {
         const result = await openOAuthPopup(authUrl, connectionId);
         release();
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
+        // Someone who moved on gets a way to the connection instead.
+        const open = isAway()
+          ? {
+              action: {
+                label: 'Open connection',
+                onClick: () => navigate(`/connections/${connectionId}`),
+              },
+            }
+          : {};
         if (result.pending) {
           // Authorized, but it waits for a member's confirmation: its page
           // shows the account to confirm.
-          navigate(`/connections/${connectionId}`);
-          toast.info('Authorized: confirm the connection to use it.');
+          go(`/connections/${connectionId}`);
+          toast.info('Authorized: confirm the connection to use it.', open);
           return;
         }
         // Authorized: nothing left to do here, the list confirms completion.
-        navigate('/connections');
+        go('/connections');
         toast.success('Connection authorized and ready.');
       } catch (error) {
         release();
@@ -85,21 +104,33 @@ export function CreateConnection() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.connections.byId(connectionId),
         });
-        navigate(`/connections/${connectionId}`);
+        const away = isAway();
+        const open = away
+          ? {
+              action: {
+                label: 'Open connection',
+                onClick: () => navigate(`/connections/${connectionId}`),
+              },
+            }
+          : {};
+        go(`/connections/${connectionId}`);
+        const where = away ? 'its page' : 'this page';
         if (error instanceof OAuthPopupClosedError) {
           toast.info(
-            'Connection saved — authorization still needed. Finish connecting from this page.'
+            `Connection saved — authorization still needed. Finish connecting from ${where}.`,
+            open
           );
         } else {
           toast.error(
             `Connection saved, but authorization didn't complete: ${
               error instanceof Error ? error.message : 'Unknown error'
-            }. You can retry from this page.`
+            }. You can retry from ${where}.`,
+            open
           );
         }
       }
     },
-    [token, openOAuthPopup, navigate]
+    [token, openOAuthPopup, navigate, go]
   );
 
   const { mutate, isPending } = useCustomMutation({

@@ -727,9 +727,7 @@ test.describe('Connections audit', () => {
       await land(popup, flow.query(id));
       await expect(toast(page, flow.message)).toHaveCount(1);
       await page.waitForTimeout(500);
-      await knownDefect('CN-11', async () => {
-        await expect(page).toHaveURL(/\/workflows/, { timeout: 1_000 });
-      });
+      await expect(page).toHaveURL(/\/workflows/, { timeout: 1_000 });
       if (!popup.isClosed()) await popup.close().catch(() => {});
       await expect.poll(() => popup.isClosed()).toBe(true);
     }
