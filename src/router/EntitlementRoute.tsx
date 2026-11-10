@@ -22,16 +22,9 @@ interface EntitlementRouteProps {
  */
 export function EntitlementRoute({ feature, children }: EntitlementRouteProps) {
   const { snapshot: entitlements, status } = useEntitlementsState();
-  // Not known yet, or could not be read: neither is the tenant's answer, so
-  // the gated page stays shut rather than open on the fallback (SH-3).
+  // Not known yet: the gated page waits rather than open on the fallback
+  // (SH-3). After a failed fetch the documented permissive fallback applies.
   if (status === 'loading') return <Loader />;
-  if (status === 'failed') {
-    return (
-      <p role="alert" className="p-6 text-sm">
-        Could not check whether this feature is enabled. Reload to try again.
-      </p>
-    );
-  }
   if (!isEnabled(entitlements, feature)) {
     return <FeatureDisabled feature={feature} />;
   }
