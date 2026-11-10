@@ -416,12 +416,10 @@ test.describe('Workflow page audit: compilation watch', () => {
     await expect.poll(() => c.rebuilds).toEqual([1]);
 
     // 25 s is well past the 8 s failure clear and the 2.5 s success clear.
-    await knownDefect('WF-4', async () => {
-      await expect(rebuildingButton(page, 1)).toHaveCount(0, {
-        timeout: 25_000,
-      });
-      expect(c.count(1)).toBeLessThan(18);
+    await expect(rebuildingButton(page, 1)).toHaveCount(0, {
+      timeout: 25_000,
     });
+    expect(c.count(1)).toBeLessThan(18);
     console.log('WF-4 polls in 25 s:', c.count(1));
     // Nothing in the toolbar says a build is going on.
     await expect(page.locator('header').getByText('Compiling')).toHaveCount(0);
@@ -464,10 +462,8 @@ test.describe('Workflow page audit: compilation watch', () => {
     console.log(
       `WF-5 failed polls: ${mid} at 12 s, ${end} at 25 s; toasts visible: ${toasts}`
     );
-    await knownDefect('WF-5', async () => {
-      expect(end).toBeLessThanOrEqual(mid + 3);
-      await expect(rebuildingButton(page, 1)).toHaveCount(0);
-    });
+    expect(end).toBeLessThanOrEqual(mid + 3);
+    await expect(rebuildingButton(page, 1)).toHaveCount(0);
   });
 
   test('WF-6 Rebuilding a version that recently failed does not show the cached failure', async ({
