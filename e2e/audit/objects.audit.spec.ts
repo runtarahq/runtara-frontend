@@ -761,16 +761,15 @@ test.describe('Objects audit', () => {
 
     // Choosing B is itself an outside click, and its deferred flush runs after
     // the switch. A's edit must not reach B, nor A's draft stay on B's table.
-    await knownDefect('OB-13', async () => {
-      expect(
-        backend.requests.put
-          .filter((p) => p.connectionId === B)
-          .map((p) => p.body.properties)
-      ).toEqual([]);
-      expect((backend.dbs[B].rows[0].properties as Props).name).toBe('bravo');
-      await expect(cell(page, 0)).toHaveText('bravo');
-      await expect(draftFooter(page, 1)).toHaveCount(0);
-    });
+    // Fixed: each connection has its own table.
+    expect(
+      backend.requests.put
+        .filter((p) => p.connectionId === B)
+        .map((p) => p.body.properties)
+    ).toEqual([]);
+    expect((backend.dbs[B].rows[0].properties as Props).name).toBe('bravo');
+    await expect(cell(page, 0)).toHaveText('bravo');
+    await expect(draftFooter(page, 1)).toHaveCount(0);
   });
 
   const bulkInsertButton = (page: Page) =>

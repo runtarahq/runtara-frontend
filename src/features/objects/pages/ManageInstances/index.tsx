@@ -51,7 +51,11 @@ export function ManageInstances() {
   }
 
   return (
+    // One table per connection: unsaved rows, drafts and the selection
+    // belong to the connection they were made on, and a switch used to carry
+    // them over to the next one (OB-13). Leaving saves them to their own.
     <ObjectInstanceDtosTable
+      key={selectedConnectionId}
       objectSchemaDto={objectSchemaDto}
       connectionId={selectedConnectionId}
     />
