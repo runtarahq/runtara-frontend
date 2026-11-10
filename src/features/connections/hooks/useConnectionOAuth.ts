@@ -52,7 +52,9 @@ export function useConnectionOAuth() {
         // Refresh anyway — the server may still have flipped the status.
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
       } finally {
-        setRunningId(null);
+        // Clear only this flow's mark: one replaced by a newer flow settles
+        // while the newer one is still running (CN-1, CN-13).
+        setRunningId((current) => (current === connectionId ? null : current));
       }
     },
     [token, openOAuthPopup]
