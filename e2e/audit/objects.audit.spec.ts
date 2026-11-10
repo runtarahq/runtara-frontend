@@ -564,10 +564,8 @@ test.describe('Objects audit', () => {
     );
 
     await settle(page);
-    await knownDefect('OB-10', async () => {
-      await expect(allRows(page)).toHaveCount(20);
-      await expect(allRows(page).filter({ hasText: 'NewRec' })).toHaveCount(0);
-    });
+    await expect(allRows(page)).toHaveCount(20);
+    await expect(allRows(page).filter({ hasText: 'NewRec' })).toHaveCount(0);
   });
 
   test('OB-11 A delete does not target a selected row that a later filter excludes', async ({
