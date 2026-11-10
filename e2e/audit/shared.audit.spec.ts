@@ -616,9 +616,8 @@ test.describe('Shared audit', () => {
     await row.getByTitle('Start').click();
 
     await expect.poll(() => hits).toBe(1);
-    await knownDefect('SH-9', async () => {
-      await expect(page.getByText('Tier limit reached')).toBeVisible();
-    });
+    // Fixed: a 429 with an entitlement body gets the same toast as a 403.
+    await expect(page.getByText('Tier limit reached')).toBeVisible();
 
     // Control: the identical body at 403 gets the entitlement toast.
     status = 403;

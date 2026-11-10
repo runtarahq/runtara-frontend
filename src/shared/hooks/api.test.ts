@@ -284,6 +284,37 @@ describe('useCustomMutation', () => {
     expect(result.current.data).toEqual(responseData);
   });
 
+  it('maps a 429 entitlement refusal to the tier-limit toast (SH-9)', async () => {
+    const testError = {
+      message: 'Request failed with status code 429',
+      response: {
+        status: 429,
+        data: {
+          code: 'ENTITLEMENT_LIMIT_EXCEEDED',
+          limit: 'maxConcurrentExecutions',
+          maximum: 2,
+        },
+      },
+    };
+    const { result } = renderHook(
+      () =>
+        useCustomMutation({ mutationFn: vi.fn().mockRejectedValue(testError) }),
+      { wrapper: createWrapper() }
+    );
+
+    result.current.mutate({ data: 'test' });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(mockToastError).toHaveBeenCalledWith('Tier limit reached', {
+      description: 'maxConcurrentExecutions: maximum 2',
+      duration: 8000,
+    });
+    expect(mockToastError).not.toHaveBeenCalledWith(
+      'Error: 429',
+      expect.anything()
+    );
+  });
+
   it('shows toast error on generic error', async () => {
     const testError = {
       message: 'Something went wrong',
