@@ -429,7 +429,22 @@ function QueueContent({
                           ? 'Sort descending'
                           : 'Sort ascending'
                       }
-                      onClick={() => sortBy(view.sort!.field)}
+                      // A direction toggle, as its tooltip says; clearing the
+                      // sort is the select's "Recent runs first" (OP-7).
+                      onClick={() => {
+                        setView((v) =>
+                          v.sort
+                            ? {
+                                ...v,
+                                sort: {
+                                  ...v.sort,
+                                  descending: !v.sort.descending,
+                                },
+                              }
+                            : v
+                        );
+                        goPage(0);
+                      }}
                     >
                       {view.sort.descending ? (
                         <ArrowDownWideNarrow />

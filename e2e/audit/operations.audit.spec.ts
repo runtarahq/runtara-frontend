@@ -460,17 +460,14 @@ test.describe('Operations audit', () => {
     const promisesAscending = /ascending/i.test(await tooltip.innerText());
     expect(queries.some((q) => q.stateSort?.descending === true)).toBe(true);
 
-    const sent = queries.length;
-    await descending.click();
-    await expect.poll(() => queries.length).toBeGreaterThan(sent);
+    expect(promisesAscending).toBe(true);
 
-    // The words and the click must agree; which of them changes is a design call.
-    await knownDefect('OP-7', async () => {
-      expect(
-        queries.at(-1).stateSort?.descending === false,
-        'clicking sorted ascending'
-      ).toBe(promisesAscending);
-    });
+    await descending.click();
+    // The sort flips to ascending on the same field rather than clearing.
+    await expect(
+      page.getByRole('button', { name: 'Sort ascending' })
+    ).toBeVisible();
+    await expect(select).toHaveValue('amount');
   });
 
   test('OP-8 Deleting a queue does not flash "Queue not found"', async ({
