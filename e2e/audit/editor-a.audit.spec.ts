@@ -347,16 +347,13 @@ test.describe('Editor audit A', () => {
     await panel(page).getByLabel('Step id', { exact: true }).fill('renamed');
     await panel(page).getByRole('button', { name: 'Confirm step id' }).click();
 
-    const prompted = await panelMovedOrPrompted(page, 'renamed');
-
-    let message: unknown;
-    if (!prompted) {
-      await applyPanel(page);
-      message = (await capture.save()).steps.renamed.message;
-    }
-    await knownDefect('ED-4', async () => {
-      if (!prompted) expect(message).toBe('EDITED');
-    });
+    // Fixed: the rename is staged with the other edit, which stays put.
+    await expect(panel(page).getByText('Renamed from first')).toBeVisible();
+    await expect(messageBox(page)).toHaveValue('EDITED');
+    await applyPanel(page);
+    const graph = await capture.save();
+    expect(Object.keys(graph.steps).sort()).toEqual(['renamed', 'second']);
+    expect(graph.steps.renamed.message).toBe('EDITED');
   });
 
   test('ED-5 Panel Cancel reverts a step id rename', async ({
@@ -370,16 +367,15 @@ test.describe('Editor audit A', () => {
     await panel(page).getByRole('button', { name: 'Edit step id' }).click();
     await panel(page).getByLabel('Step id', { exact: true }).fill('renamed');
     await panel(page).getByRole('button', { name: 'Confirm step id' }).click();
-    await expect(panel(page)).toHaveAttribute('data-node-id', 'renamed');
+    await expect(panel(page).getByText('Renamed from first')).toBeVisible();
 
-    await closePanel(page);
+    // Fixed: the staged rename makes Cancel ask, and Discard drops it.
+    expect(await closePanel(page)).toBe(true);
 
     // A reverted rename leaves nothing to save, so make a change of our own.
     await page.getByTitle('Add note').click();
     const graph = await capture.save();
-    await knownDefect('ED-5', async () => {
-      expect(Object.keys(graph.steps).sort()).toEqual(['first', 'second']);
-    });
+    expect(Object.keys(graph.steps).sort()).toEqual(['first', 'second']);
   });
 
   test('ED-6 onStagedChange can be invoked through the config panel, or is gone', async ({
