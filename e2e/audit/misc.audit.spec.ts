@@ -274,15 +274,12 @@ test.describe('Settings audit', () => {
       .toBe(1);
     // Give the rejection time to surface before reading that there was none.
     await page.waitForTimeout(800);
-    await knownDefect('ST-3', async () => {
-      expect(await page.evaluate(() => (window as any).__rejections)).toEqual(
-        []
-      );
-      expect(pageErrors).toEqual([]);
-    });
+    expect(await page.evaluate(() => (window as any).__rejections)).toEqual([]);
+    expect(pageErrors).toEqual([]);
 
     // A rejected copy must not claim success.
     await expect(page.getByText('Copied to clipboard')).toHaveCount(0);
+    await expect(page.getByText('Could not copy the key')).toBeVisible();
   });
 });
 
