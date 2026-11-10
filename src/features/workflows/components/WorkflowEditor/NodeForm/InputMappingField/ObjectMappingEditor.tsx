@@ -26,6 +26,7 @@ import type {
 } from '@/features/workflows/stores/nodeFormStore';
 import { JsonLiteralInput } from './JsonLiteralInput';
 import { isStructuredValue, useJsonLiteral } from './json-literal';
+import { compositeToLiteral, literalToComposite } from './composite-literal';
 
 type ObjectMode = 'value' | 'reference' | 'build';
 
@@ -148,11 +149,23 @@ export function ObjectMappingEditor({
       onValueTypeChange('reference');
       onChange('');
     } else if (newMode === 'value') {
+      // A structure of literals carries over as the same JSON (ED-14).
+      const literal =
+        mode === 'build' && isStructuredValue(value)
+          ? compositeToLiteral(
+              value as CompositeObjectValue | CompositeArrayValue
+            )
+          : undefined;
       onValueTypeChange('immediate');
-      onChange('');
+      onChange(literal !== undefined && literal !== null ? literal : '');
     } else {
+      // A JSON object or array carries over as the same structure (ED-14).
       onValueTypeChange('composite');
-      onChange({});
+      onChange(
+        mode === 'value' && value !== null && typeof value === 'object'
+          ? literalToComposite(value)
+          : {}
+      );
     }
   };
 
