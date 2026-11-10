@@ -104,6 +104,10 @@ export function OverviewPage() {
   });
   const waiting = queues.data?.reduce((sum, q) => sum + q.count, 0);
   const overdueKnown = attention.data?.some((q) => q.overdue !== undefined);
+  // A queue with a due field is tracked even before, or without, an answer:
+  // the tile then shows "—", not "Not tracked yet" (OP-15).
+  const overdueTracked =
+    overdueKnown || queueViews.some(({ view }) => Boolean(view.roles?.due));
   const overdue = overdueKnown
     ? attention.data!.reduce((sum, q) => sum + (q.overdue ?? 0), 0)
     : undefined;
@@ -201,7 +205,7 @@ export function OverviewPage() {
             note="Runs started across all workflows"
             to="/operations/runs?range=24h"
           />
-          {overdueKnown ? (
+          {overdueTracked ? (
             <Metric
               title="Overdue"
               value={overdue}

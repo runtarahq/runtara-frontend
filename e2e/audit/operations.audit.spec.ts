@@ -1,6 +1,6 @@
 import { expect, type Page, type Route } from '@playwright/test';
 import { test, type MockApi } from '../fixtures';
-import { api, json, knownDefect } from './helpers';
+import { api, json } from './helpers';
 
 const WF = 'wf_ops';
 const INST = 'inst_ops_0001';
@@ -747,9 +747,7 @@ test.describe('Operations audit', () => {
     const tile = page.getByRole('link', { name: /Overdue/ });
     await expect(tile).toBeVisible();
     await expect.poll(() => log.requests.length).toBeGreaterThan(0);
-    await knownDefect('OP-15', async () => {
-      await expect(tile).not.toContainText('Not tracked yet');
-    });
+    await expect(tile).not.toContainText('Not tracked yet');
 
     mode = 'fail';
     hold.open();
@@ -757,9 +755,7 @@ test.describe('Operations audit', () => {
       'Some Operations data could not be refreshed',
       { timeout: 15_000 }
     );
-    await knownDefect('OP-15', async () => {
-      await expect(tile).not.toContainText('Not tracked yet');
-    });
+    await expect(tile).not.toContainText('Not tracked yet');
 
     // Control: once the same query succeeds, the same tile reports the number.
     mode = 'ok';
