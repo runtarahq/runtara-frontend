@@ -48,6 +48,7 @@ import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
 import { dropSavedEntries } from './drop-saved-entries';
+import { useOneAtATime } from './use-one-at-a-time';
 import {
   getCompilationProgress,
   rebuildWorkflowVersion,
@@ -812,7 +813,12 @@ export function Workflow() {
     });
   }, [workflowNodesLength]);
 
-  const handleSubmit = async ({ name }: Record<string, any>) => {
+  // One save at a time (WF-3).
+  const handleSubmit = useOneAtATime((values: Record<string, any>) =>
+    submitWorkflow(values)
+  );
+
+  const submitWorkflow = async ({ name }: Record<string, any>) => {
     // What this save sends; see dropSavedEntries.
     const sentNodeChanges = stagedNodeChanges;
     const sentWorkflowChanges = stagedWorkflowChanges;
