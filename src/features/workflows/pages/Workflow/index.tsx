@@ -241,6 +241,9 @@ export function Workflow() {
     queryFn: (token: string) =>
       getCompilationProgress(token, workflowId!, watchedCompilationVersion!),
     enabled: !!workflowId && watchedCompilationVersion !== undefined,
+    // No placeholder: the previous attempt's answer is not this one's, and
+    // carrying it over showed a recent failure as a rebuild's result (WF-6).
+    placeholderData: undefined,
     refetchInterval: (q) => {
       const last = q.state.data as { status?: string } | undefined;
       if (!last) return 1000;
@@ -1127,6 +1130,11 @@ export function Workflow() {
         toast.error('Workflow ID is missing');
         return;
       }
+      // The last attempt's progress is not this one's: drop it, so a recent
+      // failure does not show as the rebuild's result straight away (WF-6).
+      queryClient.removeQueries({
+        queryKey: queryKeys.workflows.compilationProgress(workflowId, version),
+      });
       setPendingRebuildVersion(version);
       setWatchedCompilationVersion(version);
       rebuildMutation.mutate({ workflowId, version });
