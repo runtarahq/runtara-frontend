@@ -165,11 +165,18 @@ export function WaitForSignalStepField({ name }: WaitForSignalStepFieldProps) {
     }
   };
 
+  const markOnWaitJson = (error: string | null) => {
+    setOnWaitError(error);
+    form.setValue('onWaitJsonError', error ?? undefined, {
+      shouldValidate: true,
+    });
+  };
+
   const updateOnWait = (value: string) => {
     setOnWaitText(value);
 
     if (!value.trim()) {
-      setOnWaitError(null);
+      markOnWaitJson(null);
       form.setValue('onWait', undefined, {
         shouldDirty: true,
         shouldTouch: true,
@@ -181,17 +188,17 @@ export function WaitForSignalStepField({ name }: WaitForSignalStepFieldProps) {
     try {
       const parsed = JSON.parse(value);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        setOnWaitError('onWait must be an execution graph object.');
+        markOnWaitJson('onWait must be an execution graph object.');
         return;
       }
-      setOnWaitError(null);
+      markOnWaitJson(null);
       form.setValue('onWait', parsed, {
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: true,
       });
     } catch (error) {
-      setOnWaitError(
+      markOnWaitJson(
         error instanceof Error ? error.message : 'Invalid JSON object.'
       );
     }

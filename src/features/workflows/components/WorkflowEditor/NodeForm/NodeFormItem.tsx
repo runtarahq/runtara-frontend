@@ -635,6 +635,11 @@ export const schema = () =>
       durable: z.boolean().nullable().optional(),
       timeout: z.any().optional(),
       onWait: z.any().optional(),
+      // UI-only: set while the on-wait JSON text does not parse. It used to
+      // keep the last valid value and let Save through (ED-32).
+      onWaitJsonError: z
+        .undefined({ message: 'Fix the on-wait JSON before saving.' })
+        .optional(),
       action: z.any().optional(),
       childWorkflowId: z.string().optional(),
       // Pinned versions round-trip from the DSL as integers

@@ -844,9 +844,9 @@ test.describe('Editor audit B', () => {
       if (dirty && (await button.isEnabled())) await save(page, ctl);
     }
 
-    await knownDefect('ED-32', async () => {
-      expect(ctl.saves()).toBe(0);
-    });
+    expect(ctl.saves()).toBe(0);
+    // The step's own Save refuses it: the panel stays open.
+    expect(applied).toBe(false);
   });
 
   test('ED-33 Discarding an AI Agent edit leaves conversation_id on the provider unchanged', async ({
