@@ -320,9 +320,7 @@ test.describe('Analytics audit', () => {
     console.log(
       `AN-1: ${windows.length} requests over ${after - before}ms, window ${windows[0]}`
     );
-    await knownDefect('AN-1', async () => {
-      expect(new Set(windows).size).toBeGreaterThan(1);
-    });
+    expect(new Set(windows).size).toBeGreaterThan(1);
   });
 
   test('AN-2 The rate-limit timeline poll moves its window', async ({
