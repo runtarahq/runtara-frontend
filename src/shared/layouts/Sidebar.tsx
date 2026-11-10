@@ -17,7 +17,7 @@ import {
 } from '@/shared/components/ui/sidebar.tsx';
 import { menu, filterMenu, type MenuItem } from '@/shared/config';
 import { config } from '@/shared/config/runtimeConfig';
-import { useEntitlements } from '@/shared/hooks/useEntitlements';
+import { useFeatureEntitlements } from '@/shared/hooks/useEntitlements';
 import Logo from '@/assets/logo/runtara-logo-icon.svg';
 import { AuthSidebar } from './AuthSidebar.tsx';
 import { TenantSwitcher } from '@/shared/tenant/TenantSwitcher';
@@ -92,7 +92,8 @@ function AppMenu() {
   const location = useLocation();
 
   const userGroups = useAuthStore((state) => state.userGroups);
-  const entitlements = useEntitlements();
+  // Gated entries stay hidden until the tenant's answer is known (SH-3).
+  const entitlements = useFeatureEntitlements();
 
   const allowedMenu = useMemo(
     () => filterMenu([...menu, ...edition.menu], userGroups, entitlements),

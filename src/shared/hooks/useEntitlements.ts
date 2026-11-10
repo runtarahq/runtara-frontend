@@ -23,6 +23,21 @@ const ENTITLEMENTS_QUERY_KEY = ['entitlements'] as const;
  * focus or mount.
  */
 export function useEntitlements(): EntitlementsSnapshot {
+  return useEntitlementsState().snapshot;
+}
+
+/** Whether the snapshot is the tenant's own answer, or still unknown. */
+export type EntitlementsStatus = 'loading' | 'ready' | 'failed';
+
+/**
+ * The snapshot together with whether it is known. Gates on a feature must not
+ * read the permissive fallback as the tenant's answer: while it loads, and
+ * after it failed, a restricted tenant would see the gated pages (SH-3).
+ */
+export function useEntitlementsState(): {
+  snapshot: EntitlementsSnapshot;
+  status: EntitlementsStatus;
+} {
   const inlined = window.__RUNTARA_CONFIG__?.entitlements;
 
   const query = useCustomQuery<EntitlementsSnapshot>({
@@ -34,5 +49,25 @@ export function useEntitlements(): EntitlementsSnapshot {
     retry: false,
   });
 
-  return inlined ?? query.data ?? PERMISSIVE_FALLBACK;
+  if (inlined) return { snapshot: inlined, status: 'ready' };
+  if (query.data) return { snapshot: query.data, status: 'ready' };
+  return {
+    snapshot: PERMISSIVE_FALLBACK,
+    status: query.isError ? 'failed' : 'loading',
+  };
 }
+
+/**
+ * The snapshot for gating features: the tenant's answer once known, and every
+ * feature off until then. Agent surfaces keep `useEntitlements`, whose
+ * fallback stays permissive so the editor does not flash agents as disabled.
+ */
+export function useFeatureEntitlements(): EntitlementsSnapshot {
+  const { snapshot, status } = useEntitlementsState();
+  return status === 'ready' ? snapshot : FEATURES_UNKNOWN;
+}
+
+const FEATURES_UNKNOWN: EntitlementsSnapshot = Object.freeze({
+  ...PERMISSIVE_FALLBACK,
+  features: { database: false, api: false, mcp: false },
+}) as EntitlementsSnapshot;

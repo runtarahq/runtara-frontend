@@ -265,10 +265,9 @@ test.describe('Shared audit', () => {
     await expect.poll(() => entitlementGets).toBeGreaterThan(0);
     // Let the route load: the page's own request comes after that.
     await page.waitForTimeout(3_000);
-    await knownDefect('SH-3', async () => {
-      expect(schemaGets, 'gated page requests while loading').toBe(0);
-      await expect(database).toHaveCount(0);
-    });
+    // Fixed: the gate waits for the tenant's answer.
+    expect(schemaGets, 'gated page requests while loading').toBe(0);
+    await expect(database).toHaveCount(0);
 
     // Control: the answer arrives and the same tenant is locked out.
     hold.open();
@@ -281,9 +280,11 @@ test.describe('Shared audit', () => {
     await page.reload();
     await expect.poll(() => entitlementGets).toBeGreaterThan(beforeFail);
     await page.waitForTimeout(3_000);
-    await knownDefect('SH-3', async () => {
-      await expect(database).toHaveCount(0);
-    });
+    // Fixed: a failed answer is not full access either.
+    await expect(database).toHaveCount(0);
+    await expect(
+      page.getByText('Could not check whether this feature is enabled')
+    ).toBeVisible();
   });
 
   test('SH-4 A failed /me keeps known permissions', async ({
