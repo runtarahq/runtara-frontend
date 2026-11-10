@@ -46,6 +46,7 @@ export const FileInput = React.forwardRef<HTMLInputElement, FileInputProps>(
   ) => {
     const inputRef = React.useRef<HTMLInputElement>(null);
     const [isLoading, setIsLoading] = React.useState(false);
+    const readRef = React.useRef(0);
     const [isDragOver, setIsDragOver] = React.useState(false);
     const [localError, setLocalError] = React.useState<string | null>(null);
 
@@ -67,14 +68,19 @@ export const FileInput = React.forwardRef<HTMLInputElement, FileInputProps>(
         return;
       }
 
+      // The last file chosen wins: an earlier read that finishes later used
+      // to replace it (SH-8).
+      const read = ++readRef.current;
       setIsLoading(true);
       try {
         const fileData = await fileToFileData(file);
+        if (read !== readRef.current) return;
         onChange?.(JSON.stringify(fileData));
       } catch {
+        if (read !== readRef.current) return;
         setLocalError('Failed to read file');
       } finally {
-        setIsLoading(false);
+        if (read === readRef.current) setIsLoading(false);
       }
     };
 
