@@ -356,18 +356,16 @@ test.describe('Operations audit', () => {
     await page.getByRole('button', { name: 'Submit prepared answers' }).click();
 
     // Sending or explaining why not are both fine; doing nothing silently is not.
-    await knownDefect('OP-5', async () => {
-      await expect
-        .poll(
-          async () =>
-            log.signals.length +
-            (await page.locator('[data-sonner-toast]').count()) +
-            (await page.getByRole('alert').count()) +
-            (await page.getByRole('status').count()),
-          { timeout: 1_500 }
-        )
-        .toBeGreaterThan(0);
-    });
+    await expect
+      .poll(
+        async () =>
+          log.signals.length +
+          (await page.locator('[data-sonner-toast]').count()) +
+          (await page.getByRole('alert').count()) +
+          (await page.getByRole('status').count()),
+        { timeout: 1_500 }
+      )
+      .toBeGreaterThan(0);
 
     // Control: the row can answer, so the mock and form are live.
     await page
