@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { Link, useNavigate } from 'react-router';
@@ -172,6 +172,15 @@ export function ReplayButton({
   const [busy, setBusy] = useState(false);
   const token = useToken();
   const navigate = useNavigate();
+  // Closed while the request ran: the user has moved on, so the answer must
+  // not navigate them away from where they are now (OP-10).
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
   async function replay() {
     setBusy(true);
     try {
@@ -186,6 +195,7 @@ export function ReplayButton({
         client.invalidateQueries({ queryKey: queryKeys.executions.lists() }),
       ]);
       toast.success(`Replay queued for ${run.runLabel ?? 'run'}`);
+      if (!mountedRef.current) return;
       onClose?.();
       if (result.instanceId)
         navigate(`/operations/runs/${run.workflowId}/${result.instanceId}`);
