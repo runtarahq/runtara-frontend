@@ -668,26 +668,31 @@ test.describe('Editor audit A', () => {
     page,
     mockApi,
   }) => {
+    // The toggle passes through reference mode, so the text is a path that
+    // is valid there too.
     const wf = agentWorkflow('wf_ed13', {
-      alpha_text: { valueType: 'immediate', value: 'keep me' },
+      alpha_text: { valueType: 'immediate', value: 'data.keep_me' },
     });
+    (wf.executionGraph as { inputSchema?: unknown }).inputSchema = {
+      keep_me: { type: 'string', required: false },
+    };
     const capture = await open(page, mockApi, wf);
     await openStep(page, 'Agent Step');
 
     const r = row(page, /alpha/i);
-    await expect(r.locator('textarea, input').first()).toHaveValue('keep me');
+    await expect(r.locator('textarea, input').first()).toHaveValue(
+      'data.keep_me'
+    );
     await r.getByRole('button', { name: 'Switch to template mode' }).click();
     await r.getByRole('button', { name: 'Switch to reference mode' }).click();
-    await expect(r.getByText('keep me', { exact: true })).toBeVisible();
+    await expect(r.getByText('data.keep_me', { exact: true })).toBeVisible();
     await r.getByRole('button', { name: 'Switch to composite mode' }).click();
 
     await applyPanel(page);
     const graph = await capture.save();
     const saved = graph.steps.agent.inputMapping.alpha_text;
     expect(saved.valueType).toBe('composite');
-    await knownDefect('ED-13', async () => {
-      expect(JSON.stringify(saved)).toContain('keep me');
-    });
+    expect(JSON.stringify(saved)).toContain('data.keep_me');
   });
 
   test('ED-14 Composite to string to composite keeps the structure', async ({

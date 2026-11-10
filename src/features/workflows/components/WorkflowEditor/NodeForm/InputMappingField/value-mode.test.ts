@@ -41,6 +41,19 @@ describe('coerceValueForMode', () => {
     });
   });
 
+  it('keeps a non-empty scalar as the structure entry, in its mode (ED-13)', () => {
+    expect(coerceValueForMode('data.x', 'reference', 'composite')).toEqual({
+      changed: true,
+      value: { value: { valueType: 'reference', value: 'data.x' } },
+    });
+    expect(
+      coerceValueForMode('hi', 'immediate', 'composite', 'array<string>')
+    ).toEqual({
+      changed: true,
+      value: [{ valueType: 'immediate', value: 'hi' }],
+    });
+  });
+
   it('seeds an empty array entering composite on an array-typed field', () => {
     for (const fieldType of [
       'array',

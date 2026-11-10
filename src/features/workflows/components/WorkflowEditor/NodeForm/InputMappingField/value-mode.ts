@@ -72,7 +72,15 @@ export function coerceValueForMode(
   // single entry of the new structure rather than dropped.
   if (to === 'composite') {
     if (isStructural(value)) return { changed: false, value };
-    return { changed: true, value: isArrayFieldType(fieldType) ? [] : {} };
+    // The scalar becomes the structure's one entry, in the mode it was in; it
+    // used to be dropped for an empty structure (ED-13).
+    const kept =
+      value !== undefined && value !== null && value !== ''
+        ? { valueType: from, value }
+        : null;
+    if (isArrayFieldType(fieldType))
+      return { changed: true, value: kept ? [kept] : [] };
+    return { changed: true, value: kept ? { value: kept } : {} };
   }
 
   // Leaving composite for a string mode: serialize rather than discard, so
