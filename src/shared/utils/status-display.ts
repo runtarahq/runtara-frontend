@@ -154,19 +154,18 @@ export function getTerminationTypeDisplay(
 }
 
 /**
- * Check if a status represents an active (non-terminal) state
- * Active states can be cancelled
+ * Check if a status represents an active (non-terminal) state.
+ * Active states can be cancelled, and their pages keep polling.
+ *
+ * A status we do not recognize counts as active, not finished: a newer server
+ * may report a live run under a new name, and reading it as over offered
+ * Replay and stopped polling a run that was still going (EX-6). Only a known
+ * ending is final. A missing status is not active: there is no run to follow.
  */
 export function isActiveStatus(status: string | undefined | null): boolean {
   const normalizedStatus = status?.toLowerCase() || '';
-  return [
-    'queued',
-    'compiling',
-    'running',
-    'pending',
-    'suspended',
-    'unknown',
-  ].includes(normalizedStatus);
+  if (!normalizedStatus) return false;
+  return !isFinishedStatus(normalizedStatus);
 }
 
 /**
@@ -181,8 +180,8 @@ export function isTerminalStatus(status: string | undefined | null): boolean {
  * Check if a run has demonstrably stopped for good.
  *
  * Deliberately narrower than `isTerminalStatus` (which is `!isActiveStatus`, so a
- * missing or unrecognized status reads as terminal): this only answers true for a
- * status we recognize as an ending. Use it when saying "this run is over" would be
+ * missing status reads as terminal): this only answers true for a status we
+ * recognize as an ending. Use it when saying "this run is over" would be
  * wrong if we simply don't know yet — e.g. empty-state copy.
  */
 export function isFinishedStatus(status: string | undefined | null): boolean {

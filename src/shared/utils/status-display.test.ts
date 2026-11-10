@@ -194,6 +194,17 @@ describe('status-display utilities', () => {
       expect(isActiveStatus('cancelled')).toBe(false);
     });
 
+    it('counts a status it does not recognize as active (EX-6)', () => {
+      expect(isActiveStatus('rehydrating')).toBe(true);
+      expect(isTerminalStatus('rehydrating')).toBe(false);
+    });
+
+    it('counts every known ending as not active', () => {
+      for (const status of ['completed', 'failed', 'timeout', 'cancelled']) {
+        expect(isActiveStatus(status)).toBe(false);
+      }
+    });
+
     it('handles null input', () => {
       expect(isActiveStatus(null)).toBe(false);
     });
