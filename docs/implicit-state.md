@@ -28,7 +28,7 @@ a code scan, `test` was found while testing another claim.
 
 Of 135 claims, at audit time: **118 confirmed, 8 partial, 5 denied and 4 static**. All were tested or settled; none is left open.
 
-Fixed since: OB-18, OB-8, ED-22, ED-3, ED-11, ED-12, WF-1, WF-2, OB-2, OB-5, CN-9, CN-17, OB-1, SH-1, HI-1, EX-1, EX-2, EX-3, OP-1, OP-2, OB-3, HI-2, OP-14, SH-2, OB-4, OB-6, OB-7, ED-4, ED-5, ED-2, WF-3, CN-1, CN-13, SH-3, SH-4, EX-5, ED-6, ED-7 and ED-8. Their verdicts below read `FIXED`.
+Fixed since: OB-18, OB-8, ED-22, ED-3, ED-11, ED-12, WF-1, WF-2, OB-2, OB-5, CN-9, CN-17, OB-1, SH-1, HI-1, EX-1, EX-2, EX-3, OP-1, OP-2, OB-3, HI-2, OP-14, SH-2, OB-4, OB-6, OB-7, ED-4, ED-5, ED-2, WF-3, CN-1, CN-13, SH-3, SH-4, EX-5, ED-6, ED-7, ED-8 and SH-10. Their verdicts below read `FIXED`.
 
 - **Method:** each claim has a test that drives the real UI in Chrome against `page.route()` mocks (`e2e/audit/`), apart from the static claims, which read the source. The verdicts below record what those tests observed when they asserted the claimed defect directly.
 - **Tests now assert correct behaviour:** see [Working with the specs](#working-with-the-specs).
@@ -274,7 +274,7 @@ Specs in `e2e/audit/`: shared.
 | SH-7  | Overlapping full-value loads clear each other's indicator                       | `PayloadExplorer.tsx:297`                                                  | scan   | CONFIRMED | Input's load finishing clears State's "Loading…" with State's request still held.                                                                                                                                                                                            |
 | SH-8  | File input: overlapping reads, with the last to finish winning                  | `src/shared/components/ui/file-input.tsx:77`                               | scan   | CONFIRMED | second.txt is replaced by first.txt; POST carries first.txt. Read order is forced by an init script.                                                                                                                                                                         |
 | SH-9  | A 429 entitlement denial gets the default toast                                 | `src/shared/hooks/api.ts:223`, `:321`                                      | scan   | CONFIRMED | 429 shows "Error: 429". Control: 403 shows "Tier limit reached".                                                                                                                                                                                                             |
-| SH-10 | `readJsonEventStream` has no non-test callers                                   | `src/shared/utils/sse.ts:14`                                               | scan   | STATIC    | Only `shared/utils/sse.ts` and `sse.test.ts` mention it.                                                                                                                                                                                                                     |
+| SH-10 | `readJsonEventStream` has no non-test callers                                   | `src/shared/utils/sse.ts:14`                                               | scan   | FIXED     | Removed sse.ts and its test. Its only caller, the pipeline stream, went in 75fe170 when analytics moved to OTEL metrics.                                                                                                                                                     |
 
 ## Machine inventory
 
