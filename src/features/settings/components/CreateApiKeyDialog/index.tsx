@@ -226,10 +226,13 @@ export function CreateApiKeyDialog({ open, onClose }: CreateApiKeyDialogProps) {
         // toast said created, and the only copy of the key went unseen
         // (ST-1). The dialog stays until the answer is in.
         if (!next && isPending) return;
+        // The reveal view holds the only copy of the key: Esc or a click
+        // outside destroyed it unasked. Only Done closes it (ST-2).
+        if (!next && createdKey) return;
         handleClose();
       }}
     >
-      <DialogContent>
+      <DialogContent hideCloseButton={Boolean(createdKey)}>
         {createdKey ? (
           <>
             <DialogHeader>
