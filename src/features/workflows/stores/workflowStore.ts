@@ -11,7 +11,7 @@ export {
   rewriteStepReferencesInString,
 } from '@/features/workflows/utils/step-ids';
 
-import type { HistoryEntry, WorkflowState } from './workflow-state';
+import type { WorkflowState } from './workflow-state';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
@@ -70,9 +70,6 @@ const initialState = {
   requestEditNodeId: null,
   resizeTracking: {},
   lastStepRename: null,
-  history: [],
-  historyIndex: -1,
-  maxHistorySize: 50,
 };
 
 export const useWorkflowStore = create<WorkflowState>()(
@@ -89,7 +86,6 @@ export const useWorkflowStore = create<WorkflowState>()(
           state.edges = edges;
           state.isDirty = false;
           state.isStructurallyDirty = false;
-          state.saveToHistory();
         }),
 
       resetState: () => set(() => initialState),
@@ -269,7 +265,6 @@ export const useWorkflowStore = create<WorkflowState>()(
 
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         });
         return nodeId;
       },
@@ -296,7 +291,6 @@ export const useWorkflowStore = create<WorkflowState>()(
             };
             markDirty(state);
             state.isStructurallyDirty = true;
-            state.saveToHistory();
           }
         }),
 
@@ -327,7 +321,6 @@ export const useWorkflowStore = create<WorkflowState>()(
           node.style = { ...node.style, width, height };
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         }),
 
       removeNode: (nodeId) =>
@@ -386,7 +379,6 @@ export const useWorkflowStore = create<WorkflowState>()(
 
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         }),
 
       renameStep: (oldId, newId) => {
@@ -558,7 +550,6 @@ export const useWorkflowStore = create<WorkflowState>()(
           state.lastStepRename = { oldId, newId };
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         });
         return null;
       },
@@ -596,12 +587,11 @@ export const useWorkflowStore = create<WorkflowState>()(
           state.nodes.push(newNode);
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         });
         return noteId;
       },
 
-      updateNote: (noteId, patch, recordHistory = true) =>
+      updateNote: (noteId, patch) =>
         set((state) => {
           const note = state.nodes.find(
             (n) => n.id === noteId && n.type === NODE_TYPES.NoteNode
@@ -621,7 +611,6 @@ export const useWorkflowStore = create<WorkflowState>()(
             };
           }
           markDirty(state);
-          if (recordHistory) state.saveToHistory();
         }),
 
       placeNote: (noteId, position, anchorStepId) =>
@@ -646,7 +635,6 @@ export const useWorkflowStore = create<WorkflowState>()(
           else delete data.anchorStepId;
           note.data = data;
           markDirty(state);
-          state.saveToHistory();
         }),
 
       // Edge Operations
@@ -680,7 +668,6 @@ export const useWorkflowStore = create<WorkflowState>()(
           state.edges.push(newEdge);
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         }),
 
       addEdges: (edgesToAdd) =>
@@ -721,7 +708,6 @@ export const useWorkflowStore = create<WorkflowState>()(
 
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         }),
 
       updateEdgeData: (edgeId, updates) =>
@@ -744,7 +730,6 @@ export const useWorkflowStore = create<WorkflowState>()(
           edge.data = Object.keys(nextData).length > 0 ? nextData : undefined;
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         }),
 
       removeEdge: (from, to, label) =>
@@ -760,7 +745,6 @@ export const useWorkflowStore = create<WorkflowState>()(
           );
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         }),
 
       insertNodeBetween: (
@@ -1068,7 +1052,6 @@ export const useWorkflowStore = create<WorkflowState>()(
 
           markDirty(state);
           state.isStructurallyDirty = true;
-          state.saveToHistory();
         }),
 
       // React Flow Integration
@@ -1425,53 +1408,6 @@ export const useWorkflowStore = create<WorkflowState>()(
         return { nodes: state.nodes, edges: state.edges };
       },
 
-      // History Management
-      saveToHistory: () =>
-        set((state) => {
-          // Remove any future history if we're not at the latest
-          if (state.historyIndex < state.history.length - 1) {
-            state.history = state.history.slice(0, state.historyIndex + 1);
-          }
-
-          // Add current state to history
-          const historyEntry: HistoryEntry = {
-            executionGraph: state.executionGraph,
-            nodes: [...state.nodes],
-            edges: [...state.edges],
-          };
-
-          state.history.push(historyEntry);
-
-          // Limit history size
-          if (state.history.length > state.maxHistorySize) {
-            state.history = state.history.slice(-state.maxHistorySize);
-          }
-
-          state.historyIndex = state.history.length - 1;
-        }),
-
-      undo: () =>
-        set((state) => {
-          if (state.historyIndex > 0) {
-            state.historyIndex--;
-            const historyEntry = state.history[state.historyIndex];
-            state.executionGraph = historyEntry.executionGraph;
-            state.nodes = [...historyEntry.nodes];
-            state.edges = [...historyEntry.edges];
-          }
-        }),
-
-      redo: () =>
-        set((state) => {
-          if (state.historyIndex < state.history.length - 1) {
-            state.historyIndex++;
-            const historyEntry = state.history[state.historyIndex];
-            state.executionGraph = historyEntry.executionGraph;
-            state.nodes = [...historyEntry.nodes];
-            state.edges = [...historyEntry.edges];
-          }
-        }),
-
       // Layout
       applyAutoLayout: () =>
         set((state) => {
@@ -1515,18 +1451,7 @@ export const useWorkflowStore = create<WorkflowState>()(
           const layoutedMap = new Map(layoutedNodes.map((n) => [n.id, n]));
           state.nodes = state.nodes.map((n) => layoutedMap.get(n.id) ?? n);
           markDirty(state);
-          state.saveToHistory();
         }),
-
-      canUndo: () => {
-        const state = get();
-        return state.historyIndex > 0;
-      },
-
-      canRedo: () => {
-        const state = get();
-        return state.historyIndex < state.history.length - 1;
-      },
     })),
     {
       name: 'workflow-store',

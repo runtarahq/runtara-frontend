@@ -5,12 +5,6 @@ import type {
 } from '@/features/workflows/types/execution-graph';
 import type { ValidationError } from '@/shared/hooks/api';
 
-export interface HistoryEntry {
-  executionGraph: ExecutionGraphDto | null;
-  nodes: Node[];
-  edges: Edge[];
-}
-
 export interface WorkflowState {
   // Core workflow data (backend format)
   executionGraph: ExecutionGraphDto | null;
@@ -82,11 +76,6 @@ export interface WorkflowState {
   // set on every successful rename.
   lastStepRename: { oldId: string; newId: string } | null;
 
-  // History management
-  history: HistoryEntry[];
-  historyIndex: number;
-  maxHistorySize: number;
-
   // Actions - State Management
   setExecutionGraph: (graph: ExecutionGraphDto) => void;
   resetState: () => void;
@@ -147,9 +136,7 @@ export interface WorkflowState {
    */
   updateNote: (
     noteId: string,
-    patch: { content?: string; width?: number; height?: number },
-    /** false while a resize is in progress, so undo gets one entry */
-    recordHistory?: boolean
+    patch: { content?: string; width?: number; height?: number }
   ) => void;
   /** Record where a dragged note was dropped, and what it is attached to. */
   placeNote: (
@@ -185,15 +172,6 @@ export interface WorkflowState {
   syncFromReactFlow: (nodes: Node[], edges: Edge[]) => void;
   getReactFlowElements: () => { nodes: Node[]; edges: Edge[] };
 
-  // Actions - History
-  undo: () => void;
-  redo: () => void;
-  saveToHistory: () => void;
-
   // Actions - Layout
   applyAutoLayout: () => void;
-
-  // Computed
-  canUndo: () => boolean;
-  canRedo: () => boolean;
 }
