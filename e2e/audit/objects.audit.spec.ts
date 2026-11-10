@@ -864,11 +864,9 @@ test.describe('Objects audit', () => {
     await insertButton(page).click();
     await expect.poll(() => backend.requests.bulkInsert.length).toBe(1);
     expect(backend.requests.bulkInsert[0].body.onConflict).toBe('error');
-    await knownDefect('OB-16', async () => {
-      expect(backend.requests.bulkInsert[0].body.conflictColumns ?? []).toEqual(
-        []
-      );
-    });
+    expect(backend.requests.bulkInsert[0].body.conflictColumns ?? []).toEqual(
+      []
+    );
   });
 
   test('OB-17 Schema form: name edits keep a manually typed table name', async ({
