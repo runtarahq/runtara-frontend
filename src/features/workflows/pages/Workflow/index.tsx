@@ -25,11 +25,7 @@ import '@xyflow/react/dist/base.css';
 import { queryClient } from '@/bootstrap.tsx';
 import { slugify } from '@/shared/utils/string-utils';
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import * as form from '@/features/workflows/components/WorkflowEditor/NodeForm/NodeFormItem';
-import {
-  rewriteStepReferencesDeep,
-  useWorkflowStore,
-} from '@/features/workflows/stores/workflowStore.ts';
+import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
 import { DebugStepInspector } from '@/features/workflows/components/DebugStepInspector';
 
 import { WorkflowExecuteDialog } from '@/features/workflows/components/WorkflowExecuteDialog';
@@ -84,15 +80,6 @@ import { isActiveStatus } from '@/shared/utils/status-display';
 
 function hasOwn(object: object, key: string) {
   return Object.prototype.hasOwnProperty.call(object, key);
-}
-
-function normalizeNodeDataForStagingComparison(
-  data?: Partial<form.SchemaType>
-): Partial<form.SchemaType> {
-  return {
-    ...form.initialValues,
-    ...(data ? JSON.parse(JSON.stringify(data)) : {}),
-  };
 }
 
 function getWorkflowStoreContentHash(): string {
@@ -157,44 +144,14 @@ export function Workflow() {
   // Track if we're switching versions (for showing inline loading instead of full page loader)
   const [isSwitchingVersion, setIsSwitchingVersion] = useState(false);
 
-  // Staged node changes - preserved until global save
-  const [stagedNodeChanges, setStagedNodeChanges] = useState<
-    Record<string, form.SchemaType>
-  >({});
-
   // Staged workflow changes (name, description, variables, schemas, timeout) - preserved until global save
   const [stagedWorkflowChanges, setStagedWorkflowChanges] =
     useState<WorkflowChanges>({});
 
-  // Sync staged node IDs to workflow store for visual highlighting
+  // A new page starts with no steps highlighted as staged.
   useEffect(() => {
-    const stagedIds = new Set(Object.keys(stagedNodeChanges));
-    useWorkflowStore.getState().setStagedNodeIds(stagedIds);
-  }, [stagedNodeChanges]);
-
-  // When a step id is renamed in the store, follow the rename in staged node
-  // changes: re-key the renamed step's entry and rewrite step references
-  // (mapping values, conditions, templates) inside every staged value.
-  const lastStepRename = useWorkflowStore((state) => state.lastStepRename);
-  useEffect(() => {
-    if (!lastStepRename) return;
-    const { oldId, newId } = lastStepRename;
-    setStagedNodeChanges((prev) => {
-      const entries = Object.entries(prev);
-      if (entries.length === 0) return prev;
-      const next: Record<string, form.SchemaType> = {};
-      for (const [key, value] of entries) {
-        next[key === oldId ? newId : key] = rewriteStepReferencesDeep(
-          value,
-          oldId,
-          newId
-        ) as form.SchemaType;
-      }
-      return next;
-    });
-    // Intentionally keyed on the rename event only: each rename is applied
-    // exactly once, even if staged changes update for other reasons.
-  }, [lastStepRename]);
+    useWorkflowStore.getState().setStagedNodeIds(new Set());
+  }, []);
 
   // Reactively subscribe to isDirty state
   const isDirty = useWorkflowStore((state) => state.isDirty);
@@ -210,10 +167,8 @@ export function Workflow() {
       return false;
     }
     const hasWorkflowChanges = Object.keys(stagedWorkflowChanges).length > 0;
-    return (
-      isDirty || Object.keys(stagedNodeChanges).length > 0 || hasWorkflowChanges
-    );
-  }, [isDirty, stagedNodeChanges, stagedWorkflowChanges, isSwitchingVersion]);
+    return isDirty || hasWorkflowChanges;
+  }, [isDirty, stagedWorkflowChanges, isSwitchingVersion]);
 
   // Structural changes (add/remove/edit nodes or edges) block execution.
   // Position-only changes (dragging, auto-layout) do not.
@@ -221,17 +176,8 @@ export function Workflow() {
     if (isSwitchingVersion) {
       return false;
     }
-    return (
-      isStructurallyDirty ||
-      Object.keys(stagedNodeChanges).length > 0 ||
-      Object.keys(stagedWorkflowChanges).length > 0
-    );
-  }, [
-    isStructurallyDirty,
-    stagedNodeChanges,
-    stagedWorkflowChanges,
-    isSwitchingVersion,
-  ]);
+    return isStructurallyDirty || Object.keys(stagedWorkflowChanges).length > 0;
+  }, [isStructurallyDirty, stagedWorkflowChanges, isSwitchingVersion]);
 
   // Helper to check for unsaved changes before performing a destructive action (version change, import)
   const confirmIfUnsavedChanges = useCallback(
@@ -267,7 +213,6 @@ export function Workflow() {
   // Register/unregister the blocker based on hasUnsavedChanges
   useEffect(() => {
     setBlocker(hasUnsavedChanges, () => {
-      setStagedNodeChanges({});
       setStagedWorkflowChanges({});
       useWorkflowStore.getState().clearDirtyFlag();
     });
@@ -440,8 +385,7 @@ export function Workflow() {
     // Clear validation problems from previous workflow
     useValidationStore.getState().clearMessages();
 
-    // Clear staged node and workflow changes
-    setStagedNodeChanges({});
+    // Clear staged workflow changes
     setStagedWorkflowChanges({});
 
     setSelectedVersion(undefined);
@@ -514,8 +458,7 @@ export function Workflow() {
     (version: number | undefined) => {
       // Clear dirty flag when switching versions
       useWorkflowStore.getState().clearDirtyFlag();
-      // Clear staged node and workflow changes when switching versions
-      setStagedNodeChanges({});
+      // Clear staged workflow changes when switching versions
       setStagedWorkflowChanges({});
 
       // Mark that we're switching versions to show inline loading
@@ -743,35 +686,6 @@ export function Workflow() {
     []
   );
 
-  // Handlers for staged node changes
-
-  const handleResetNodeChanges = useCallback((nodeId: string) => {
-    setStagedNodeChanges((prev) => {
-      const next = { ...prev };
-      delete next[nodeId];
-      return next;
-    });
-  }, []);
-
-  // Clean up staged changes when nodes are removed
-  const workflowNodesLength = useWorkflowStore((state) => state.nodes.length);
-  useEffect(() => {
-    const currentNodeIds = new Set(
-      useWorkflowStore.getState().nodes.map((n) => n.id)
-    );
-
-    setStagedNodeChanges((prev) => {
-      const stagedIds = Object.keys(prev);
-      const removedIds = stagedIds.filter((id) => !currentNodeIds.has(id));
-
-      if (removedIds.length === 0) return prev;
-
-      const next = { ...prev };
-      removedIds.forEach((id) => delete next[id]);
-      return next;
-    });
-  }, [workflowNodesLength]);
-
   // One save at a time (WF-3).
   const handleSubmit = useOneAtATime((values: Record<string, any>) =>
     submitWorkflow(values)
@@ -779,24 +693,19 @@ export function Workflow() {
 
   const submitWorkflow = async ({ name }: Record<string, any>) => {
     // What this save sends; see dropSavedEntries.
-    const sentNodeChanges = stagedNodeChanges;
     const sentWorkflowChanges = stagedWorkflowChanges;
     // Get the current state from Zustand store
-    const { nodes, edges, isDirty, syncFromReactFlow } =
-      useWorkflowStore.getState();
+    const { isDirty } = useWorkflowStore.getState();
 
     // Check if the name has changed
     const nameChanged = name !== data.name;
-
-    // Check if there are staged node changes
-    const hasStagedNodeChanges = Object.keys(stagedNodeChanges).length > 0;
 
     // Check if there are staged workflow changes (metadata: variables, schemas, description)
     const hasStagedWorkflowChanges =
       Object.keys(stagedWorkflowChanges).length > 0;
 
-    // Check if workflow has changed (dirty flag or staged node changes)
-    const hasWorkflowChanges = isDirty || hasStagedNodeChanges;
+    // Check if the canvas has changed
+    const hasWorkflowChanges = isDirty;
 
     // If nothing has changed, just show a message and return
     if (!hasWorkflowChanges && !nameChanged && !hasStagedWorkflowChanges) {
@@ -804,43 +713,6 @@ export function Workflow() {
       return;
     }
 
-    // Apply staged node changes to the workflow store before saving
-    if (hasStagedNodeChanges) {
-      let hasActualStagedUpdates = false;
-      const updatedNodes = nodes.map((node) => {
-        const stagedNodeData = stagedNodeChanges[node.id];
-        if (stagedNodeData) {
-          const normalizedCurrentData = normalizeNodeDataForStagingComparison(
-            node.data as form.SchemaType
-          );
-          const normalizedStagedData =
-            normalizeNodeDataForStagingComparison(stagedNodeData);
-          const hasMeaningfulDiff =
-            JSON.stringify(normalizedCurrentData) !==
-            JSON.stringify(normalizedStagedData);
-
-          if (!hasMeaningfulDiff) {
-            return node;
-          }
-
-          hasActualStagedUpdates = true;
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              ...stagedNodeData,
-            },
-          };
-        }
-        return node;
-      });
-
-      if (hasActualStagedUpdates) {
-        syncFromReactFlow(updatedNodes, edges);
-      }
-    }
-
-    // Get the updated state after applying staged changes
     const finalState = useWorkflowStore.getState();
     const savedRevision = finalState.dirtyRevision;
     // Build variables object for execution graph
@@ -1059,9 +931,6 @@ export function Workflow() {
       });
       // Clear the staged changes this save sent. Ones edited while it was in
       // flight were not sent, so they stay staged and unsaved.
-      setStagedNodeChanges((current) =>
-        dropSavedEntries(current, sentNodeChanges)
-      );
       setStagedWorkflowChanges((current) =>
         dropSavedEntries(current, sentWorkflowChanges)
       );
@@ -1411,9 +1280,6 @@ export function Workflow() {
         executionGraph &&
         (executionGraph.steps || executionGraph.executionPlan)
       ) {
-        // Clear staged node changes when importing
-        setStagedNodeChanges({});
-
         // Extract variables from execution graph and convert to UI format
         // API format: { varName: { type, value }, ... }
         // UI format: [{ name, value, type }, ...]
@@ -1671,8 +1537,6 @@ export function Workflow() {
             readOnly={!!executingInstanceId}
             debugInspectMode={isSuspended}
             workflow={workflowForSettings}
-            stagedNodeChanges={stagedNodeChanges}
-            onResetNodeChanges={handleResetNodeChanges}
             onWorkflowChange={handleWorkflowChange}
             canvasDetail={canvasDetail}
           />
