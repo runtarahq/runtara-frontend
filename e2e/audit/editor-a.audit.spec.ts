@@ -292,9 +292,8 @@ test.describe('Editor audit A', () => {
     // The same single click as the control must still open nothing.
     await step(page, 'Second').first().click();
     await page.waitForTimeout(1_000);
-    await knownDefect('ED-2', async () => {
-      await expect(panel(page)).toHaveCount(0);
-    });
+    // Fixed: deleting the edited step closed its editor.
+    await expect(panel(page)).toHaveCount(0);
   });
 
   test('ED-3 Clicking another node does not silently discard unsaved panel edits', async ({
