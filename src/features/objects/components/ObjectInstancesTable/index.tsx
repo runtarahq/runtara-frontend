@@ -446,6 +446,25 @@ export function ObjectInstanceDtosTable({
   );
   saveDirtyRowRef.current = saveDirtyRow;
 
+  // Leaving with unsaved rows (OB-12). A reload or a closed tab warns; an
+  // in-app move with no click away (back or forward) used to drop the edits
+  // silently, so leaving the table saves them, as a clicked link already did.
+  const hasDirtyRows = dirtyRows.size > 0;
+  useEffect(() => {
+    if (!hasDirtyRows) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasDirtyRows]);
+  useEffect(
+    () => () => {
+      for (const rowId of dirtyRowsRef.current.keys()) {
+        void saveDirtyRowRef.current?.(rowId);
+      }
+    },
+    []
+  );
+
   const handleUpdate = useCallback((instanceId: string, data: any) => {
     const propertyEntries = Object.entries(data.properties || {});
     const hasChanges = propertyEntries.length > 0;
