@@ -87,12 +87,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         queuedRunRef.current = { instanceId, queuedAt: Date.now() };
 
         // Start execution visualization (debugMode enables step-event polling)
-        startExecution(
-          instanceId,
-          variables.workflowId,
-          variables.trackEvents,
-          variables.debug
-        );
+        startExecution(instanceId, variables.workflowId, variables.trackEvents);
       }
     },
   });
@@ -180,7 +175,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
     );
 
     // Attach to the instance — enable step event polling (debugMode=true) and mark as debug execution
-    startExecution(attachInstanceId, workflowId, true, true);
+    startExecution(attachInstanceId, workflowId, true);
   }, [
     searchParams,
     workflowId,

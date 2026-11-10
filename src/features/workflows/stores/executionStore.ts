@@ -42,8 +42,7 @@ interface ExecutionState {
   instanceStatus: ExecutionStatus | null;
   panelOpen: boolean;
 
-  // Debug execution mode (breakpoints active)
-  isDebugExecution: boolean;
+  // Stopped at a breakpoint in a debug run
   isSuspended: boolean;
   breakpointHit: BreakpointHitInfo | null;
 
@@ -63,8 +62,7 @@ interface ExecutionState {
   startExecution: (
     instanceId: string,
     workflowId: string,
-    debugMode: boolean,
-    isDebugExecution?: boolean
+    debugMode: boolean
   ) => void;
   updateNodeStatus: (nodeId: string, status: NodeExecutionStatus) => void;
   updateInstanceStatus: (status: ExecutionStatus) => void;
@@ -87,7 +85,6 @@ export const useExecutionStore = create<ExecutionState>()(
       debugMode: false,
       instanceStatus: null,
       panelOpen: false,
-      isDebugExecution: false,
       isSuspended: false,
       breakpointHit: null,
       selectedInvocationId: null,
@@ -96,12 +93,11 @@ export const useExecutionStore = create<ExecutionState>()(
       statusVersion: 0,
 
       // Actions
-      startExecution: (instanceId, workflowId, debugMode, isDebugExecution) => {
+      startExecution: (instanceId, workflowId, debugMode) => {
         set((state) => {
           state.executingInstanceId = instanceId;
           state.workflowId = workflowId;
           state.debugMode = debugMode;
-          state.isDebugExecution = isDebugExecution || false;
           state.isSuspended = false;
           state.breakpointHit = null;
           state.panelOpen = false; // Don't open automatically - user must click "View Details"
@@ -145,7 +141,6 @@ export const useExecutionStore = create<ExecutionState>()(
           state.executingInstanceId = null;
           state.workflowId = null;
           state.debugMode = false;
-          state.isDebugExecution = false;
           state.isSuspended = false;
           state.breakpointHit = null;
           state.instanceStatus = null;
