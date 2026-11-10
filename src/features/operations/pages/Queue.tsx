@@ -1,6 +1,7 @@
 import { stateLabel } from '../state-label';
 import { inlineOptions } from '../answer-options';
 import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   ArrowDown,
   ArrowDownWideNarrow,
@@ -191,6 +192,17 @@ function QueueContent({
           i.request.requestId === row.requestId
       )
   );
+  // A row only has a prepared answer once its form is open; say so rather
+  // than doing nothing when none is (OP-5).
+  async function submitPrepared() {
+    const sent = await Promise.all(
+      selected.map((row) => refs.current.get(requestKey(row))?.submit())
+    );
+    if (!sent.some(Boolean))
+      toast.info(
+        "No prepared answers to submit. Choose an answer or open a row's form first."
+      );
+  }
   const options = selected.map((row) =>
     inlineOptions(row.inputSchema, view.answers?.inline, !saved)
   );
@@ -493,13 +505,7 @@ function QueueContent({
               size="sm"
               variant="secondary"
               bordered
-              onClick={() =>
-                void Promise.all(
-                  selected.map((row) =>
-                    refs.current.get(requestKey(row))?.submit()
-                  )
-                )
-              }
+              onClick={() => void submitPrepared()}
             >
               Submit prepared answers
             </Button>

@@ -24,7 +24,8 @@ import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManage
 
 export interface AnswerController {
   choose(value: unknown): Promise<void>;
-  submit(): Promise<void>;
+  /** Sends the row's open form; false when the row has none to send. */
+  submit(): Promise<boolean>;
 }
 export const QueueAnswer = forwardRef<
   AnswerController,
@@ -121,7 +122,9 @@ export const QueueAnswer = forwardRef<
   useImperativeHandle(ref, () => ({
     choose,
     submit: async () => {
-      if (editing) await send(current);
+      if (!editing || disabled) return false;
+      await send(current);
+      return true;
     },
   }));
   if (!infer && !inline)
