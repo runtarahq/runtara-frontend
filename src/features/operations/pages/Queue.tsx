@@ -1,6 +1,6 @@
 import { stateLabel } from '../state-label';
 import { inlineOptions } from '../answer-options';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   ArrowDown,
@@ -216,6 +216,13 @@ function QueueContent({
       : [];
   const data = query.data?.requests ?? query.data?.runs;
   const total = data?.totalElements;
+  // Answering or finishing everything on the last page empties it; step back to
+  // the new last page instead of stranding an empty table (OP-6).
+  const pageCount = data?.totalPages;
+  useEffect(() => {
+    if (pageCount !== undefined && page > 0 && page >= pageCount)
+      setPage(Math.max(0, pageCount - 1));
+  }, [page, pageCount]);
   // Every row of a queue asks the same question; name it once in the header.
   const question = rows[0]?.label;
   // Context values that a column already shows are noise in the row.
