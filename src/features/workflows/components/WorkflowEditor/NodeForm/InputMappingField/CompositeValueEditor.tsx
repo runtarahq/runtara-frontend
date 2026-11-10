@@ -82,22 +82,22 @@ export function CompositeValueEditor({
     (newMode: CompositeMode) => {
       if (newMode === mode) return;
 
-      // Warn if there's existing data
-      const hasData = isArray
-        ? value.length > 0
-        : Object.keys(value).length > 0;
-      if (hasData) {
-        // In a real app, you might want to show a confirmation dialog
-        // For now, we'll just switch and clear the data
-        console.warn('Switching composite mode will clear existing data');
-      }
-
-      // Create empty value of new type
-      const newValue = newMode === 'array' ? [] : {};
-      onChange(newValue);
+      // Convert rather than clear: switching used to drop every entry with
+      // no prompt (ED-19). An object's entries become the items, in order;
+      // items become entries named item_1, item_2, …
+      const newValue =
+        newMode === 'array'
+          ? Object.values(value as Record<string, unknown>)
+          : Object.fromEntries(
+              (value as unknown[]).map((item, index) => [
+                `item_${index + 1}`,
+                item,
+              ])
+            );
+      onChange(newValue as typeof value);
       onModeChange?.(newMode);
     },
-    [mode, value, isArray, onChange, onModeChange]
+    [mode, value, onChange, onModeChange]
   );
 
   // Determine the title to display

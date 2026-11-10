@@ -6,7 +6,7 @@ import {
   buildWorkflow,
 } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
+import { api, json, logWorkflow, openWorkflow } from './helpers';
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                   */
@@ -343,15 +343,11 @@ test.describe('Editor audit B', () => {
     const prompted =
       nativeDialog || (await page.getByRole('alertdialog').count()) > 0;
     const graph = prompted ? null : await applyAndSave(page, panel, ctl);
-    await knownDefect('ED-19', async () => {
-      if (!graph) return;
-      expect(graph.steps.worker.inputMapping.payload.valueType).toBe(
-        'composite'
-      );
-      expect(
-        JSON.stringify(graph.steps.worker.inputMapping.payload.value)
-      ).toContain('keep-me');
-    });
+    if (!graph) return;
+    expect(graph.steps.worker.inputMapping.payload.valueType).toBe('composite');
+    expect(
+      JSON.stringify(graph.steps.worker.inputMapping.payload.value)
+    ).toContain('keep-me');
   });
 
   test('ED-20 Re-selecting the current type of a composite item keeps its value', async ({
