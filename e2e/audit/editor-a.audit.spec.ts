@@ -394,9 +394,8 @@ test.describe('Editor audit A', () => {
       /if \(isCreate\) \{\s*onStagedChange\?\.\(nodeId, data\);/.test(
         source('NodeConfigPanel/index.tsx')
       );
-    await knownDefect('ED-6', async () => {
-      expect(neverInvoked).toBe(false);
-    });
+    // Fixed: the never-called prop is gone.
+    expect(neverInvoked).toBe(false);
 
     const wf = twoLogs('wf_ed6');
     await open(page, mockApi, wf);
@@ -430,9 +429,8 @@ test.describe('Editor audit A', () => {
         ? ['prevOpenRef']
         : []),
     ];
-    await knownDefect('ED-7', async () => {
-      expect(dead).toEqual([]);
-    });
+    // Fixed: the dead refs are gone.
+    expect(dead).toEqual([]);
   });
 
   test('ED-8 isInitializedRef and previousNodeDataRef have a reader or are gone', async () => {

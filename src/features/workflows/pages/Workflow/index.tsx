@@ -743,48 +743,6 @@ export function Workflow() {
   );
 
   // Handlers for staged node changes
-  const handleStagedNodeChange = useCallback(
-    (nodeId: string, nodeData: form.SchemaType) => {
-      const currentNode = useWorkflowStore
-        .getState()
-        .nodes.find((n) => n.id === nodeId);
-      const normalizedCurrentData = normalizeNodeDataForStagingComparison(
-        currentNode?.data as form.SchemaType | undefined
-      );
-      const normalizedIncomingData =
-        normalizeNodeDataForStagingComparison(nodeData);
-      const hasMeaningfulDiff =
-        JSON.stringify(normalizedCurrentData) !==
-        JSON.stringify(normalizedIncomingData);
-
-      setStagedNodeChanges((prev) => {
-        if (!hasMeaningfulDiff) {
-          if (!prev[nodeId]) {
-            return prev;
-          }
-          const next = { ...prev };
-          delete next[nodeId];
-          return next;
-        }
-
-        // Compare with existing staged data to prevent infinite loops
-        const existingData = prev[nodeId];
-        if (existingData) {
-          const existingJson = JSON.stringify(existingData);
-          const newJson = JSON.stringify(nodeData);
-          if (existingJson === newJson) {
-            // No change, return same reference to prevent re-render
-            return prev;
-          }
-        }
-        return {
-          ...prev,
-          [nodeId]: nodeData,
-        };
-      });
-    },
-    []
-  );
 
   const handleResetNodeChanges = useCallback((nodeId: string) => {
     setStagedNodeChanges((prev) => {
@@ -1718,7 +1676,6 @@ export function Workflow() {
             debugInspectMode={isSuspended}
             workflow={workflowForSettings}
             stagedNodeChanges={stagedNodeChanges}
-            onStagedNodeChange={handleStagedNodeChange}
             onResetNodeChanges={handleResetNodeChanges}
             onWorkflowChange={handleWorkflowChange}
             canvasDetail={canvasDetail}
