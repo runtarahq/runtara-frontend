@@ -66,7 +66,7 @@ export function ChatPage() {
     sendMessage,
     submitInput,
     cancelStream,
-    uncertainMessage,
+    uncertainMessages,
     uncertainResponses,
   } = useChatStream(workflowId ?? '');
 
@@ -204,17 +204,23 @@ export function ChatPage() {
               </Button>
             </div>
           ))}
-          {uncertainMessage?.sessionId === sessionId && uncertainMessage && (
-            <div className="space-y-2 border-t px-4 py-2 text-sm">
-              <p>Message receipt is unconfirmed: {uncertainMessage.message}</p>
-              <Button
-                variant="secondary"
-                onClick={() => void sendMessage(uncertainMessage.message)}
+          {uncertainMessages
+            .filter((unconfirmed) => unconfirmed.sessionId === sessionId)
+            .map(({ message }) => (
+              <div
+                key={message}
+                className="space-y-2 border-t px-4 py-2 text-sm"
               >
-                Retry this message
-              </Button>
-            </div>
-          )}
+                <p>Message receipt is unconfirmed: {message}</p>
+                <Button
+                  variant="secondary"
+                  aria-label={`Retry this message: ${message}`}
+                  onClick={() => void sendMessage(message)}
+                >
+                  Retry this message
+                </Button>
+              </div>
+            ))}
 
           {/* Input */}
           <ChatInput

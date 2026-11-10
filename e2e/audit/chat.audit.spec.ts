@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { expect, type Page } from '@playwright/test';
 import { test, buildWorkflow } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json, knownDefect } from './helpers';
+import { api, json } from './helpers';
 
 declare global {
   interface Window {
@@ -283,7 +283,8 @@ test.describe('Chat audit', () => {
     await expect(input(page)).toBeEnabled();
     const banner = (text: string) =>
       page.getByText(`Message receipt is unconfirmed: ${text}`);
-    const retry = page.getByRole('button', { name: 'Retry this message' });
+    const retry = (text: string) =>
+      page.getByRole('button', { name: `Retry this message: ${text}` });
 
     // A: the acknowledgement is lost.
     ctl.nextStatus = () => 502;
@@ -291,7 +292,7 @@ test.describe('Chat audit', () => {
     await expect(banner('message A')).toBeVisible();
 
     // Control: retrying A keeps its identity, so the server can dedupe.
-    await retry.click();
+    await retry('message A').click();
     await expect.poll(() => ctl.posts.length).toBe(2);
     expect(ctl.posts[1].messageId).toBe(ctl.posts[0].messageId);
     expect(ctl.posts[1].operationId).toBe(ctl.posts[0].operationId);
@@ -301,28 +302,28 @@ test.describe('Chat audit', () => {
     // B fails too: A must still be on offer.
     await send(page, 'message B');
     await expect(banner('message B')).toBeVisible();
-    await knownDefect('CH-4', async () => {
-      await expect(banner('message A')).toHaveCount(1);
-    });
+    await expect(banner('message A')).toHaveCount(1);
 
     // B goes through.
     ctl.nextStatus = () => 200;
-    await retry.click();
+    await retry('message B').click();
     await expect(bubble(page, 'message B')).toBeVisible();
     await expect(banner('message B')).toHaveCount(0);
+    // A is still on offer, with its own ids.
+    await expect(banner('message A')).toHaveCount(1);
     // B's reply ends; the chat takes a new message again (CH-2).
     await push(page, 'done');
     await expect(input(page)).toBeEnabled();
 
-    // Typing A again is a new message, which the server cannot match to the
-    // first attempt.
+    // Sending A again reuses A's ids, so the server can dedupe it.
     const before = ctl.posts.length;
     await send(page, 'message A');
     await expect.poll(() => ctl.posts.length).toBe(before + 1);
     const again = ctl.posts[before];
     expect(again.message).toBe('message A');
-    expect(again.messageId).not.toBe(ctl.posts[0].messageId);
-    expect(again.operationId).not.toBe(ctl.posts[0].operationId);
+    expect(again.messageId).toBe(ctl.posts[0].messageId);
+    expect(again.operationId).toBe(ctl.posts[0].operationId);
+    await expect(banner('message A')).toHaveCount(0);
     console.log(
       'CH-4 POSTs:',
       ctl.posts.map((p) => `${p.message}:${p.messageId.slice(0, 4)}`).join(' ')

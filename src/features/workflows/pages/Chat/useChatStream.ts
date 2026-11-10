@@ -144,15 +144,30 @@ export function useChatStream(workflowId: string) {
   // The stream currently being read, until it ends; a send with one open is
   // answered on it.
   const openStream = useRef<AbortController | null>(null);
-  const queueIntent = useRef<{
-    sessionId: string;
-    submission: SessionMessageSubmission;
-  } | null>(null);
+  // Every message whose receipt is unconfirmed, each with the ids a retry
+  // reuses so the server can dedupe it. One slot used to hold only the latest,
+  // so sending B dropped A's retry (CH-4).
+  const unconfirmed = useRef<
+    { sessionId: string; submission: SessionMessageSubmission }[]
+  >([]);
   const enqueueing = useRef(false);
-  const [uncertainMessage, setUncertainMessage] = useState<{
-    sessionId: string;
-    message: string;
-  } | null>(null);
+  const [uncertainMessages, setUncertainMessages] = useState<
+    { sessionId: string; message: string }[]
+  >([]);
+  const settleUnconfirmed = useCallback(
+    (
+      update: (all: typeof unconfirmed.current) => typeof unconfirmed.current
+    ) => {
+      unconfirmed.current = update(unconfirmed.current);
+      setUncertainMessages(
+        unconfirmed.current.map(({ sessionId, submission }) => ({
+          sessionId,
+          message: submission.message,
+        }))
+      );
+    },
+    []
+  );
 
   /**
    * Shared helper: consumes an SSE Response stream and dispatches events.
@@ -289,10 +304,11 @@ export function useChatStream(workflowId: string) {
         store;
       if (enqueueing.current) return false;
       const retry =
-        queueIntent.current?.sessionId === sessionId &&
-        queueIntent.current.submission.message === content
-          ? queueIntent.current
-          : null;
+        unconfirmed.current.find(
+          (intent) =>
+            intent.sessionId === sessionId &&
+            intent.submission.message === content
+        ) ?? null;
       if (
         !retry &&
         (pendingInputError || (pendingInputs.length > 1 && !waitingForInput))
@@ -323,13 +339,11 @@ export function useChatStream(workflowId: string) {
           message: content,
         },
       };
-      queueIntent.current = intent;
       enqueueing.current = true;
       store.setError(null);
       try {
         await sendSessionMessage(token, sessionId, intent.submission);
-        if (queueIntent.current === intent) queueIntent.current = null;
-        setUncertainMessage(null);
+        settleUnconfirmed((all) => all.filter((i) => i !== intent));
         const current = useChatStore.getState();
         if (current.sessionId !== sessionId) return false;
         store.addUserMessage(content);
@@ -351,10 +365,11 @@ export function useChatStream(workflowId: string) {
         if (isRefusedSessionMessage(err)) {
           // Definitive: nothing (or nothing unambiguous) was waiting, so the
           // server retained nothing. Retrying the same message cannot help.
-          if (queueIntent.current === intent) queueIntent.current = null;
-          setUncertainMessage(null);
+          settleUnconfirmed((all) => all.filter((i) => i !== intent));
         } else {
-          setUncertainMessage({ sessionId, message: content });
+          settleUnconfirmed((all) =>
+            all.includes(intent) ? all : [...all, intent]
+          );
         }
         if (useChatStore.getState().sessionId === sessionId)
           store.setError(
@@ -365,7 +380,7 @@ export function useChatStream(workflowId: string) {
         enqueueing.current = false;
       }
     },
-    [token, submitInput]
+    [token, submitInput, settleUnconfirmed]
   );
 
   const cancelStream = useCallback(() => {
@@ -388,7 +403,7 @@ export function useChatStream(workflowId: string) {
     sendMessage,
     refreshPendingInput,
     submitInput,
-    uncertainMessage,
+    uncertainMessages,
     uncertainResponses,
     cancelStream,
   };
