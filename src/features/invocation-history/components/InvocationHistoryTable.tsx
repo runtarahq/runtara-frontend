@@ -81,8 +81,15 @@ export function InvocationHistoryTable({
       setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }
   const [search, setSearch] = useState(filters.search ?? '');
+  // Follow the URL's search, unless it is just this box's own trimmed text
+  // coming back from the debounce: that wiped a trailing space mid-typing
+  // (HI-8).
   useEffect(() => {
-    setSearch(filters.search ?? '');
+    setSearch((current) =>
+      (current.trim() || undefined) === filters.search
+        ? current
+        : (filters.search ?? '')
+    );
   }, [filters.search]);
   useEffect(() => {
     const timer = setTimeout(() => {

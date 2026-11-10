@@ -411,10 +411,8 @@ test.describe('History audit', () => {
     await page.waitForTimeout(500);
     await search.pressSequentially('bar', { delay: 20 });
 
-    await knownDefect('HI-8', async () => {
-      await expect(search).toHaveValue('foo bar');
-      await expect.poll(() => list.at(-1)?.get('search')).toBe('foo bar');
-    });
+    await expect(search).toHaveValue('foo bar');
+    await expect.poll(() => list.at(-1)?.get('search')).toBe('foo bar');
   });
 
   test('HI-9 ?range=all&createdFrom= shows a range that matches the date filter', async ({
