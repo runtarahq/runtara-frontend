@@ -637,6 +637,8 @@ export const schema = () =>
       onWait: z.any().optional(),
       // UI-only: set while the on-wait JSON text does not parse. It used to
       // keep the last valid value and let Save through (ED-32).
+      // UI-only: "Add on-wait flow" on a step not yet added (ED-10).
+      addOnWaitFlow: z.boolean().optional(),
       onWaitJsonError: z
         .undefined({ message: 'Fix the on-wait JSON before saving.' })
         .optional(),

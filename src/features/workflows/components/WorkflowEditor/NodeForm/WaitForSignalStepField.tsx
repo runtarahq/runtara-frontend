@@ -51,6 +51,14 @@ export function WaitForSignalStepField({ name }: WaitForSignalStepFieldProps) {
   const convertNodeToContainer = useWorkflowStore(
     (state) => state.convertNodeToContainer
   );
+  // A step still being added is not on the canvas, so there is nothing to
+  // convert yet: the choice is staged and applied when it is added. The
+  // button used to do nothing for it (ED-10).
+  const onCanvas = useWorkflowStore((state) =>
+    Boolean(nodeId && state.nodes.some((n) => n.id === nodeId))
+  );
+  const onWaitStaged =
+    useWatch({ name: 'addOnWaitFlow', control: form.control }) === true;
 
   // Initialize default inputMapping entries for new nodes
   useEffect(() => {
@@ -362,7 +370,12 @@ export function WaitForSignalStepField({ name }: WaitForSignalStepFieldProps) {
 
             <FormItem>
               <FormLabel>On-Wait Flow</FormLabel>
-              {isOnWaitContainer ? (
+              {onWaitStaged && !isOnWaitContainer ? (
+                <FormDescription>
+                  Runs before the workflow suspends. The flow is added with this
+                  step; add, connect and configure its steps on the canvas.
+                </FormDescription>
+              ) : isOnWaitContainer ? (
                 <FormDescription>
                   Runs before the workflow suspends. Edited visually — add,
                   connect and configure the steps inside this container on the
@@ -404,7 +417,13 @@ export function WaitForSignalStepField({ name }: WaitForSignalStepFieldProps) {
                     variant="secondary"
                     bordered
                     size="sm"
-                    onClick={() => convertNodeToContainer(nodeId)}
+                    onClick={() =>
+                      onCanvas
+                        ? convertNodeToContainer(nodeId)
+                        : form.setValue('addOnWaitFlow', true, {
+                            shouldDirty: true,
+                          })
+                    }
                   >
                     <ListTree className="mr-2 size-4" />
                     Add on-wait flow

@@ -540,11 +540,15 @@ test.describe('Editor audit A', () => {
       .click();
     await expect(addFlow()).toBeVisible();
     await addFlow().click();
-    await knownDefect('ED-10', async () => {
-      await expect(panel(page).getByText(flowHelp)).toBeVisible({
-        timeout: 500,
-      });
+    await expect(panel(page).getByText(flowHelp)).toBeVisible({
+      timeout: 500,
     });
+
+    // Adding the step brings its on-wait flow with it.
+    const containers = page.locator('.react-flow__node-CONTAINER_NODE');
+    const before = await containers.count();
+    await panel(page).getByTestId('node-config-save').click();
+    await expect(containers).toHaveCount(before + 1);
   });
 
   test('ED-11 Closing the panel does not silently discard Switch case edits', async ({

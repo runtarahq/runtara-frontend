@@ -1155,6 +1155,7 @@ function WorkflowEditorContent({
       // only exists to block Save (ED-32).
       const { renameStepTo, ...data } = submitted;
       delete (data as { onWaitJsonError?: unknown }).onWaitJsonError;
+      delete (data as { addOnWaitFlow?: unknown }).addOnWaitFlow;
       const canApply = await validateNodeEditCandidate(
         nodeId,
         data as form.SchemaType
@@ -1191,8 +1192,13 @@ function WorkflowEditorContent({
 
   // Pending new node handlers
   const handlePendingNodeSave = useCallback(
-    async (nodeId: string, data: form.SchemaType) => {
+    async (nodeId: string, submitted: form.SchemaType) => {
       if (!pendingNewNode || pendingNewNode.id !== nodeId) return false;
+      // Form-only: an on-wait flow chosen before the step existed (ED-10).
+      const { addOnWaitFlow, ...data } = submitted as form.SchemaType & {
+        addOnWaitFlow?: boolean;
+      };
+      delete (data as { onWaitJsonError?: unknown }).onWaitJsonError;
 
       const canApply = await validateNodeEditCandidate(
         nodeId,
@@ -1201,6 +1207,7 @@ function WorkflowEditorContent({
       );
       if (!canApply) return false;
 
+      let addedId: string | null = nodeId;
       const nodeType = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
       const isConditional =
         nodeType === NODE_TYPES.ConditionalNode ||
@@ -1226,6 +1233,7 @@ function WorkflowEditorContent({
           pendingNewNode.parentId
         );
 
+        addedId = createdNodeId ?? null;
         if (createdNodeId) {
           if (pendingNewNode.sourceNodeId && pendingNewNode.targetNodeId) {
             // Parallel branch: the existing source->target edge is kept; the
@@ -1301,6 +1309,8 @@ function WorkflowEditorContent({
         }
       }
 
+      if (addOnWaitFlow && addedId)
+        useWorkflowStore.getState().convertNodeToContainer(addedId);
       setPendingNewNode(null);
       return true;
     },
