@@ -18,6 +18,7 @@ import {
   useRateLimits,
   useConnectionRateLimitHistory,
   useConnectionRateLimitTimeline,
+  currentWindow,
 } from '../../hooks/useRateLimits';
 import {
   RateLimitCard,
@@ -87,36 +88,28 @@ export function RateLimits() {
 
   const granularity = getGranularity(dateRange);
 
-  const { startTime, endTime } = useMemo(() => {
-    const now = new Date();
-    return {
-      startTime: new Date(now.getTime() - getDateRangeMs(dateRange)),
-      endTime: now,
-    };
-  }, [dateRange]);
-
-  const historyFrom = startTime.toISOString();
+  const rangeMs = getDateRangeMs(dateRange);
 
   const { data: historyResponse, isLoading: historyLoading } =
     useConnectionRateLimitHistory({
       connectionId: selectedConnectionId,
-      from: historyFrom,
+      rangeMs,
       limit: 1000,
     });
 
   const { data: timelineResponse, isLoading: timelineLoading } =
     useConnectionRateLimitTimeline({
       connectionId: selectedConnectionId,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
       granularity,
       dateRange,
+      rangeMs,
     });
 
   const timelineBuckets = useMemo(() => {
     const rawBuckets = timelineResponse?.data?.buckets ?? [];
-    return fillBuckets(rawBuckets, startTime, endTime, granularity);
-  }, [timelineResponse, startTime, endTime, granularity]);
+    const window = timelineResponse?.window ?? currentWindow(rangeMs);
+    return fillBuckets(rawBuckets, window.start, window.end, granularity);
+  }, [timelineResponse, rangeMs, granularity]);
 
   const handleRefresh = () => {
     refetch();

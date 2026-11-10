@@ -32,22 +32,56 @@ export function useConnectionRateLimitStatus(
   });
 }
 
+/**
+ * The timeline for the `rangeMs` ending now. The window is taken at each
+ * fetch and returned with the data, so a poll moves it forward and the chart
+ * buckets the same window it fetched; computed once, every 30-second poll
+ * asked for the same past window (AN-2).
+ */
 export function useConnectionRateLimitTimeline(
-  params: Omit<RateLimitTimelineParams, 'connectionId'> & {
+  params: Pick<RateLimitTimelineParams, 'granularity' | 'tag'> & {
     connectionId: string | null;
     dateRange: string;
+    rangeMs: number;
   }
 ) {
-  const { connectionId, dateRange, ...query } = params;
+  const { connectionId, dateRange, rangeMs, ...query } = params;
   return useCustomQuery({
     queryKey: queryKeys.analytics.rateLimitTimeline(
       connectionId ?? '',
       dateRange
     ),
-    queryFn: (token: string) =>
-      getConnectionRateLimitTimeline(token, {
+    queryFn: async (token: string) => {
+      const window = currentWindow(rangeMs);
+      const response = await getConnectionRateLimitTimeline(token, {
         connectionId: connectionId!,
+        startTime: window.start.toISOString(),
+        endTime: window.end.toISOString(),
         ...query,
+      });
+      return { ...response, window };
+    },
+    enabled: !!connectionId,
+    refetchInterval: 30 * 1000,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** Events in the `rangeMs` ending now, taken at each fetch as above. */
+export function useConnectionRateLimitHistory(
+  params: Pick<RateLimitHistoryParams, 'limit'> & {
+    connectionId: string | null;
+    rangeMs: number;
+  }
+) {
+  const { connectionId, rangeMs, limit } = params;
+  return useCustomQuery({
+    queryKey: ['analytics', 'rateLimitHistory', connectionId, rangeMs, limit],
+    queryFn: (token: string) =>
+      getConnectionRateLimitHistory(token, {
+        connectionId: connectionId!,
+        from: currentWindow(rangeMs).start.toISOString(),
+        limit,
       }),
     enabled: !!connectionId,
     refetchInterval: 30 * 1000,
@@ -55,23 +89,7 @@ export function useConnectionRateLimitTimeline(
   });
 }
 
-export function useConnectionRateLimitHistory(
-  params: Omit<RateLimitHistoryParams, 'connectionId'> & {
-    connectionId: string | null;
-  }
-) {
-  const { connectionId, from, to, limit } = params;
-  return useCustomQuery({
-    queryKey: ['analytics', 'rateLimitHistory', connectionId, from, to, limit],
-    queryFn: (token: string) =>
-      getConnectionRateLimitHistory(token, {
-        connectionId: connectionId!,
-        from,
-        to,
-        limit,
-      }),
-    enabled: !!connectionId,
-    refetchInterval: 30 * 1000,
-    refetchIntervalInBackground: false,
-  });
+export function currentWindow(rangeMs: number) {
+  const end = new Date();
+  return { start: new Date(end.getTime() - rangeMs), end };
 }
