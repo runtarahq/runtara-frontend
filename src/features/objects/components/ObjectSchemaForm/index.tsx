@@ -218,12 +218,15 @@ export function ObjectSchemaDtoForm({
 
   const isEditing = !!objectSchemaDto;
 
-  // Auto-generate table name from schema name (only for new schemas)
+  // Auto-generate table name from schema name (only for new schemas), until
+  // the user types one: a name edit used to overwrite it (OB-17). Clearing
+  // the table name hands it back to the generator.
+  const [tableNameTyped, setTableNameTyped] = useState(false);
   React.useEffect(() => {
-    if (!isEditing && name) {
+    if (!isEditing && name && !tableNameTyped) {
       setTableName(generateTableName(name));
     }
-  }, [name, isEditing]);
+  }, [name, isEditing, tableNameTyped]);
 
   const addField = () => {
     setFields([...fields, createEmptyField()]);
@@ -501,6 +504,7 @@ export function ObjectSchemaDtoForm({
                     value={tableName}
                     onChange={(e) => {
                       setTableName(e.target.value);
+                      setTableNameTyped(e.target.value !== '');
                       if (touched.tableName) {
                         setErrors((prev) => ({
                           ...prev,
