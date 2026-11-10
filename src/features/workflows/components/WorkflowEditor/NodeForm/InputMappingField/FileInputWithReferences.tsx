@@ -6,11 +6,21 @@
 import { useState, useMemo } from 'react';
 import { Upload, Link } from 'lucide-react';
 import { FileInput } from '@/shared/components/ui/file-input';
+import { parseFileDataFromString } from '@/shared/utils/file-utils';
 import { AutocompleteInput } from './AutocompleteInput';
 import { Button } from '@/shared/components/ui/button';
 import { ValueType } from '../TypeHintSelector';
 
 type Mode = 'upload' | 'reference';
+
+/**
+ * Whether the value is a reference to step output. An uploaded file is JSON
+ * naming the file, and a file named like `{{report}}.txt` used to read as a
+ * reference, which locked the input in reference mode (ED-23).
+ */
+function isReferenceValue(value: string | undefined): boolean {
+  return isPartialReference(value) && parseFileDataFromString(value) === null;
+}
 
 interface FileInputWithReferencesProps {
   /** Current value - JSON string of FileData or template reference */
@@ -42,7 +52,7 @@ export function FileInputWithReferences({
 }: FileInputWithReferencesProps) {
   // Detect initial mode from value
   const initialMode: Mode = useMemo(() => {
-    if (isPartialReference(value)) {
+    if (isReferenceValue(value)) {
       return 'reference';
     }
     return 'upload';
@@ -53,7 +63,7 @@ export function FileInputWithReferences({
 
   // Switch to reference mode if value becomes a reference
   const effectiveMode = useMemo(() => {
-    if (isPartialReference(value) && mode === 'upload') {
+    if (isReferenceValue(value) && mode === 'upload') {
       return 'reference';
     }
     return mode;
@@ -106,7 +116,7 @@ export function FileInputWithReferences({
       {/* Render appropriate input based on mode */}
       {effectiveMode === 'upload' ? (
         <FileInput
-          value={!isPartialReference(value) ? value : ''}
+          value={!isReferenceValue(value) ? value : ''}
           onChange={handleFileChange}
           disabled={disabled}
           placeholder={placeholder || 'Upload a file'}
