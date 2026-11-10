@@ -7,7 +7,7 @@ import {
   buildWorkflow,
 } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json, knownDefect } from './helpers';
+import { api, json } from './helpers';
 
 const CUSTOM = { custom_key: 'custom_val' };
 
@@ -396,8 +396,6 @@ test.describe('Analytics audit', () => {
     await page.getByText('Alpha API').click();
     await expect(history).toBeVisible();
     await page.waitForTimeout(1_000);
-    await knownDefect('AN-3', async () => {
-      expect(await scrolls()).toBe(0);
-    });
+    expect(await scrolls()).toBe(0);
   });
 });
