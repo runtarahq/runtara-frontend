@@ -3,7 +3,9 @@ import { act, render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
-const submit = vi.fn(async (_request: unknown, _label?: string) => {});
+const submit = vi.fn<(request: unknown, label?: string) => Promise<void>>(
+  async () => {}
+);
 
 vi.mock('@/shared/forms', () => ({
   FormRenderer: () => null,
