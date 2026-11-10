@@ -228,15 +228,13 @@ test.describe('Chat audit', () => {
     await expect(bubble(page, 'second question')).toBeVisible();
     expect(await page.evaluate(() => window.__sse.closed)).toBe(0);
 
-    await knownDefect('CH-2', async () => {
-      expect(whileReplying).not.toBe('idle');
-      // `error` is what the send left behind: not leaving it proves nothing.
-      await expect
-        .poll(async () =>
-          ['idle', 'error'].includes((await chatState(page)).status)
-        )
-        .toBe(false);
-    });
+    expect(whileReplying).not.toBe('idle');
+    // `error` is what the send left behind: not leaving it proves nothing.
+    await expect
+      .poll(async () =>
+        ['idle', 'error'].includes((await chatState(page)).status)
+      )
+      .toBe(false);
   });
 
   test('CH-3 If the stream closes without done after a send, the streaming cursor clears', async ({
@@ -312,6 +310,9 @@ test.describe('Chat audit', () => {
     await retry.click();
     await expect(bubble(page, 'message B')).toBeVisible();
     await expect(banner('message B')).toHaveCount(0);
+    // B's reply ends; the chat takes a new message again (CH-2).
+    await push(page, 'done');
+    await expect(input(page)).toBeEnabled();
 
     // Typing A again is a new message, which the server cannot match to the
     // first attempt.
