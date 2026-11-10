@@ -26,7 +26,6 @@ export function useResolvedOptions(
   currentData: Record<string, unknown>,
   resolver?: OptionResolver
 ): ResolvedOptionsState {
-  const request = useRef(0);
   const currentDataRef = useRef(currentData);
   currentDataRef.current = currentData;
   const definitionJson = JSON.stringify(definition);
@@ -47,9 +46,15 @@ export function useResolvedOptions(
     return JSON.stringify(requests);
   }, [definition.fields, currentData, resolver]);
   const [state, setState] = useState<ResolvedOptionsState>(EMPTY_STATE);
+  // Each field's last request (resolver and dependencies). A field is asked
+  // again only when its own request changed, so one field's dependency change
+  // leaves the other fields' choices alone (SH-5).
+  const fieldKeysRef = useRef<Record<string, string>>({});
+  const definitionRef = useRef('');
 
   useEffect(() => {
     if (!resolver) {
+      fieldKeysRef.current = {};
       setState(EMPTY_STATE);
       return;
     }
@@ -59,22 +64,32 @@ export function useResolvedOptions(
       fieldName: string;
       resolverKey: string;
     }>;
-    if (requests.length === 0) {
-      setState(EMPTY_STATE);
-      return;
-    }
+    const definitionChanged = definitionRef.current !== definitionJson;
+    definitionRef.current = definitionJson;
+    const previousKeys = fieldKeysRef.current;
+    const nextKeys = Object.fromEntries(
+      requests.map((r) => [r.fieldName, JSON.stringify(r)])
+    );
+    fieldKeysRef.current = nextKeys;
+    const due = requests.filter(
+      (r) =>
+        definitionChanged || previousKeys[r.fieldName] !== nextKeys[r.fieldName]
+    );
+    const dueNames = new Set(due.map((r) => r.fieldName));
+    const kept = (name: string) => name in nextKeys && !dueNames.has(name);
 
-    const current = ++request.current;
+    setState((prev) => ({
+      options: pickKeys(prev.options, kept),
+      errors: pickKeys(prev.errors, kept),
+      loading: dueNames,
+    }));
+    if (due.length === 0) return;
+
     const controller = new AbortController();
+    let answered = false;
     const currentDataSnapshot = currentDataRef.current;
-    setState({
-      options: {},
-      loading: new Set(requests.map(({ fieldName }) => fieldName)),
-      errors: {},
-    });
-
     void Promise.allSettled(
-      requests.map(async ({ fieldName, resolverKey }) => ({
+      due.map(async ({ fieldName, resolverKey }) => ({
         fieldName,
         options: await resolver({
           resolverKey,
@@ -85,12 +100,12 @@ export function useResolvedOptions(
         }),
       }))
     ).then((results) => {
-      if (controller.signal.aborted || request.current !== current) return;
-
+      if (controller.signal.aborted) return;
+      answered = true;
       const options: Record<string, FormOption[]> = {};
       const errors: Record<string, string> = {};
       results.forEach((result, index) => {
-        const fieldName = requests[index].fieldName;
+        const fieldName = due[index].fieldName;
         if (result.status === 'fulfilled') {
           options[fieldName] = result.value.options;
         } else {
@@ -100,11 +115,32 @@ export function useResolvedOptions(
               : 'Could not load options.';
         }
       });
-      setState({ options, loading: new Set(), errors });
+      setState((prev) => ({
+        options: { ...prev.options, ...options },
+        errors: { ...prev.errors, ...errors },
+        loading: new Set(
+          [...prev.loading].filter((name) => !dueNames.has(name))
+        ),
+      }));
     });
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      // Fields still loading have lost their answer: ask again next time.
+      if (!answered) {
+        for (const name of dueNames) delete fieldKeysRef.current[name];
+      }
+    };
   }, [definitionJson, requestsJson, resolver]);
 
   return state;
+}
+
+function pickKeys<T>(
+  record: Record<string, T>,
+  keep: (name: string) => boolean
+): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(record).filter(([name]) => keep(name))
+  );
 }

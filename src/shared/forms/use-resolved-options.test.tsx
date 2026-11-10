@@ -99,3 +99,81 @@ describe('useResolvedOptions', () => {
     expect(screen.queryByText(/Old choice/)).not.toBeInTheDocument();
   });
 });
+
+describe('useResolvedOptions with two resolver fields (SH-5)', () => {
+  const twoFields: FormDefinition = {
+    fields: {
+      company: { type: 'string' },
+      region: { type: 'string' },
+      resource: {
+        type: 'string',
+        control: {
+          kind: 'lookup',
+          optionResolver: 'resources',
+          optionDependencies: ['company'],
+        },
+      },
+      zone: {
+        type: 'string',
+        control: {
+          kind: 'lookup',
+          optionResolver: 'zones',
+          optionDependencies: ['region'],
+        },
+      },
+    },
+  };
+
+  function TwoFields({
+    company,
+    region,
+    resolver,
+  }: {
+    company: string;
+    region: string;
+    resolver: OptionResolver;
+  }) {
+    const state = useResolvedOptions(twoFields, { company, region }, resolver);
+    return (
+      <div>
+        <span data-testid="resource">
+          {JSON.stringify(state.options.resource ?? [])}
+        </span>
+        <span data-testid="zone">
+          {JSON.stringify(state.options.zone ?? [])}
+        </span>
+      </div>
+    );
+  }
+
+  it("keeps one field's choices when another field's dependency changes", async () => {
+    const resolver = vi.fn(async ({ fieldName, currentData }) => [
+      {
+        value: `${fieldName}:${String(
+          fieldName === 'resource' ? currentData.company : currentData.region
+        )}`,
+        label: '',
+      },
+    ]);
+    const { rerender } = render(
+      <TwoFields company="acme" region="eu" resolver={resolver} />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('zone')).toHaveTextContent('zone:eu')
+    );
+    expect(screen.getByTestId('resource')).toHaveTextContent('resource:acme');
+    expect(resolver).toHaveBeenCalledTimes(2);
+
+    rerender(<TwoFields company="globex" region="eu" resolver={resolver} />);
+    // While the changed field reloads, the other keeps its choices.
+    expect(screen.getByTestId('zone')).toHaveTextContent('zone:eu');
+    await waitFor(() =>
+      expect(screen.getByTestId('resource')).toHaveTextContent(
+        'resource:globex'
+      )
+    );
+    expect(screen.getByTestId('zone')).toHaveTextContent('zone:eu');
+    // Only the changed field was asked again.
+    expect(resolver).toHaveBeenCalledTimes(3);
+  });
+});
