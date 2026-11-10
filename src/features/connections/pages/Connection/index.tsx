@@ -402,7 +402,14 @@ export function Connection() {
       isDeleting={deleteMutation.isPending}
       rateLimitStatus={rateLimitStatusQuery.data?.data}
       showReconnect={isOAuthAuthCode}
-      onReconnect={id ? () => authorize(id) : undefined}
+      // A reconnect from the status card answers the armed prompt too; it
+      // used to stay armed and come back blaming the old field (CN-6).
+      onReconnect={
+        id
+          ? () =>
+              authorize(id, { onSuccess: () => setPendingReauthLabels(null) })
+          : undefined
+      }
       isReconnecting={isAuthorizing(id)}
       needsReconnect={needsReconnect}
       conflictNotice={conflictNotice}
