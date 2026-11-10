@@ -153,8 +153,6 @@ function generateUniqueStepName(
   return `${baseName} ${counter}`;
 }
 
-type StagedNodeChanges = Record<string, form.SchemaType>;
-
 type WorkflowEditorProps = {
   nodes: Node[];
   edges: Edge[];
@@ -200,8 +198,6 @@ type WorkflowEditorProps = {
     durable?: boolean | null;
     entryPoint?: string;
   };
-  stagedNodeChanges?: StagedNodeChanges;
-  onResetNodeChanges?: (nodeId: string) => void;
   /** Stages workflow-level changes the canvas makes, such as a new entry point. */
   onWorkflowChange?: (changes: { entryPoint?: string }) => void;
   /** How much each step card shows; the switch lives in the page header. */
@@ -233,8 +229,6 @@ function WorkflowEditorContent({
   readOnly = false,
   debugInspectMode = false,
   workflow,
-  stagedNodeChanges = {},
-  onResetNodeChanges,
   onWorkflowChange,
   canvasDetail = 'detailed',
 }: WorkflowEditorProps) {
@@ -374,10 +368,10 @@ function WorkflowEditorContent({
     return {
       id: editingNodeId,
       parentId: node.parentId,
-      data: (stagedNodeChanges[editingNodeId] || node.data) as form.SchemaType,
+      data: node.data as form.SchemaType,
       originalData: node.data as form.SchemaType,
     };
-  }, [editingNodeId, nodes, stagedNodeChanges]);
+  }, [editingNodeId, nodes]);
 
   // Keep the config dialog/panel bound to the step being edited when its id
   // is renamed (renameStep changes the node id in the store immediately).
@@ -1118,20 +1112,8 @@ function WorkflowEditorContent({
       pendingNode?: PendingNodeCandidate | null
     ) => {
       const currentState = useWorkflowStore.getState();
-      const nodesWithStagedChanges = currentState.nodes.map((node) => {
-        const stagedData = stagedNodeChanges[node.id];
-        return stagedData
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                ...stagedData,
-              },
-            }
-          : node;
-      });
       const validation = await validateNodeEditWithRust({
-        nodes: nodesWithStagedChanges,
+        nodes: currentState.nodes,
         edges: currentState.edges,
         nodeId,
         data,
@@ -1162,7 +1144,7 @@ function WorkflowEditorContent({
 
       return true;
     },
-    [stagedNodeChanges, workflow]
+    [workflow]
   );
 
   // Node config dialog handlers
@@ -1176,7 +1158,6 @@ function WorkflowEditorContent({
       );
       if (!canApply) return false;
 
-      onResetNodeChanges?.(nodeId);
       let savedId = nodeId;
       if (renameStepTo && renameStepTo !== canvasNodeStepId(nodeId)) {
         const renameError = useWorkflowStore
@@ -1193,7 +1174,7 @@ function WorkflowEditorContent({
       closeNodeConfig();
       return true;
     },
-    [validateNodeEditCandidate, updateNode, onResetNodeChanges, closeNodeConfig]
+    [validateNodeEditCandidate, updateNode, closeNodeConfig]
   );
 
   const handleNodeDelete = useCallback(
