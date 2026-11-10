@@ -213,18 +213,15 @@ test.describe('Settings audit', () => {
       page.getByRole('button', { name: 'Creating...' })
     ).toBeDisabled();
 
+    // Fixed: the dialog stays open while the key is being created.
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(1);
 
     release();
-    // The server made the key and says so; the key has to reach the user.
-    await expect(page.getByText('API key created')).toBeVisible();
-    await knownDefect('ST-1', async () => {
-      await expect(page.getByText(SECRET)).toBeVisible();
-    });
-
-    // The part that was never broken: reopening "New API Key" reveals it.
-    await page.getByRole('button', { name: /new api key/i }).click();
+    // The server made the key and says so; the key reaches the user.
+    await expect(
+      page.getByText('API key created', { exact: true })
+    ).toBeVisible();
     await expect(
       page.getByRole('heading', { name: 'API Key Created' })
     ).toBeVisible();

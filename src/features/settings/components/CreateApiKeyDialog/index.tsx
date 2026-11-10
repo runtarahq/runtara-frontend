@@ -219,7 +219,16 @@ export function CreateApiKeyDialog({ open, onClose }: CreateApiKeyDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // Closing while the key is being created hid it when it arrived: the
+        // toast said created, and the only copy of the key went unseen
+        // (ST-1). The dialog stays until the answer is in.
+        if (!next && isPending) return;
+        handleClose();
+      }}
+    >
       <DialogContent>
         {createdKey ? (
           <>
