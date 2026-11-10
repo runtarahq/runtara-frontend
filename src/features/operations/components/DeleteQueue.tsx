@@ -12,7 +12,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/shared/components/ui/dialog';
-import { message, operationsRequest } from '../queries';
+import {
+  currentRevision,
+  isRevisionConflict,
+  message,
+  operationsRequest,
+} from '../queries';
 
 export function DeleteQueue({
   queue,
@@ -46,6 +51,14 @@ export function DeleteQueue({
       await client.invalidateQueries({ queryKey: ['operations'] });
     } catch (e) {
       setError(message(e));
+      // The user has now seen the conflict; a second confirm deletes the
+      // queue as it is now (OP-11).
+      if (isRevisionConflict(e)) {
+        const revision = await currentRevision(token, target.id).catch(
+          () => undefined
+        );
+        if (revision !== undefined) setTarget((t) => ({ ...t, revision }));
+      }
     } finally {
       setBusy(false);
     }

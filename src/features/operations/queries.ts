@@ -208,3 +208,24 @@ export async function queryRunSummary(
     import('@/generated/RuntaraRuntimeApi').ExecutionSummary
   >(token, 'executions/summary', 'POST', filters);
 }
+
+/** Whether a request failed because the saved view moved to a new revision. */
+export function isRevisionConflict(error: unknown): boolean {
+  return (error as { response?: { status?: number } }).response?.status === 409;
+}
+
+/**
+ * The saved view's current revision, read fresh from the server. After a
+ * revision conflict the user has seen the error; their next attempt should go
+ * against this revision instead of repeating the refused one (OP-11, OP-12).
+ */
+export async function currentRevision(
+  token: string,
+  id: string
+): Promise<number | undefined> {
+  const views = await operationsRequest<SavedOperationView[]>(
+    token,
+    'operations/views'
+  );
+  return views.find((view) => view.id === id)?.revision;
+}
