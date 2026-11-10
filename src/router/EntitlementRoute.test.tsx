@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { fetchEntitlements } from '@/shared/queries/entitlements';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 
@@ -103,6 +104,21 @@ describe('EntitlementRoute', () => {
     withSnapshot(snapshot({ mcp: false }));
     renderGuarded('mcp');
     expect(screen.getByText('MCP')).toBeInTheDocument();
+  });
+
+  it('keeps the page shut while the snapshot loads (SH-3)', () => {
+    vi.mocked(fetchEntitlements).mockReturnValueOnce(new Promise(() => {}));
+    renderGuarded('database');
+    expect(screen.queryByTestId('real-child')).not.toBeInTheDocument();
+  });
+
+  it('keeps the page shut and says so when the fetch failed (SH-3)', async () => {
+    vi.mocked(fetchEntitlements).mockRejectedValueOnce(new Error('500'));
+    renderGuarded('database');
+    expect(
+      await screen.findByText(/Could not check whether this feature is enabled/)
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('real-child')).not.toBeInTheDocument();
   });
 
   it('isolates feature checks — disabling X does not block Y', () => {
