@@ -318,10 +318,12 @@ export function useCustomMutation<TData = unknown, TVariables = unknown>({
     } else if (isNotFoundError(error) && suppressNotFoundToasts) {
       // The caller decides whether a missing target is worth surfacing.
     } else if (
-      error.response?.status === 403 &&
+      (error.response?.status === 403 || error.response?.status === 429) &&
       handleEntitlementDenial(error)
     ) {
-      // Entitlement-shaped 403 — handled inside, generic 403 fallback skipped.
+      // Entitlement-shaped 403, or a 429 capacity refusal with the same body
+      // (see isEntitlementDenial): handled inside, generic fallback skipped.
+      // A 429 used to fall through to "Error: 429" (SH-9).
     } else if (error.response?.status === 413 || error.status === 413) {
       // Handle 413 Payload Too Large specifically
       toast.error('File too large', {
