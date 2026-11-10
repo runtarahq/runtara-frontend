@@ -1151,7 +1151,10 @@ function WorkflowEditorContent({
   const handleNodeSave = useCallback(
     async (nodeId: string, submitted: form.SchemaType) => {
       // A staged step id rename is applied here, with the rest of the edit.
+      // Form-only fields: the staged rename, and the on-wait JSON error that
+      // only exists to block Save (ED-32).
       const { renameStepTo, ...data } = submitted;
+      delete (data as { onWaitJsonError?: unknown }).onWaitJsonError;
       const canApply = await validateNodeEditCandidate(
         nodeId,
         data as form.SchemaType
