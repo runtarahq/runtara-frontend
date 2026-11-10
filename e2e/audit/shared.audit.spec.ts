@@ -423,14 +423,12 @@ test.describe('Shared audit', () => {
     await expect(harness).toHaveText(/"loading":\[[^\]]*"a"/);
     const calls = (await page.evaluate(`window.__calls.slice()`)) as string[];
     const before = callsBefore as string[];
-    await knownDefect('SH-5', async () => {
-      // Field a may keep or drop its old options; field b must keep its own.
-      await expect(harness).toHaveText(/"options":\[(?:"a",)?"b"\]/);
-      expect(
-        calls.filter((c) => c === 'b').length,
-        'field b was not fetched again, as its dependency did not change'
-      ).toBe(before.filter((c) => c === 'b').length);
-    });
+    // Fixed: only the changed field is asked again; b keeps its own.
+    await expect(harness).toHaveText(/"options":\[(?:"a",)?"b"\]/);
+    expect(
+      calls.filter((c) => c === 'b').length,
+      'field b was not fetched again, as its dependency did not change'
+    ).toBe(before.filter((c) => c === 'b').length);
 
     await page.evaluate(`window.__release()`);
     await expect(harness).toHaveText('{"options":["a","b"],"loading":[]}');
