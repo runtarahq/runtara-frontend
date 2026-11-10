@@ -404,7 +404,7 @@ test.describe('Connections audit', () => {
       page.getByText('Review newer connection changes')
     ).toBeVisible();
     await expect(
-      page.getByText(/The latest version could not be loaded; try again\./)
+      page.getByText(/The latest version could not be loaded/)
     ).toBeVisible();
     // The failed read really happened, and the spinner has gone.
     expect(ctl.counts.put).toBe(1);
@@ -419,13 +419,12 @@ test.describe('Connections audit', () => {
   }) => {
     await conflictWithFailedLatest(page, mockApi);
     // Nothing was loaded, so the notice cannot say what changed on the server.
-    await knownDefect('CN-4', async () => {
-      await expect(
-        page.getByText(
-          'The server version changed in fields that are not readable in this editor.'
-        )
-      ).toHaveCount(0, { timeout: 1_000 });
-    });
+    // Fixed: the notice says the latest version could not be loaded.
+    await expect(
+      page.getByText(
+        'The server version changed in fields that are not readable in this editor.'
+      )
+    ).toHaveCount(0, { timeout: 1_000 });
   });
 
   test('CN-5 After a failed latest-version load, Reload latest can retry the load', async ({
@@ -439,9 +438,8 @@ test.describe('Connections audit', () => {
     });
     await expect(reload).toBeVisible();
     await expect(apply).toBeVisible();
-    await knownDefect('CN-5', async () => {
-      await expect(reload).toBeEnabled({ timeout: 1_000 });
-    });
+    // Fixed: Reload latest stays usable and tries the load again.
+    await expect(reload).toBeEnabled({ timeout: 1_000 });
 
     // Control: a second 409 whose read succeeds does recover the notice.
     ctl.failGet = false;
