@@ -767,9 +767,7 @@ test.describe('Connections audit', () => {
     ).toHaveCount(1);
     const createErrors = await errorToasts.count();
 
-    await knownDefect('CN-12', async () => {
-      expect(reconnectErrors).toBe(createErrors);
-    });
+    expect(reconnectErrors).toBe(createErrors);
   });
 
   test('CN-13 Starting a second row OAuth does not hide the running flow', async ({

@@ -20,6 +20,7 @@ vi.mock('@/features/connections/queries', () => ({
   getOAuthAuthorizeUrl: async (_token: string, id: string) => `url:${id}`,
 }));
 vi.mock('./useOAuthPopup', () => ({
+  OAuthPopupClosedError: class OAuthPopupClosedError extends Error {},
   useOAuthPopup: () => ({
     openOAuthPopup: (_url: string, id: string) =>
       new Promise((resolve, reject) => pending.set(id, { resolve, reject })),
