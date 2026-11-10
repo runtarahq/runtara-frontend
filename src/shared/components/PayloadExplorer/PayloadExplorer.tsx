@@ -165,7 +165,21 @@ export function PayloadExplorer({
   );
   const active = sections.find((s) => s.id === activeId) ?? sections[0];
 
-  const [fullValues, setFullValues] = useState<Record<string, unknown>>({});
+  // Each full value with the section value it was loaded for. A poll that
+  // brings a new section value makes it stale: it used to stay on screen,
+  // hiding every later update to that section (SH-6).
+  const [loadedFull, setLoadedFull] = useState<
+    Record<string, { for: unknown; value: unknown }>
+  >({});
+  const fullValues = useMemo(() => {
+    const current: Record<string, unknown> = {};
+    for (const section of sections) {
+      const entry = loadedFull[section.id];
+      if (entry && entry.for === section.value)
+        current[section.id] = entry.value;
+    }
+    return current;
+  }, [loadedFull, sections]);
   // Sections whose full value is loading. A set, so one load finishing does
   // not clear another section's indicator while that one is still going
   // (SH-7).
@@ -289,7 +303,10 @@ export function PayloadExplorer({
     setLoadingFull((prev) => new Set(prev).add(section.id));
     try {
       const full = await loadFullValue(section.id);
-      setFullValues((prev) => ({ ...prev, [section.id]: full }));
+      setLoadedFull((prev) => ({
+        ...prev,
+        [section.id]: { for: section.value, value: full },
+      }));
       return full;
     } catch (error) {
       toast.error(

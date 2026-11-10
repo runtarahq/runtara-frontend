@@ -473,9 +473,7 @@ test.describe('Shared audit', () => {
     await explorer.getByRole('tab', { name: /^Output/ }).click();
     await expect(panel).toContainText('out_v2');
     await explorer.getByRole('tab', { name: /^Input/ }).click();
-    await knownDefect('SH-6', async () => {
-      await expect(panel).toContainText('cat_v2');
-    });
+    await expect(panel).toContainText('cat_v2');
   });
 
   test("SH-7 Overlapping full-value loads keep each other's indicator", async ({
