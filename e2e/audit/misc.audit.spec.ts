@@ -352,9 +352,7 @@ test.describe('Analytics audit', () => {
     console.log(
       `AN-2: ${windows.length} requests over ${after - before}ms, window ${windows[0]}`
     );
-    await knownDefect('AN-2', async () => {
-      expect(new Set(windows).size).toBeGreaterThan(1);
-    });
+    expect(new Set(windows).size).toBeGreaterThan(1);
   });
 
   test('AN-3 The deep-link scroll is not left armed when the connection is missing', async ({
