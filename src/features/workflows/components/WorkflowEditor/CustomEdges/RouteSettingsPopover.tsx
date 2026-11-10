@@ -126,6 +126,17 @@ export function RouteSettingsPopover({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(resetDraft, [edge.id, edge.data]);
 
+  // An error is about the text it was raised for; editing it clears it,
+  // where it used to stay up over valid text (ED-26).
+  const editCondition = (text: string) => {
+    setConditionText(text);
+    setError(null);
+  };
+  const editPriority = (text: string) => {
+    setPriorityText(text);
+    setError(null);
+  };
+
   const handleApply = () => {
     const conditionResult = parseRouteCondition(conditionText);
     if (!conditionResult.ok) {
@@ -226,7 +237,7 @@ export function RouteSettingsPopover({
             type="number"
             inputMode="numeric"
             value={priorityText}
-            onChange={(event) => setPriorityText(event.target.value)}
+            onChange={(event) => editPriority(event.target.value)}
             placeholder="Optional"
           />
         </div>
@@ -249,14 +260,14 @@ export function RouteSettingsPopover({
             <ConditionEditor
               key={`${edge.id}-${conditionResetKey}`}
               value={conditionText || undefined}
-              onChange={setConditionText}
+              onChange={editCondition}
               suggestions={conditionSuggestions}
             />
           ) : (
             <Textarea
               id={`route-condition-${edge.id}`}
               value={conditionText}
-              onChange={(event) => setConditionText(event.target.value)}
+              onChange={(event) => editCondition(event.target.value)}
               placeholder='{"type": "operation", "op": "EQ", "arguments": ["data.status", "ready"]}'
               className="min-h-32 font-mono text-xs"
             />

@@ -569,9 +569,7 @@ test.describe('Editor audit B', () => {
 
     await text.fill(JSON.stringify(COND));
     await pop.getByLabel('Priority').fill('5');
-    await knownDefect('ED-26', async () => {
-      await expect(error).toBeHidden({ timeout: 300 });
-    });
+    await expect(error).toBeHidden({ timeout: 300 });
 
     // The text really was valid: Apply accepts it and closes.
     await pop.getByRole('button', { name: 'Apply' }).click();
