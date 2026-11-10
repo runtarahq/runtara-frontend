@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useState, useEffect, useContext, useMemo } from 'react';
+import { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useFormContext } from 'react-hook-form';
 import { shallow } from 'zustand/shallow';
@@ -102,6 +102,11 @@ export function TestAgentInline() {
     );
   }, [hasEnhancedMetadata, capability?.inputs]);
 
+  // The capability a test answer must belong to: one that comes back after
+  // the capability changed is for a different form (ED-31).
+  const capabilityIdRef = useRef(capabilityId);
+  capabilityIdRef.current = capabilityId;
+
   // Clear test form data and reset results when capability changes
   useEffect(() => {
     clearNode(TEST_NODE_ID);
@@ -131,19 +136,26 @@ export function TestAgentInline() {
   };
 
   const testMutation = useMutation({
-    mutationFn: async (inputs: Record<string, any>) => {
+    mutationFn: async ({
+      inputs,
+      capabilityId: testedCapabilityId,
+    }: {
+      inputs: Record<string, any>;
+      capabilityId: string;
+    }) => {
       if (!actualAgentId) {
         throw new Error('Agent not found');
       }
       return testAgent(
         token,
         actualAgentId,
-        capabilityId,
+        testedCapabilityId,
         inputs,
         connectionId
       );
     },
-    onSuccess: (data) => {
+    onSuccess: (data, { capabilityId: testedCapabilityId }) => {
+      if (testedCapabilityId !== capabilityIdRef.current) return;
       if (data.success) {
         setTestResult(data);
         setTestError(null);
@@ -152,7 +164,8 @@ export function TestAgentInline() {
         setTestResult(data);
       }
     },
-    onError: (error: any) => {
+    onError: (error: any, { capabilityId: testedCapabilityId }) => {
+      if (testedCapabilityId !== capabilityIdRef.current) return;
       let errorMessage =
         error?.error || error?.message || 'Failed to test agent';
 
@@ -180,7 +193,7 @@ export function TestAgentInline() {
     const parsedInputs = hasEnhancedMetadata
       ? parseTestAgentInputs(formValues, filteredInputs)
       : formValues;
-    testMutation.mutate(parsedInputs);
+    testMutation.mutate({ inputs: parsedInputs, capabilityId });
   };
 
   const handleCopyOutput = () => {

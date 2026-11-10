@@ -821,12 +821,11 @@ test.describe('Editor audit B', () => {
     await expect(
       panel.getByRole('button', { name: 'Toolkit → cap-b' })
     ).toBeVisible();
-    await knownDefect('ED-31', async () => {
-      await expect(
-        panel.locator('textarea, pre').filter({ hasText: 'OLD-CAP-A-OUTPUT' })
-      ).toHaveCount(0);
-      await expect(panel.getByText('Test Successful')).toHaveCount(0);
-    });
+    // Fixed: an answer for the old capability is dropped.
+    await expect(
+      panel.locator('textarea, pre').filter({ hasText: 'OLD-CAP-A-OUTPUT' })
+    ).toHaveCount(0);
+    await expect(panel.getByText('Test Successful')).toHaveCount(0);
   });
 
   test('ED-32 Invalid on-wait JSON blocks Save', async ({ page, mockApi }) => {
