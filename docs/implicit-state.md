@@ -28,6 +28,8 @@ a code scan, `test` was found while testing another claim.
 
 Of 135 claims, at audit time: **118 confirmed, 8 partial, 5 denied and 4 static**. All were tested or settled; none is left open.
 
+Now: **130 fixed, 1 partial and 4 denied**. No confirmed defect is left open; SH-3 stays partial by decision (see its row).
+
 Fixed since: OB-18, OB-8, ED-22, ED-3, ED-11, ED-12, WF-1, WF-2, OB-2, OB-5, CN-9, CN-17, OB-1, SH-1, HI-1, EX-1, EX-2, EX-3, OP-1, OP-2, OB-3, HI-2, OP-14, SH-2, OB-4, OB-6, OB-7, ED-4, ED-5, ED-2, WF-3, CN-1, CN-13, SH-4, EX-5, ED-6, ED-7, ED-8, SH-10, EX-6, OP-4, ED-24, SH-5, SH-9, CH-3, CN-18, ED-36, ED-15, ST-1, CN-15, OB-12, ED-31, SH-7, SH-8, OB-14, OP-8, OP-10, CN-4, CN-5, EX-4, OB-13, HI-4, ED-14, ED-17, ED-23, CN-6, WF-6, OP-3, OP-5, OP-6, OP-7, OP-9, OP-11, OP-12, OP-13, OP-15, HI-5, HI-6, HI-3, HI-7, HI-8, HI-9, HI-10, HI-11, WF-4, WF-5, WF-7, CH-1, CH-2, CH-4, TR-1, TR-2, ST-2, ST-3, AN-1, AN-2, AN-3, OB-16, OB-15, OB-17, OB-10, OB-11, CN-2, CN-3, CN-7, CN-8, CN-10, CN-11, CN-12, CN-16, CN-14, CN-19, SH-6, ED-25, ED-26, ED-27, ED-28, ED-34, ED-32, ED-10, ED-9, ED-1, ED-33, ED-30, ED-13, ED-16, ED-18, ED-20, ED-21 and ED-19. Their verdicts below read `FIXED`.
 
 Rare or hard-to-reach claims, worked through as a group: those whose evidence needs a held or late response, overlapping requests, a rare error sequence or a contrived input. ED-14, ED-23, ED-31, OB-13, OB-14, CN-4, CN-5, CN-6, OP-8, OP-10, EX-4, HI-4, SH-7, SH-8 and WF-6 are fixed; ED-17 was fixed with ED-14. SH-3's failure half stays by decision (see its row); CH-3 and CN-18 were checked against the runtara server source, then fixed.
