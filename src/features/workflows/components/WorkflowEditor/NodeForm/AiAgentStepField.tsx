@@ -329,63 +329,6 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
     return (providerNode?.data as any)?.agentId || null;
   }, [nodes, inputMapping]);
 
-  // Sync conversation_id from AI Agent → memory provider step whenever it changes
-  useEffect(() => {
-    if (stepType !== 'AiAgent') return;
-    const mapping = inputMapping || [];
-    const convField = mapping.find(
-      (item: any) => item.type === 'memoryConversationId'
-    );
-    const providerField = mapping.find(
-      (item: any) => item.type === 'memoryProviderStepId'
-    );
-    if (!convField || !providerField?.value) return;
-
-    const providerStepId = providerField.value as string;
-    const { nodes: storeNodes } = useWorkflowStore.getState();
-    const providerNode = storeNodes.find((n) => n.id === providerStepId);
-    if (!providerNode) return;
-
-    const providerMapping = [
-      ...((providerNode.data as any).inputMapping || []),
-    ];
-    const cidIdx = providerMapping.findIndex(
-      (item: any) => item.type === 'conversation_id'
-    );
-    const newValue = convField.value;
-    const newValueType = convField.valueType || 'reference';
-
-    // Only update if the value actually changed
-    if (cidIdx >= 0) {
-      if (
-        providerMapping[cidIdx].value === newValue &&
-        providerMapping[cidIdx].valueType === newValueType
-      )
-        return;
-      providerMapping[cidIdx] = {
-        ...providerMapping[cidIdx],
-        value: newValue,
-        valueType: newValueType,
-      };
-    } else {
-      providerMapping.push({
-        type: 'conversation_id',
-        value: newValue,
-        valueType: newValueType,
-        typeHint: 'string',
-      });
-    }
-
-    const updatedNodes = storeNodes.map((n) => {
-      if (n.id !== providerStepId) return n;
-      return { ...n, data: { ...n.data, inputMapping: providerMapping } };
-    });
-    useWorkflowStore.setState((state) => ({
-      nodes: updatedNodes,
-      ...dirtied(state),
-    }));
-  }, [stepType, inputMapping]);
-
   if (stepType !== 'AiAgent') {
     return null;
   }

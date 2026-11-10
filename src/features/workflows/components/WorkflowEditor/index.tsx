@@ -1,4 +1,5 @@
 import { useCanvasLayout } from './useCanvasLayout';
+import { withMemoryConversation } from './NodeForm/memory-conversation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
@@ -18,6 +19,7 @@ import {
 } from '@xyflow/react';
 import {
   generateStepId,
+  dirtied,
   useWorkflowStore,
 } from '@/features/workflows/stores/workflowStore.ts';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
@@ -1175,6 +1177,17 @@ function WorkflowEditorContent({
           useWorkflowStore.getState().lastStepRename?.newId ?? renameStepTo;
       }
       updateNode(savedId, data as unknown as Partial<ExecutionGraphStepDto>);
+      // An AI Agent's conversation id reaches its memory provider on Save
+      // only (ED-33).
+      const synced = withMemoryConversation(
+        useWorkflowStore.getState().nodes,
+        data.inputMapping
+      );
+      if (synced)
+        useWorkflowStore.setState((state) => ({
+          nodes: synced,
+          ...dirtied(state),
+        }));
       closeNodeConfig();
       return true;
     },

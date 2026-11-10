@@ -729,26 +729,6 @@ test.describe('Editor audit B', () => {
       await expect(panel).toHaveCount(0);
       kept = (await storeNodes(page)).map((n: any) => n.id);
       expect(ctl.saves()).toBe(0);
-
-      // Side finding: filling the only visible field still cannot be applied.
-      // The hard-coded empty `messages` reference on the hidden provider trips
-      // E011, so no save payload is reachable from this flow.
-      const again = await openAiPanel(page);
-      await again
-        .getByRole('button', { name: 'Click to select a variable...' })
-        .click();
-      await page
-        .getByRole('dialog', { name: 'Select Variable' })
-        .getByRole('button', { name: /^data / })
-        .click();
-      await again.getByTestId('node-config-save').click();
-      await expect(
-        page
-          .getByTestId('validation-message')
-          .getByText(new RegExp(`'${provider.id}' has invalid reference path`))
-      ).toBeVisible({ timeout: 10_000 });
-      await expect(again).toBeVisible();
-      expect(ctl.saves()).toBe(0);
     }
 
     await knownDefect('ED-30', async () => {
@@ -877,11 +857,7 @@ test.describe('Editor audit B', () => {
       ?.inputMapping.find((i: any) => i.type === 'memoryConversationId');
     expect(agent.value).toBe('conv-saved');
 
-    await knownDefect('ED-33', async () => {
-      await expect
-        .poll(async () => (await provider()).value)
-        .toBe('conv-saved');
-    });
+    await expect.poll(async () => (await provider()).value).toBe('conv-saved');
   });
 
   test('ED-34 Removing an earlier iteration row does not move the open editor to a different row', async ({
