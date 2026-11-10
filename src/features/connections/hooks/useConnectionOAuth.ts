@@ -5,7 +5,7 @@ import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { queryClient } from '@/bootstrap.tsx';
 import { getOAuthAuthorizeUrl } from '@/features/connections/queries';
-import { useOAuthPopup } from './useOAuthPopup';
+import { OAuthPopupClosedError, useOAuthPopup } from './useOAuthPopup';
 
 /**
  * Runs the interactive OAuth authorize popup for an EXISTING connection using
@@ -44,11 +44,18 @@ export function useConnectionOAuth() {
         }
         opts?.onSuccess?.();
       } catch (error) {
-        toast.error(
-          `Reconnect failed: ${
-            error instanceof Error ? error.message : 'Unknown error'
-          }. You can try again.`
-        );
+        // Closing the window is the user's choice, not a failure: an info
+        // toast, as on create (CN-12).
+        if (error instanceof OAuthPopupClosedError)
+          toast.info(
+            'Reconnect not finished: the sign-in window was closed. You can try again.'
+          );
+        else
+          toast.error(
+            `Reconnect failed: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }. You can try again.`
+          );
         // Refresh anyway — the server may still have flipped the status.
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
       } finally {
