@@ -43,6 +43,7 @@ import type {
 } from '@/features/workflows/stores/nodeFormStore';
 import { MappingValueInput, ValueMode } from './MappingValueInput';
 import { CompositeValueEditor } from './CompositeValueEditor';
+import { coerceValueForMode } from './value-mode';
 import {
   formatMappingObjectJson,
   normalizeMappingObject,
@@ -348,7 +349,15 @@ function MappingObjectRow({
         ? 'number'
         : undefined);
 
+  // The input's mode toggle calls onValueTypeChange, then onChange with its
+  // own coercion of the text it was shown, which for a composite row is ''.
+  // The row carries the real value itself, so that echo is ignored.
+  const switchingRef = useRef(false);
   const handleValueChange = (newValue: string | null) => {
+    if (switchingRef.current) {
+      switchingRef.current = false;
+      return;
+    }
     onPatch((current) => {
       if (current.valueType === 'composite') {
         // MappingValueInput clears the value right after a mode switch;
@@ -372,12 +381,18 @@ function MappingObjectRow({
     });
   };
 
+  // Carry the value across, as a field's own mode switch does: every
+  // switch here used to wipe it (ED-16).
   const handleValueTypeChange = (newType: ValueMode) => {
-    onPatch((current) => ({
-      ...current,
-      valueType: newType,
-      value: newType === 'composite' ? {} : '',
-    }));
+    switchingRef.current = true;
+    queueMicrotask(() => {
+      switchingRef.current = false;
+    });
+    onPatch((current) => {
+      const from = (current.valueType ?? 'immediate') as ValueMode;
+      const carried = coerceValueForMode(current.value, from, newType);
+      return { ...current, valueType: newType, value: carried.value };
+    });
   };
 
   const handleTypeHintChange = (newHint: string) => {
