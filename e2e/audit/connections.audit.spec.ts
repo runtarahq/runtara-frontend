@@ -243,6 +243,10 @@ test.describe('Connections audit', () => {
     await expect.poll(() => popup.url()).toContain('c=conn_b');
     expect(ctl.popups).toHaveLength(1);
     expect(ctl.counts.authorize).toEqual(['conn_a', 'conn_b']);
+    // Fixed: taking over the popup settles A, and the user is told.
+    await expect(
+      toast(page, /Reconnect failed: another sign-in replaced it/)
+    ).toHaveCount(1);
 
     // A's own completion: read now, before B's outcome adds a toast and a
     // list refresh of its own.
@@ -263,9 +267,8 @@ test.describe('Connections audit', () => {
     await page.clock.fastForward(310_000);
     await page.waitForTimeout(500);
     const rejected = await toast(page, /Reconnect failed/).count();
-    await knownDefect('CN-1', async () => {
-      expect(heardAtLanding + rejected).toBeGreaterThan(0);
-    });
+    // Fixed: A was settled when B took over the popup (see above).
+    expect(heardAtLanding + rejected).toBeGreaterThan(0);
 
     // Control: the same jump does time out a flow that is still listening.
     await expect(rowReconnect(page, 'Conn A')).toBeEnabled();
@@ -814,16 +817,14 @@ test.describe('Connections audit', () => {
       .poll(() => ctl.counts.authorize, { timeout: 1_000 })
       .toEqual(['conn_a', 'conn_b'])
       .catch(() => {});
-    // A has had no outcome, so it still looks running, or the user was told.
-    await knownDefect('CN-13', async () => {
-      await expect
-        .poll(
-          async () =>
-            (await spinner('Conn A').count()) + (await toasts(page).count()),
-          { timeout: 1_000 }
-        )
-        .toBeGreaterThan(0);
-    });
+    // Fixed with CN-1: A is settled when B starts, and the user is told.
+    await expect
+      .poll(
+        async () =>
+          (await spinner('Conn A').count()) + (await toasts(page).count()),
+        { timeout: 1_000 }
+      )
+      .toBeGreaterThan(0);
 
     await expect(rowReconnect(page, 'Conn B')).toBeDisabled();
     await expect(spinner('Conn B')).toHaveCount(1);

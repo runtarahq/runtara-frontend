@@ -17,6 +17,18 @@ export class OAuthPopupClosedError extends Error {
   }
 }
 
+/**
+ * Another authorization took over the shared popup before this one finished,
+ * so this one cannot finish any more. Settling it says so, rather than leave
+ * its caller waiting forever (CN-1).
+ */
+export class OAuthPopupSupersededError extends Error {
+  constructor() {
+    super('another sign-in replaced it before it finished');
+    this.name = 'OAuthPopupSupersededError';
+  }
+}
+
 // How often to check whether the popup was closed by the user.
 const CLOSED_POLL_MS = 500;
 // The callback posts its completion message around the time it closes the
@@ -61,7 +73,8 @@ export function useOAuthPopup() {
       connectionId?: string
     ): Promise<OAuthResult> => {
       return new Promise((resolve, reject) => {
-        // Stop listening for the previous popup, if any.
+        // The previous flow loses the shared popup: settle it, which also
+        // stops it listening.
         cleanupRef.current?.();
 
         const popup = window.open(
@@ -129,7 +142,9 @@ export function useOAuthPopup() {
           onResult(event.data);
         };
 
-        cleanupRef.current = cleanup;
+        // What the next flow calls on taking the popup over: settle this one.
+        cleanupRef.current = () =>
+          settle(() => reject(new OAuthPopupSupersededError()));
         window.addEventListener('message', handler);
         if (channel) channel.onmessage = (event) => onResult(event.data);
 

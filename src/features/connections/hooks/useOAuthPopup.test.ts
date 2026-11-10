@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
 import { toast } from 'sonner';
-import { OAuthPopupClosedError, useOAuthPopup } from './useOAuthPopup';
+import {
+  OAuthPopupClosedError,
+  OAuthPopupSupersededError,
+  useOAuthPopup,
+} from './useOAuthPopup';
 
 vi.mock('sonner', () => ({
   toast: { loading: vi.fn(() => 'wait-toast'), dismiss: vi.fn() },
@@ -291,6 +295,28 @@ describe('useOAuthPopup', () => {
     await vi.advanceTimersByTimeAsync(2000 + 120000);
 
     await assertion;
+  });
+
+  it('settles the first flow when a second one takes the popup (CN-1)', async () => {
+    openSpy = vi
+      .spyOn(window, 'open')
+      .mockReturnValue(mockPopup() as unknown as Window);
+    const { result } = renderHook(() => useOAuthPopup());
+    const first = result.current.openOAuthPopup('https://p/a', 'conn_a');
+    const second = result.current.openOAuthPopup('https://p/b', 'conn_b');
+
+    await expect(first).rejects.toBeInstanceOf(OAuthPopupSupersededError);
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: { type: 'oauth-complete', success: true, connectionId: 'conn_b' },
+      })
+    );
+    await expect(second).resolves.toMatchObject({
+      connectionId: 'conn_b',
+      success: true,
+    });
   });
 
   it('rejects immediately when the popup is blocked', async () => {
