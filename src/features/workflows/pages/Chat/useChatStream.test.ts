@@ -83,7 +83,7 @@ it('treats a refused message as final: nothing retained, nothing to retry', asyn
   await act(async () =>
     expect(await result.current.sendMessage('Hello')).toBe(false)
   );
-  expect(result.current.uncertainMessage).toBeNull();
+  expect(result.current.uncertainMessages).toEqual([]);
   expect(useChatStore.getState().error).toBe(
     'The session is not waiting for input'
   );
