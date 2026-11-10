@@ -69,6 +69,16 @@ export function resolveRunFilters(
         dateBasis === 'completed' ? new Date(now).toISOString() : undefined,
     };
   }
+  // "All time" means no date bounds, whatever dates the URL also carries; they
+  // used to keep filtering under an "All time" label (HI-9).
+  if (range === 'all')
+    return {
+      ...query,
+      createdFrom: undefined,
+      createdTo: undefined,
+      completedFrom: undefined,
+      completedTo: undefined,
+    };
   return query;
 }
 

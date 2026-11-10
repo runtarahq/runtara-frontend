@@ -432,13 +432,10 @@ test.describe('History audit', () => {
       .innerText();
 
     // Dropping the filter and changing the label both make them agree.
-    await knownDefect('HI-9', async () => {
-      expect(
-        /All time/.test(label) &&
-          list.some((q) => q.get('createdFrom') === from),
-        'says "All time" while filtering by date'
-      ).toBe(false);
-    });
+    expect(
+      /All time/.test(label) && list.some((q) => q.get('createdFrom') === from),
+      'says "All time" while filtering by date'
+    ).toBe(false);
   });
 
   test('HI-10 Retrying execute clears the old error', async ({
