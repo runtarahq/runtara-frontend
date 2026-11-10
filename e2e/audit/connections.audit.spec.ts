@@ -555,25 +555,13 @@ test.describe('Connections audit', () => {
     );
     // Five minutes past the deadline, the page shows the expiry, as a fresh
     // mount does below.
-    await knownDefect('CN-7', async () => {
-      await expect(
-        page.getByText('The time to confirm it is over.')
-      ).toBeVisible({ timeout: 1_000 });
-      await expect(confirm).toBeDisabled({ timeout: 1_000 });
-    });
+    await expect(page.getByText('The time to confirm it is over.')).toBeVisible(
+      { timeout: 1_000 }
+    );
+    await expect(confirm).toBeDisabled({ timeout: 1_000 });
 
-    await confirm.click();
-    await expect(
-      toast(page, 'The time to confirm it is over; start the authorization')
-    ).toHaveCount(1);
-    expect(decisions).toBe(1);
-    // A re-render must not count the distance past the deadline as time left.
-    await knownDefect('CN-7', async () => {
-      await expect(
-        page.getByText(/Confirm it within [45] minutes/)
-      ).toHaveCount(0, { timeout: 1_000 });
-      await expect(confirm).toBeDisabled({ timeout: 1_000 });
-    });
+    // Nothing to send past the deadline.
+    expect(decisions).toBe(0);
 
     // Control: mounting afresh at the same moment does see the expiry.
     await openConnection(page, 'conn_a');
