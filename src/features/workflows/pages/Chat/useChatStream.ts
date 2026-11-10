@@ -162,6 +162,7 @@ export function useChatStream(workflowId: string) {
         throw new Error('Response body is null — SSE stream unavailable');
       }
 
+      let last: string | undefined;
       for await (const event of parseSSEStream(
         response.body,
         abortController.signal
@@ -172,6 +173,7 @@ export function useChatStream(workflowId: string) {
         )
           break;
         handleSSEEvent(event);
+        last = event.type;
       }
 
       // The server always ends a stream with 'done' or 'error', so ending
@@ -184,9 +186,16 @@ export function useChatStream(workflowId: string) {
         abortRef.current === abortController
       ) {
         store.finalizeAssistantMessage();
-        if (useChatStore.getState().status === 'streaming') {
-          store.setStatus('idle');
-        }
+        const status = useChatStore.getState().status;
+        // A stream that closes after its last turn's 'done' is the session
+        // finishing: nothing set 'done', so "Completed" never showed (CH-1).
+        if (
+          last === 'done' &&
+          status !== 'error' &&
+          status !== 'waiting_for_input'
+        )
+          store.setStatus('done');
+        else if (status === 'streaming') store.setStatus('idle');
       }
     },
     []
