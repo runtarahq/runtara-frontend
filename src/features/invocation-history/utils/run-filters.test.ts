@@ -49,4 +49,10 @@ describe('Runs query context', () => {
     );
     expect(next).toEqual({ ...filters, status: 'suspended' });
   });
+  it('drops date bounds for All time, even when the URL carries some (HI-9)', () => {
+    const filters = readRunFilters(
+      new URLSearchParams('range=all&createdFrom=2026-01-01T00:00:00Z')
+    );
+    expect(resolveRunFilters(filters, Date.now()).createdFrom).toBeUndefined();
+  });
 });
