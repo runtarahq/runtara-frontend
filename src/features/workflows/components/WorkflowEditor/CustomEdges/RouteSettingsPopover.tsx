@@ -163,7 +163,8 @@ export function RouteSettingsPopover({
     setPriorityText('');
     setError(null);
     setConditionResetKey((key) => key + 1);
-    onUpdate({ condition: undefined, priority: undefined });
+    // Clears the draft only; Apply commits it, like any other edit. It used
+    // to write to the route at once, with Escape no way back (ED-27).
   };
 
   const handleToggleConditionMode = () => {

@@ -592,11 +592,17 @@ test.describe('Editor audit B', () => {
     await expect(pop.getByLabel('Priority')).toHaveValue('');
     await page.keyboard.press('Escape');
     await expect(pop).toHaveCount(0);
-    await knownDefect('ED-27', async () => {
-      await expect(page.getByTitle('No changes to save')).toBeVisible();
-      await page.getByTestId('edge-route-settings').click();
-      await expect(pop.getByLabel('Priority')).toHaveValue('3');
-    });
+    await expect(page.getByTitle('No changes to save')).toBeVisible();
+    await page.getByTestId('edge-route-settings').click();
+    await expect(pop.getByLabel('Priority')).toHaveValue('3');
+
+    // Clear then Apply does remove the condition and priority.
+    await pop.getByRole('button', { name: 'Clear' }).click();
+    await pop.getByRole('button', { name: 'Apply' }).click();
+    await expect(pop).toHaveCount(0);
+    await expect(page.getByTitle('No changes to save')).toHaveCount(0);
+    await page.getByTestId('edge-route-settings').click();
+    await expect(pop.getByLabel('Priority')).toHaveValue('');
   });
 
   test('ED-28 Step picker: capabilities, typing and clearing a query returns to capabilities', async ({
