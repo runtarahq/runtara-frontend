@@ -111,7 +111,7 @@ export function RouteSettingsPopover({
     getRouteCondition(edge) !== undefined ||
     getRoutePriority(edge) !== undefined;
 
-  useEffect(() => {
+  const resetDraft = () => {
     const condition = getRouteCondition(edge);
     setConditionText(formatRouteCondition(condition));
     setConditionMode(
@@ -121,9 +121,10 @@ export function RouteSettingsPopover({
     const priority = getRoutePriority(edge);
     setPriorityText(priority !== undefined ? String(priority) : '');
     setError(null);
-    // Reset from the edge whenever it (or its data) changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edge.id, edge.data]);
+  };
+  // Reset from the edge whenever it (or its data) changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(resetDraft, [edge.id, edge.data]);
 
   const handleApply = () => {
     const conditionResult = parseRouteCondition(conditionText);
@@ -176,7 +177,15 @@ export function RouteSettingsPopover({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        // Each opening starts from the route as it is: a draft closed
+        // without Apply came back on reopen (ED-25).
+        if (next) resetDraft();
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
