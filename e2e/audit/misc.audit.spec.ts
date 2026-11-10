@@ -189,9 +189,7 @@ test.describe('Triggers audit', () => {
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expect.poll(() => puts.length).toBe(1);
     expect(puts[0].configuration.fresh_key).toBe('fresh_val');
-    await knownDefect('TR-2', async () => {
-      expect(puts[0].configuration.custom_key).toBeUndefined();
-    });
+    expect(puts[0].configuration.custom_key).toBeUndefined();
   });
 });
 
