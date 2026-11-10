@@ -461,40 +461,23 @@ test.describe('Editor audit B', () => {
       ).toBeVisible();
       await expect(box).toHaveCount(0); // upload mode
 
-      // The only way found into mode=upload + `{{`: the stored FileData JSON
-      // carries the file name, and a name can contain `{{`.
+      // The stored FileData JSON carries the file name, and a name can
+      // contain `{{`. Fixed: that no longer reads as a reference.
       await fileRow.locator('input[type="file"]').setInputFiles({
         name: '{{report}}.txt',
         mimeType: 'text/plain',
         buffer: Buffer.from('hello'),
       });
-      await expect(box).toBeVisible();
-      await expect(box).toHaveValue(/\{\{report\}\}\.txt/);
-      return { fileRow, box, uploaded: await box.inputValue() };
+      await expect(fileRow.getByText('{{report}}.txt')).toBeVisible();
+      return { fileRow, box };
     };
 
     const first = await reachUploadModeWithBraces();
-    await first.fileRow
-      .getByRole('button', { name: 'Upload', exact: true })
-      .click();
-    await knownDefect('ED-23', async () => {
-      await expect(first.box).toHaveCount(0, { timeout: 300 });
-    });
-
-    // A fresh start, so the Reference facet does not depend on what Upload did.
-    await page.reload();
-    await expect(page.locator('.react-flow__node').first()).toBeVisible({
-      timeout: 15_000,
-    });
-    const second = await reachUploadModeWithBraces();
-    await second.fileRow
-      .getByRole('button', { name: 'Reference', exact: true })
-      .click();
-    // The box held this value before the click, so give the click time to act.
-    await page.waitForTimeout(300);
-    await knownDefect('ED-23', async () => {
-      await expect(second.box).toHaveValue(second.uploaded);
-    });
+    // Still in upload mode, with the file shown and no reference box.
+    await expect(first.box).toHaveCount(0);
+    await expect(
+      first.fileRow.getByRole('button', { name: 'Upload', exact: true })
+    ).toBeVisible();
   });
 
   test('ED-24 Clearing the condition prop clears the condition editor', async ({
