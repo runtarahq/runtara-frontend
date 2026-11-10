@@ -276,6 +276,35 @@ describe('useOAuthPopup', () => {
     await assertion;
   });
 
+  it("takes a failure carrying this flow's id, from a popup cut off from the console", async () => {
+    const popup = mockPopup();
+    openSpy = vi
+      .spyOn(window, 'open')
+      .mockReturnValue(popup as unknown as Window);
+
+    const { result } = renderHook(() => useOAuthPopup());
+    const promise = result.current.openOAuthPopup(
+      'https://provider.example/auth',
+      'conn-1'
+    );
+    const assertion = expect(promise).rejects.toThrow('access was denied');
+    // What the landing page reads from the popup's copy of sessionStorage.
+    const flow = sessionStorage.getItem('runtara-oauth-flow');
+    expect(flow).toBeTruthy();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: {
+          type: 'oauth-complete',
+          success: false,
+          error: 'access_denied',
+          flow,
+        },
+      })
+    );
+    await assertion;
+  });
+
   it("ignores a failure from another tab's landing page (CN-2)", async () => {
     const popup = mockPopup();
     openSpy = vi

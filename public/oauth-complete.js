@@ -39,8 +39,17 @@
 
   var pending = params.get('result') === 'pending';
   var success = params.get('result') === 'ok' || pending;
+  // The flow id the console wrote before opening this popup; the popup's
+  // sessionStorage started as a copy of the console's.
+  var flow = '';
+  try {
+    flow = window.sessionStorage.getItem('runtara-oauth-flow') || '';
+  } catch (e) {
+    // No sessionStorage: the message names no flow.
+  }
   var message = {
     type: 'oauth-complete',
+    flow: flow,
     success: success,
     pending: pending,
     connectionId: params.get('connection') || '',
