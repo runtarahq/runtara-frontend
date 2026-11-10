@@ -77,7 +77,7 @@ async function openChat(page: Page, mockApi: MockApi) {
   const ctl = {
     posts: [] as Submission[],
     /** Status to answer the next message POST with. */
-    nextStatus: (_s: Submission) => 200,
+    nextStatus: (() => 200) as (s: Submission) => number,
   };
   await installControlledStream(page);
   await mockApi.bootstrap(page);
