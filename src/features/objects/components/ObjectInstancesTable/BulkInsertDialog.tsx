@@ -101,11 +101,13 @@ export function BulkInsertDialog({
     }
 
     const session = sessionRef.current;
+    // Conflict columns only mean something when a conflict mode uses them;
+    // ones picked before switching back to "error" were still sent (OB-16).
     const out = await onSubmit(
       parsed,
       onConflict,
       onError,
-      Array.from(conflictCols)
+      needsConflictColumns ? Array.from(conflictCols) : []
     );
     if (out && session === sessionRef.current) setResult(out);
   };
