@@ -73,6 +73,18 @@ function App() {
       />
     );
   }
+  // A failed lookup at a workspace URL must not let the app through as if
+  // membership were known (SH-2): it stops at the gate, which offers a retry.
+  if (tenantless && tenantIdFromUrl && tenantLookup.failed) {
+    return (
+      <TenantGate
+        tenants={null}
+        failed
+        onRetry={tenantLookup.retry}
+        deniedTenant={tenantIdFromUrl}
+      />
+    );
+  }
   if (
     tenantless &&
     tenantIdFromUrl &&

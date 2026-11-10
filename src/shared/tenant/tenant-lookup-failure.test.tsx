@@ -60,6 +60,12 @@ describe('TenantGate after a failed lookup (SH-1)', () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
+  it('shows the failure at a workspace URL too (SH-2)', () => {
+    render(<TenantGate tenants={null} failed deniedTenant="acme" />);
+    expect(screen.getByText('Could not load your workspaces')).toBeTruthy();
+    expect(screen.queryByText('No access')).toBeNull();
+  });
+
   it('still spins while the lookup is loading', () => {
     render(<TenantGate tenants={null} />);
     expect(screen.queryByText('Could not load your workspaces')).toBeNull();
