@@ -223,9 +223,11 @@ test.describe('Shared audit', () => {
     await expect.poll(() => lookups).toBeGreaterThan(0);
     // Let the route load: the list is absent until then, defect or not.
     await page.waitForTimeout(5_000);
-    await knownDefect('SH-2', async () => {
-      await expect(page.getByText('Tenant workflow')).toHaveCount(0);
-    });
+    // Fixed: the failure stops at the gate, which offers a retry.
+    await expect(page.getByText('Tenant workflow')).toHaveCount(0);
+    await expect(
+      page.getByText('Could not load your workspaces')
+    ).toBeVisible();
 
     // Control: membership that excludes this tenant does stop at the gate, so
     // only the failure let the page through.
