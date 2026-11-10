@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 
@@ -25,7 +25,13 @@ export function PendingConfirmationNotice({
   deciding: 'confirm' | 'reject' | null;
   onDecide: (decision: 'confirm' | 'reject') => void;
 }) {
-  const [now] = useState(() => Date.now());
+  // The clock moves while the notice is up: read once, the deadline never
+  // passed on screen and Confirm stayed on past it (CN-7).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
   const until = new Date(pending.pendingUntil);
   const expired = !Number.isNaN(until.getTime()) && until.getTime() <= now;
   const account = pending.account?.display || pending.account?.id;
