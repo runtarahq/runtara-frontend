@@ -35,7 +35,7 @@ import {
 import { Switch as ToggleSwitch } from '@/shared/components/ui/switch.tsx';
 import { Label } from '@/shared/components/ui/label.tsx';
 import { FieldError } from '@/shared/components/ui/form';
-import { Fragment, useContext, useEffect, useState } from 'react';
+import { Fragment, useContext, useEffect, useRef, useState } from 'react';
 import { NodeFormContext } from '../NodeFormContext';
 import { USER_EDIT } from '../dirty-state';
 import { ValueType } from '../TypeHintSelector';
@@ -174,6 +174,10 @@ function SwitchOutputCell({
 }) {
   const current = readSwitchOutput(output);
   const { mode, value } = current;
+  // The Build editor's Reference and Value call onValueTypeChange, then
+  // onChange with what they carry over. Read as a composite edit, that second
+  // call put the cell back in Build, empty (ED-18).
+  const leaving = useRef<'reference' | 'immediate' | null>(null);
 
   if (mode === 'composite') {
     return (
@@ -182,17 +186,29 @@ function SwitchOutputCell({
           value={value as never}
           valueType="composite"
           untyped
-          onChange={(next) =>
-            onChange(writeSwitchOutput({ mode: 'composite', value: next }))
-          }
+          onChange={(next) => {
+            const target = leaving.current;
+            leaving.current = null;
+            if (target === 'reference') {
+              onChange(writeSwitchOutput({ mode: 'reference', value: '' }));
+              return;
+            }
+            if (target === 'immediate') {
+              // A bare object here would read back as a structure, so the
+              // content carries over as its JSON text, still visible.
+              const text =
+                next !== null && typeof next === 'object'
+                  ? JSON.stringify(next)
+                  : (next ?? '');
+              onChange(writeSwitchOutput({ mode: 'immediate', value: text }));
+              return;
+            }
+            onChange(writeSwitchOutput({ mode: 'composite', value: next }));
+          }}
           onValueTypeChange={(next) => {
             if (next === 'composite') return;
-            onChange(
-              writeSwitchOutput({
-                mode: next === 'reference' ? 'reference' : 'immediate',
-                value: '',
-              })
-            );
+            leaving.current = next === 'reference' ? 'reference' : 'immediate';
+            onChange(writeSwitchOutput({ mode: leaving.current, value: '' }));
           }}
           onClose={() =>
             onChange(writeSwitchOutput({ mode: 'immediate', value: '' }))

@@ -10,7 +10,7 @@ import {
   test,
 } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { api, json, knownDefect, openWorkflow } from './helpers';
+import { api, json, openWorkflow } from './helpers';
 
 // Wide enough that the docked panel leaves the canvas clickable.
 test.use({ viewport: { width: 1700, height: 1000 } });
@@ -997,6 +997,9 @@ test.describe('Editor audit A', () => {
       await c1.getByText('(0 fields)').count(),
     ];
 
+    // Value carries the structure over as its JSON text.
+    await expect(c1.locator('textarea, input').first()).toHaveValue(/second/);
+
     // An empty reference may fairly be refused, which leaves no payload to read.
     await submitPanel(page, () => page.getByTestId('validation-message'));
     let valueOutputKept = true;
@@ -1006,11 +1009,9 @@ test.describe('Editor audit A', () => {
         graph.steps.sw.config.cases[1].output
       ).includes('second');
     }
-    await knownDefect('ED-18', async () => {
-      expect({ stuckInBuild, valueOutputKept }).toEqual({
-        stuckInBuild: [0, 0],
-        valueOutputKept: true,
-      });
+    expect({ stuckInBuild, valueOutputKept }).toEqual({
+      stuckInBuild: [0, 0],
+      valueOutputKept: true,
     });
   });
 });
