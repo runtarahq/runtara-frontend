@@ -1,7 +1,13 @@
 import { stateLabel } from '../state-label';
 import { inlineOptions } from '../answer-options';
 import { Link } from 'react-router';
-import { forwardRef, useImperativeHandle, useMemo, useState } from 'react';
+import {
+  forwardRef,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { OperationRequest } from '@/generated/RuntaraRuntimeApi';
 import { Button } from '@/shared/components/ui/button';
 import {
@@ -29,6 +35,7 @@ export const QueueAnswer = forwardRef<
   );
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [editing, setEditing] = useState(false);
+  const choosingRef = useRef(false);
   const [analysis, setAnalysis] = useState<FormAnalysisResult | null>(null);
   const [attempt, setAttempt] = useState(0);
   const submissions = useManagedInputSubmissions();
@@ -74,28 +81,36 @@ export const QueueAnswer = forwardRef<
   async function choose(value: unknown) {
     if (
       disabled ||
+      choosingRef.current ||
       !options ||
       !options.values.some((v) => JSON.stringify(v) === JSON.stringify(value))
     )
       return;
-    const payload = workflowFormPayload(definition, {
-      ...current,
-      [options.field]: value,
-    });
-    setValues(payload);
-    const result = await analyzeFormWithRust(definition, payload);
-    setAnalysis(result);
-    const extra = Object.keys(definition.fields).some(
-      (name) =>
-        name !== options.field &&
-        result.fields[name]?.visible !== false &&
-        result.fields[name]?.required
-    );
-    if (extra || !result.valid) {
-      setEditing(true);
-      return;
+    // One choice at a time: a second click during the analysis used to send
+    // a second answer (OP-4).
+    choosingRef.current = true;
+    try {
+      const payload = workflowFormPayload(definition, {
+        ...current,
+        [options.field]: value,
+      });
+      setValues(payload);
+      const result = await analyzeFormWithRust(definition, payload);
+      setAnalysis(result);
+      const extra = Object.keys(definition.fields).some(
+        (name) =>
+          name !== options.field &&
+          result.fields[name]?.visible !== false &&
+          result.fields[name]?.required
+      );
+      if (extra || !result.valid) {
+        setEditing(true);
+        return;
+      }
+      await send(payload);
+    } finally {
+      choosingRef.current = false;
     }
-    await send(payload);
   }
   useImperativeHandle(ref, () => ({
     choose,

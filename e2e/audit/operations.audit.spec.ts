@@ -343,12 +343,11 @@ test.describe('Operations audit', () => {
       .toBeGreaterThan(0);
     // The count passes through 1 on its way to 2: wait before reading it.
     await page.waitForTimeout(500);
-    await knownDefect('OP-4', async () => {
-      expect(
-        log.signals.filter((s) => s.requestId === 'req_b').length,
-        'clicks in one task'
-      ).toBe(1);
-    });
+    // Fixed: one choice at a time, even within one task.
+    expect(
+      log.signals.filter((s) => s.requestId === 'req_b').length,
+      'clicks in one task'
+    ).toBe(1);
   });
 
   test('OP-5 "Submit prepared answers" on non-editing rows acts or gives feedback', async ({
