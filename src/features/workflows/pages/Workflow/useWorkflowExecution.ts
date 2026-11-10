@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { useCustomMutation, useCustomQuery } from '@/shared/hooks/api';
@@ -45,6 +45,10 @@ export function useWorkflowExecution(workflowId: string | undefined) {
 
   // The run this page started, and when — read by the instance query below.
   const queuedRunRef = useRef<QueuedRun | null>(null);
+  // Bumped when the resume guard lapses, so the pause check runs again: a
+  // pause reached during the guard, with polls returning the same data, used
+  // to stay unseen (EX-4).
+  const [resumeGuardLapses, setResumeGuardLapses] = useState(0);
 
   const scheduleMutation = useCustomMutation({
     mutationFn: (
@@ -558,6 +562,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
     setSuspended,
     setStepDebugData,
     refetchStepEvents,
+    resumeGuardLapses,
   ]);
 
   // ── Resume from breakpoint ──────────────────────────────────────────────
@@ -578,6 +583,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
       // Safety: clear the guard after 5s in case polling never sees a non-suspended status
       setTimeout(() => {
         justResumedRef.current = false;
+        setResumeGuardLapses((n) => n + 1);
       }, 5000);
       toast.info('Execution resumed');
     },
