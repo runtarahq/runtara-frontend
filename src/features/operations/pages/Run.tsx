@@ -46,13 +46,18 @@ export function RunPage() {
     queryKey: ['operations', tenant, 'run', workflowId, instanceId],
     queryFn: (token: string) =>
       getWorkflowInstance(token, workflowId, instanceId),
-    refetchInterval: 10_000,
+    // A finished run does not change, so stop polling it (OP-9).
+    refetchInterval: (query) =>
+      query.state.data && !isActiveStatus(query.state.data.status)
+        ? false
+        : 10_000,
     placeholderData: undefined,
   });
+  const finished = Boolean(run.data) && !isActiveStatus(run.data?.status);
   const pending = useCustomQuery({
     queryKey: ['operations', tenant, 'pending', workflowId, instanceId],
     queryFn: (token: string) => getPendingInput(token, workflowId, instanceId),
-    refetchInterval: 10_000,
+    refetchInterval: finished ? false : 10_000,
     placeholderData: undefined,
   });
   const schema = useCustomQuery({
@@ -81,7 +86,7 @@ export function RunPage() {
         limit: 20,
         sortOrder: 'desc',
       }),
-    refetchInterval: 10_000,
+    refetchInterval: finished ? false : 10_000,
     placeholderData: undefined,
   });
   // A failed poll keeps the loaded run, and its form drafts (OP-2).

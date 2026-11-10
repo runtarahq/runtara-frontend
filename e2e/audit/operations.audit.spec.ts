@@ -520,9 +520,7 @@ test.describe('Operations audit', () => {
     console.log(
       `OP-9 instance GETs after completed: ${run.instanceGets - before}`
     );
-    await knownDefect('OP-9', async () => {
-      expect(run.instanceGets - before).toBeLessThan(2);
-    });
+    expect(run.instanceGets - before).toBeLessThan(2);
   });
 
   test('OP-10 The replay dialog does not close mid-request and then navigate', async ({
