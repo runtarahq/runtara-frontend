@@ -166,7 +166,12 @@ export function PayloadExplorer({
   const active = sections.find((s) => s.id === activeId) ?? sections[0];
 
   const [fullValues, setFullValues] = useState<Record<string, unknown>>({});
-  const [loadingFull, setLoadingFull] = useState<string | null>(null);
+  // Sections whose full value is loading. A set, so one load finishing does
+  // not clear another section's indicator while that one is still going
+  // (SH-7).
+  const [loadingFull, setLoadingFull] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
   const valueOf = useCallback(
     (section: PayloadSection) =>
       section.id in fullValues ? fullValues[section.id] : section.value,
@@ -281,7 +286,7 @@ export function PayloadExplorer({
   const ensureFull = async (section: PayloadSection): Promise<unknown> => {
     if (section.id in fullValues) return fullValues[section.id];
     if (!loadFullValue) return undefined;
-    setLoadingFull(section.id);
+    setLoadingFull((prev) => new Set(prev).add(section.id));
     try {
       const full = await loadFullValue(section.id);
       setFullValues((prev) => ({ ...prev, [section.id]: full }));
@@ -294,7 +299,11 @@ export function PayloadExplorer({
       );
       return undefined;
     } finally {
-      setLoadingFull(null);
+      setLoadingFull((prev) => {
+        const next = new Set(prev);
+        next.delete(section.id);
+        return next;
+      });
     }
   };
 
@@ -756,7 +765,7 @@ export function PayloadExplorer({
         size={size}
         search={search}
         canLoadFull={canLoadFull}
-        loadingFull={loadingFull === active.id}
+        loadingFull={loadingFull.has(active.id)}
         onLoadFull={() => void loadFull()}
       />
 
@@ -807,7 +816,7 @@ export function PayloadExplorer({
             currentMatchPath={currentMatch?.path ?? null}
             fieldLabels={active.fieldLabels}
             canLoadFull={canLoadFull}
-            loadingFull={loadingFull === active.id}
+            loadingFull={loadingFull.has(active.id)}
             onSelect={select}
             onToggle={toggle}
             onCopyPath={copyPath}
