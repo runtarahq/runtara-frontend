@@ -156,8 +156,14 @@ export function ObjectMappingEditor({
               value as CompositeObjectValue | CompositeArrayValue
             )
           : undefined;
+      // An empty structure has nothing to carry: Value starts blank.
+      const hasContent =
+        literal !== undefined &&
+        literal !== null &&
+        typeof literal === 'object' &&
+        Object.keys(literal).length > 0;
       onValueTypeChange('immediate');
-      onChange(literal !== undefined && literal !== null ? literal : '');
+      onChange(hasContent ? literal : '');
     } else {
       // A JSON object or array carries over as the same structure (ED-14).
       onValueTypeChange('composite');
