@@ -182,12 +182,10 @@ test.describe('Chat audit', () => {
 
     // `done` alone ends a turn in session mode. The stream ending ends the chat.
     await closeStream(page);
-    await knownDefect('CH-1', async () => {
-      await expect
-        .poll(async () => (await chatState(page)).status, { timeout: 2_000 })
-        .toBe('done');
-      await expect(completed(page)).toBeVisible();
-    });
+    await expect
+      .poll(async () => (await chatState(page)).status, { timeout: 2_000 })
+      .toBe('done');
+    await expect(completed(page)).toBeVisible();
   });
 
   test('CH-2 After a send, the chat is not idle while the stream is open and chunks arrive', async ({
