@@ -343,8 +343,17 @@ export function IterationVariablesField({
                         variant="secondary"
                         size="sm"
                         onClick={() => {
-                          if (editingIndex === index) setEditingIndex(null);
-                          if (pickerIndex === index) setPickerIndex(null);
+                          // Indexes after the removed row shift up by one;
+                          // the open editor and picker follow their row
+                          // instead of landing on the next one (ED-34).
+                          const follow = (open: number | null) =>
+                            open === null || open === index
+                              ? null
+                              : open > index
+                                ? open - 1
+                                : open;
+                          setEditingIndex(follow);
+                          setPickerIndex(follow);
                           remove(index);
                         }}
                         className="size-6 p-0"
