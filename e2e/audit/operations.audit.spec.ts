@@ -601,9 +601,7 @@ test.describe('Operations audit', () => {
     await confirm.click();
     await expect.poll(() => revisions.length).toBe(2);
 
-    await knownDefect('OP-11', async () => {
-      expect(revisions).toEqual(['1', '2']);
-    });
+    expect(revisions).toEqual(['1', '2']);
   });
 
   test('OP-12 A view editor 409 retry can succeed', async ({
