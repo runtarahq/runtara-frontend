@@ -551,9 +551,7 @@ test.describe('Editor audit B', () => {
 
     await page.getByTestId('edge-route-settings').click();
     await expect(pop).toBeVisible();
-    await knownDefect('ED-25', async () => {
-      await expect(pop.getByLabel('Priority')).toHaveValue('3');
-    });
+    await expect(pop.getByLabel('Priority')).toHaveValue('3');
   });
 
   test('ED-26 Route settings: a stale error clears after editing', async ({
