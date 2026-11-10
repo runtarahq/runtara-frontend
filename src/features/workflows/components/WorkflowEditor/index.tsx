@@ -1443,6 +1443,10 @@ function WorkflowEditorContent({
                   ) {
                     return;
                   }
+                  // A new step's panel is open: finish or cancel it first.
+                  // Opening another step's editor beside it showed two
+                  // config panels (ED-1).
+                  if (pendingNewNode) return;
                   // Open dialog for editing on double-click
                   if (workflow && !readOnly) {
                     editNode(node.id);
