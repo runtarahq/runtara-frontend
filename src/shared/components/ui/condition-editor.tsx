@@ -806,10 +806,12 @@ export const ConditionEditor = ({
 
   // Update condition when value prop changes (e.g., when form data loads)
   // Only update if the string value actually changed
+  // A value cleared to nothing clears the condition too; it used to keep the
+  // old one on screen (ED-24). A value that fails to parse still leaves it.
   useEffect(() => {
     if (value !== lastSyncedValue.current) {
       const parsed = parseConditionValue(value);
-      if (parsed) {
+      if (parsed || value === undefined || value === '') {
         lastSyncedValue.current = value;
         setCondition(parsed);
       }
@@ -886,6 +888,11 @@ const ConditionBuilder = ({
         setOp(value.op);
         setArgs(value.arguments);
       }
+    } else if (lastSyncedValueRef.current !== null) {
+      // The synced value was cleared: clear with it (ED-24).
+      lastSyncedValueRef.current = null;
+      setOp('EQ');
+      setArgs(['', '']);
     }
   }, [value]);
 

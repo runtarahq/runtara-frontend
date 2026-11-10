@@ -549,9 +549,8 @@ test.describe('Editor audit B', () => {
 
     expect(seen.initial).toBe('left-marker');
     expect(seen.changed).toBe('changed-marker'); // the prop does sync normally
-    await knownDefect('ED-24', async () => {
-      expect(seen.cleared).not.toBe('changed-marker');
-    });
+    // Fixed: clearing the prop clears the editor.
+    expect(seen.cleared).not.toBe('changed-marker');
   });
 
   test('ED-25 Closing route settings without Apply discards the draft on reopen', async ({
