@@ -14,6 +14,7 @@ import {
 } from './draft-row';
 import {
   dropEditsForRows,
+  isUnchangedFailure,
   recordCellEdit,
   restoreEditsForRows,
   settleCreatedDraft,
@@ -410,15 +411,26 @@ export function ObjectInstanceDtosTable({
     ]
   );
 
+  // The values each row last failed to save. A flush does not send them again
+  // unless they changed: every click away used to repeat the rejected request
+  // (OB-4). A new edit makes a new object, so it does go out.
+  const failedValuesRef = useRef(new Map<string, Record<string, unknown>>());
+
   const saveDirtyRow = useCallback(
     async (rowId: string) => {
       const dirtyData = dirtyRowsRef.current.get(rowId);
-      if (!dirtyData || !saveQueueRef.current.begin(rowId)) {
+      if (
+        !dirtyData ||
+        isUnchangedFailure(failedValuesRef.current, rowId, dirtyData) ||
+        !saveQueueRef.current.begin(rowId)
+      ) {
         return;
       }
       let savedRowId: string | null = null;
       try {
         savedRowId = await saveRow(rowId, dirtyData);
+        if (savedRowId) failedValuesRef.current.delete(rowId);
+        else failedValuesRef.current.set(rowId, dirtyData);
       } finally {
         // A flush that waited runs once the state updates above have landed,
         // and sends only what changed meanwhile; against the record's id if a

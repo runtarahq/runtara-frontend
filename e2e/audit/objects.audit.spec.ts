@@ -359,9 +359,14 @@ test.describe('Objects audit', () => {
       await clickAway(page);
       await settle(page);
     }
-    await knownDefect('OB-4', async () => {
-      expect(backend.requests.put).toHaveLength(1);
-    });
+    // Fixed: the rejected values are not sent again by clicks away.
+    expect(backend.requests.put).toHaveLength(1);
+
+    // A new edit is a new attempt, so it does go out.
+    await typeInto(page, 0, 'changed');
+    await cellInput(page, 0).press('Enter');
+    await expect.poll(() => backend.requests.put.length).toBe(2);
+    expect(backend.requests.put[1].body.properties.name).toBe('changed');
   });
 
   test('OB-5 A failed bulk delete keeps unsaved edits on rows that still exist', async ({

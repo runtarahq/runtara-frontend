@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dropEditsForRows,
+  isUnchangedFailure,
   recordCellEdit,
   restoreEditsForRows,
   settleCreatedDraft,
@@ -248,5 +249,25 @@ describe('withSaveFailed (OB-3)', () => {
     expect(withSaveFailed(none, 'r1', false)).toBe(none);
     const one = new Set(['r1']);
     expect(withSaveFailed(one, 'r1', true)).toBe(one);
+  });
+});
+
+describe('isUnchangedFailure (OB-4)', () => {
+  it('holds back the values a save failed with', () => {
+    const values = { name: 'rejected' };
+    expect(isUnchangedFailure(new Map([['r1', values]]), 'r1', values)).toBe(
+      true
+    );
+  });
+
+  it('lets a later edit through, even with an equal value', () => {
+    const failed = new Map([['r1', { name: 'rejected' }]]);
+    expect(isUnchangedFailure(failed, 'r1', { name: 'rejected' })).toBe(false);
+    expect(isUnchangedFailure(failed, 'r1', { name: 'changed' })).toBe(false);
+  });
+
+  it('is false for a row with no failure or no values', () => {
+    expect(isUnchangedFailure(new Map(), 'r1', { name: 'x' })).toBe(false);
+    expect(isUnchangedFailure(new Map(), 'r1', undefined)).toBe(false);
   });
 });
