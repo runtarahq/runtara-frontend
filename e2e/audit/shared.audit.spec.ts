@@ -638,8 +638,7 @@ test.describe('Shared audit', () => {
       )
       .map((file) => path.relative(SRC, file))
       .sort();
-    await knownDefect('SH-10', async () => {
-      expect(uses).not.toEqual(['shared/utils/sse.ts']);
-    });
+    // Fixed: the orphaned module is gone.
+    expect(uses).not.toEqual(['shared/utils/sse.ts']);
   });
 });
