@@ -45,6 +45,7 @@ import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStor
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
 import { dropSavedEntries } from './drop-saved-entries';
 import { useOneAtATime } from './use-one-at-a-time';
+import { BackgroundBuildWatch, useBuildWatchTimeout } from './build-watch';
 import {
   getCompilationProgress,
   rebuildWorkflowVersion,
@@ -105,9 +106,6 @@ function getWorkflowStoreContentHash(): string {
       .sort((a, b) => a.id.localeCompare(b.id)),
   });
 }
-
-/** How long a build watch waits for a known status before giving up. */
-const COMPILATION_WATCH_TIMEOUT_MS = 10_000;
 export function Workflow() {
   const { workflowId } = useParams();
   const [selectedVersion, setSelectedVersion] = useState<number | undefined>(
@@ -130,15 +128,20 @@ export function Workflow() {
     number | undefined
   >(undefined);
 
-  // Version the user explicitly clicked Rebuild on. Set immediately at click
+  // Versions the user explicitly clicked Rebuild on. Set immediately at click
   // time (not derived from polling) so the row's Rebuild button can become
   // "Rebuilding" and disable itself before the first poll arrives — the
   // warm-cache case where compile finishes in <1 s and polling would only
   // ever see the terminal state. Cleared by the same effect that clears
-  // `watchedCompilationVersion` after terminal.
-  const [pendingRebuildVersion, setPendingRebuildVersion] = useState<
-    number | undefined
-  >(undefined);
+  // `watchedCompilationVersion` after terminal. More than one: starting B
+  // while A builds hands A to a background watch instead of dropping it
+  // (WF-7).
+  const [rebuildingVersions, setRebuildingVersions] = useState<number[]>([]);
+  const finishRebuild = useCallback(
+    (version: number) =>
+      setRebuildingVersions((all) => all.filter((v) => v !== version)),
+    []
+  );
 
   const [isUnsavedChangesDialogOpen, setIsUnsavedChangesDialogOpen] =
     useState(false);
@@ -330,8 +333,9 @@ export function Workflow() {
           // refetch failure is non-fatal — the user can hit reload
         }
         if (!cancelled) {
+          if (watchedCompilationVersion !== undefined)
+            finishRebuild(watchedCompilationVersion);
           setWatchedCompilationVersion(undefined);
-          setPendingRebuildVersion(undefined);
         }
       },
       isSuccess ? 2500 : 8000
@@ -341,41 +345,18 @@ export function Workflow() {
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [compilationToolbarStatus, workflowId]);
+  }, [
+    compilationToolbarStatus,
+    workflowId,
+    watchedCompilationVersion,
+    finishRebuild,
+  ]);
 
-  // Give up on a watch the server cannot report on: a status that stays
-  // `unknown`, or a progress endpoint that keeps failing, used to poll every
-  // second and keep "Rebuilding" up until a reload (WF-4, WF-5). The clock
-  // runs from the last known answer, so a long build that keeps reporting
-  // progress is watched to the end.
-  useEffect(() => {
-    if (watchedCompilationVersion === undefined || !workflowId) return;
-    const key = queryKeys.workflows.compilationProgress(
-      workflowId,
-      watchedCompilationVersion
-    );
-    const startedAt = Date.now();
-    const id = window.setInterval(() => {
-      const state = queryClient.getQueryState(key);
-      const status = (state?.data as { status?: string } | undefined)?.status;
-      if (status === 'success' || status === 'failed') return;
-      const known = Boolean(status) && status !== 'unknown';
-      const lastAnswer = known
-        ? Math.max(startedAt, state!.dataUpdatedAt)
-        : startedAt;
-      if (Date.now() - lastAnswer < COMPILATION_WATCH_TIMEOUT_MS) return;
-      window.clearInterval(id);
-      setWatchedCompilationVersion(undefined);
-      setPendingRebuildVersion(undefined);
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.workflows.versions(workflowId),
-      });
-      toast.warning('Could not follow the build', {
-        description: 'Check the Versions tab for its result.',
-      });
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [watchedCompilationVersion, workflowId]);
+  useBuildWatchTimeout(workflowId, watchedCompilationVersion, () => {
+    const version = watchedCompilationVersion;
+    setWatchedCompilationVersion(undefined);
+    setRebuildingVersions((all) => all.filter((v) => v !== version));
+  });
 
   // Extract versions from wrapped response
   const versions = useMemo(
@@ -1171,7 +1152,9 @@ export function Workflow() {
       queryClient.removeQueries({
         queryKey: queryKeys.workflows.compilationProgress(workflowId, version),
       });
-      setPendingRebuildVersion(version);
+      setRebuildingVersions((all) =>
+        all.includes(version) ? all : [...all, version]
+      );
       setWatchedCompilationVersion(version);
       rebuildMutation.mutate({ workflowId, version });
     },
@@ -1518,6 +1501,17 @@ export function Workflow() {
 
   return (
     <div className="flex h-full flex-col bg-background">
+      {workflowId &&
+        rebuildingVersions
+          .filter((version) => version !== watchedCompilationVersion)
+          .map((version) => (
+            <BackgroundBuildWatch
+              key={version}
+              workflowId={workflowId}
+              version={version}
+              onDone={finishRebuild}
+            />
+          ))}
       <WorkflowActionsForm
         isLoading={isLoading}
         workflowName={stagedWorkflowChanges.name ?? data.name ?? ''}
@@ -1600,7 +1594,7 @@ export function Workflow() {
         onVersionChange={handleVersionChange}
         onVersionActivate={handleVersionActivate}
         onVersionRebuild={handleVersionRebuild}
-        rebuildingVersion={pendingRebuildVersion}
+        rebuildingVersions={rebuildingVersions}
         isVersionLoading={isLoading}
       />
 

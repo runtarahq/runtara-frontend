@@ -33,7 +33,7 @@ interface ValidationPanelProps {
    *  the toolbar progress indicator drive feedback. */
   onVersionRebuild?: (version: number) => void;
   /** Version currently mid-rebuild — drives the spinner on its row. */
-  rebuildingVersion?: number;
+  rebuildingVersions?: number[];
   /** Whether version operations are loading */
   isVersionLoading?: boolean;
 }
@@ -57,7 +57,7 @@ export function ValidationPanel({
   onVersionChange,
   onVersionActivate,
   onVersionRebuild,
-  rebuildingVersion,
+  rebuildingVersions,
   isVersionLoading = false,
 }: ValidationPanelProps) {
   const isPanelExpanded = useValidationStore((s) => s.isPanelExpanded);
@@ -102,7 +102,7 @@ export function ValidationPanel({
               onVersionChange={onVersionChange ?? (() => {})}
               onVersionActivate={onVersionActivate ?? (() => {})}
               onVersionRebuild={onVersionRebuild}
-              rebuildingVersion={rebuildingVersion}
+              rebuildingVersions={rebuildingVersions}
               isLoading={isVersionLoading}
             />
           )}

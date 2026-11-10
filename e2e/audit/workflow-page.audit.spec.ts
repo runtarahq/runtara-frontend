@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { expect, type Page } from '@playwright/test';
 import { test, buildWorkflow } from '../fixtures';
-import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
+import { api, json, logWorkflow, openWorkflow } from './helpers';
 
 type Gate = { promise: Promise<void>; release: () => void };
 
@@ -573,13 +573,11 @@ test.describe('Workflow page audit: compilation watch', () => {
       version === 1
         ? { status: 200, body: { status: 'failed', errorMessage: 'A failed' } }
         : { status: 200, body: { status: 'in_progress' } };
-    await knownDefect('WF-7', async () => {
-      await expect(rebuildButton(page, 1)).toHaveCount(0);
-      await expect
-        .poll(() => c.count(1), { timeout: 4_000 })
-        .toBeGreaterThan(v1Polls);
-      await expect(failureToast(page)).toBeVisible({ timeout: 4_000 });
-    });
+    await expect(rebuildButton(page, 1)).toHaveCount(0);
+    await expect
+      .poll(() => c.count(1), { timeout: 4_000 })
+      .toBeGreaterThan(v1Polls);
+    await expect(failureToast(page)).toBeVisible({ timeout: 4_000 });
     console.log(
       `WF-7 v1 polls ${v1Polls} then ${c.count(1)}, v2 polls ${c.count(2)}, rebuilds ${c.rebuilds}`
     );
