@@ -24,6 +24,17 @@ describe('historyView (HI-1)', () => {
     );
   });
 
+  it('keeps the content when a poll of a loaded run fails (HI-2)', () => {
+    expect(
+      historyView({
+        ...state,
+        hasData: true,
+        isError: true,
+        isInitialLoad: false,
+      })
+    ).toBe('content');
+  });
+
   it('shows the loader when a later load has no data and no error', () => {
     expect(historyView({ ...state, isInitialLoad: false })).toBe('loader');
   });

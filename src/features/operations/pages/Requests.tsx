@@ -7,6 +7,7 @@ import { attentionQueues, queryAttentionRequests } from '../attention-requests';
 import { useOperations } from '../queries';
 import { RequestRows } from '../components/RequestRows';
 import { OperationHeader, OperationSection, RefreshControls } from './shared';
+import { failedWithNothingToShow } from '../poll-errors';
 
 export function RequestsPage() {
   const [params, setParams] = useSearchParams();
@@ -106,7 +107,9 @@ export function RequestsPage() {
             <RequestRows requests={rows} />
           ) : (
             <p className="p-5 text-sm text-muted-foreground">
-              {error
+              {/* A failed refresh of a loaded list keeps its empty text
+                  (OP-14); the alert above says the refresh failed. */}
+              {failedWithNothingToShow(queues, views, query)
                 ? 'Requests unavailable.'
                 : query.isPending
                   ? 'Loading requests…'
