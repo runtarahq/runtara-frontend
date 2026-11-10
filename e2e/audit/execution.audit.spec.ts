@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from '../fixtures';
-import { api, json, knownDefect, logWorkflow, openWorkflow } from './helpers';
+import { api, json, logWorkflow, openWorkflow } from './helpers';
 
 type RunState = {
   status: string;
@@ -250,9 +250,8 @@ test.describe('Execution audit', () => {
     // The resume took effect, so a Continue seen below is a new one.
     await expect(continueButton(page)).toHaveCount(0);
 
-    await knownDefect('EX-4', async () => {
-      await expect(continueButton(page)).toBeVisible({ timeout: 12_000 });
-      await expect(pausedLabel(page)).toBeVisible();
-    });
+    // Fixed: when the guard lapses, the pause is checked again.
+    await expect(continueButton(page)).toBeVisible({ timeout: 12_000 });
+    await expect(pausedLabel(page)).toBeVisible();
   });
 });
