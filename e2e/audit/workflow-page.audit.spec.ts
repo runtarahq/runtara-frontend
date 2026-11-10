@@ -725,15 +725,14 @@ test.describe('Execution audit: status and store', () => {
     const firstInput = inputPolls.inst_mystery;
     expect(running.inst_running).toBeGreaterThanOrEqual(2);
     expect(running.input).toBeGreaterThanOrEqual(3);
-    await knownDefect('EX-6', async () => {
-      expect(mysteryReplay).toBe(0);
-      await expect
-        .poll(() => polls.inst_mystery, { timeout: 12_000 })
-        .toBeGreaterThan(first);
-      await expect
-        .poll(() => inputPolls.inst_mystery, { timeout: 12_000 })
-        .toBeGreaterThan(firstInput);
-    });
+    // Fixed: an unrecognized status is not read as an ending.
+    expect(mysteryReplay).toBe(0);
+    await expect
+      .poll(() => polls.inst_mystery, { timeout: 12_000 })
+      .toBeGreaterThan(first);
+    await expect
+      .poll(() => inputPolls.inst_mystery, { timeout: 12_000 })
+      .toBeGreaterThan(firstInput);
     console.log(
       `EX-6 12 s window: running instance GETs ${running.inst_running}, pending-input ${running.input}; ` +
         `mystery instance GETs ${polls.inst_mystery} (${first} after load), pending-input ${inputPolls.inst_mystery} (${firstInput} after load)`
