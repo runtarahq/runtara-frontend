@@ -889,18 +889,17 @@ test.describe('Connections audit', () => {
     await titleField(page).fill('');
     const invalidBefore = await page.locator('[aria-invalid="true"]').count();
     await clickDialogSave();
-    await knownDefect('CN-15', async () => {
-      await expect
-        .poll(
-          async () =>
-            (await toasts(page).count()) +
-            (await page.getByText('Please enter a title').count()) +
-            (await page.locator('[aria-invalid="true"]').count()) -
-            invalidBefore,
-          { timeout: 1_500 }
-        )
-        .toBeGreaterThan(0);
-    });
+    // Fixed: the status card's Save & Reconnect reports the invalid form.
+    await expect
+      .poll(
+        async () =>
+          (await toasts(page).count()) +
+          (await page.getByText('Please enter a title').count()) +
+          (await page.locator('[aria-invalid="true"]').count()) -
+          invalidBefore,
+        { timeout: 1_500 }
+      )
+      .toBeGreaterThan(0);
     expect(ctl.counts.put).toBe(0);
     console.log(
       `CN-15 fields marked invalid before and after: ${invalidBefore}`

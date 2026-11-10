@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -291,6 +291,15 @@ export function DynamicConnectionForm({
     setClearedSecrets(new Set());
   };
 
+  // The frame schema (title, rate limits) can block the submit before
+  // handleSubmit runs, and pristine parameter fields keep their issues hidden
+  // until a submit attempt — count this as one so they surface. Every submit
+  // path reports it, the status card's Save & Reconnect too (CN-15).
+  const handleInvalid = (errors: FieldErrors<Record<string, unknown>>) => {
+    setSubmitAttempt((attempt) => attempt + 1);
+    reportFirstFormError(form, errors);
+  };
+
   const handleSubmit = async (values: Record<string, unknown>) => {
     const descriptorFields =
       (connectionType as ConnectionTypeWithForm).formDefinition?.fields ?? {};
@@ -372,13 +381,7 @@ export function DynamicConnectionForm({
     <NextForm
       form={form}
       onSubmit={handleSubmit}
-      onInvalid={(errors) => {
-        // The frame schema (title, rate limits) can block the submit before
-        // handleSubmit runs, and pristine parameter fields keep their issues
-        // hidden until a submit attempt — count this as one so they surface.
-        setSubmitAttempt((attempt) => attempt + 1);
-        reportFirstFormError(form, errors);
-      }}
+      onInvalid={handleInvalid}
       className="w-full"
       renderActions={() => null}
       renderContent={() => (
@@ -457,7 +460,9 @@ export function DynamicConnectionForm({
                 }
                 isOAuth={Boolean(showReconnect)}
                 onReconnect={onReconnect}
-                onSaveAndReconnect={() => form.handleSubmit(handleSubmit)()}
+                onSaveAndReconnect={() =>
+                  form.handleSubmit(handleSubmit, handleInvalid)()
+                }
                 isReconnecting={isReconnecting}
                 hasParamChanges={hasParamChanges}
                 hasReauthChanges={hasReauthChanges}
