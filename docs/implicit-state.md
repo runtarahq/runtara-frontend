@@ -30,6 +30,8 @@ Of 135 claims, at audit time: **118 confirmed, 8 partial, 5 denied and 4 static*
 
 Fixed since: OB-18, OB-8, ED-22, ED-3, ED-11, ED-12, WF-1, WF-2, OB-2, OB-5, CN-9, CN-17, OB-1, SH-1, HI-1, EX-1, EX-2, EX-3, OP-1, OP-2, OB-3, HI-2, OP-14, SH-2, OB-4, OB-6, OB-7, ED-4, ED-5, ED-2, WF-3, CN-1, CN-13, SH-4, EX-5, ED-6, ED-7, ED-8, SH-10, EX-6, OP-4, ED-24, SH-5, SH-9, CH-3, CN-18, ED-36, ED-15, ST-1, CN-15, OB-12, ED-31, SH-7, SH-8, OB-14, OP-8, OP-10, CN-4, CN-5, EX-4, OB-13, HI-4, ED-14, ED-17, ED-23, CN-6 and WF-6. Their verdicts below read `FIXED`.
 
+Rare or hard-to-reach claims, worked through as a group: those whose evidence needs a held or late response, overlapping requests, a rare error sequence or a contrived input. ED-14, ED-23, ED-31, OB-13, OB-14, CN-4, CN-5, CN-6, OP-8, OP-10, EX-4, HI-4, SH-7, SH-8 and WF-6 are fixed; ED-17 was fixed with ED-14. SH-3's failure half stays by decision (see its row); CH-3 and CN-18 were checked against the runtara server source, then fixed.
+
 - **Method:** each claim has a test that drives the real UI in Chrome against `page.route()` mocks (`e2e/audit/`), apart from the static claims, which read the source. The verdicts below record what those tests observed when they asserted the claimed defect directly.
 - **Tests now assert correct behaviour:** see [Working with the specs](#working-with-the-specs).
 - **Mock limits:** a mock proves what the client does with a given response, not that the real server sends it. Claims that depend on server behaviour say so in their evidence, notably EX-2, CH-3, CN-18 and HI-4.
