@@ -303,13 +303,12 @@ test.describe('Workflow page audit: saving', () => {
 
     console.log('WF-3 update POSTs per double click', JSON.stringify(results));
     expect(whileHeld).toBe(0);
-    await knownDefect('WF-3', async () => {
-      expect(results.coldDblclick).toBe(1);
-      expect(results.slowCatalogGap250ms).toBe(1);
-      expect(JSON.stringify(save.saves[0].executionGraph)).not.toEqual(
-        JSON.stringify(save.saves[1].executionGraph)
-      );
-    });
+    // Fixed: one save at a time, however fast or slow the second click.
+    expect(results.coldDblclick).toBe(1);
+    expect(results.slowCatalogGap250ms).toBe(1);
+    expect(JSON.stringify(save.saves[0].executionGraph)).not.toEqual(
+      JSON.stringify(save.saves[1].executionGraph)
+    );
   });
 });
 
