@@ -725,10 +725,9 @@ test.describe('Operations audit', () => {
       'Could not refresh requests.',
       { timeout: POLL + 5_000 }
     );
-    await knownDefect('OP-14', async () => {
-      await expect(page.getByText('Requests unavailable.')).toHaveCount(0);
-      await expect(empty).toBeVisible();
-    });
+    // Fixed: the loaded empty list keeps its text.
+    await expect(page.getByText('Requests unavailable.')).toHaveCount(0);
+    await expect(empty).toBeVisible();
   });
 
   test('OP-15 The Overdue tile does not say "Not tracked yet" while loading or on error', async ({

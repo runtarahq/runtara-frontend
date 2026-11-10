@@ -215,10 +215,10 @@ test.describe('History audit', () => {
       .toBeGreaterThanOrEqual(2);
     await page.waitForTimeout(2_000);
 
-    await knownDefect('HI-2', async () => {
-      await expect(heading).toBeVisible();
-      await expect(search).toHaveValue('world');
-    });
+    // Fixed: the loaded page stays, search text included, with a note.
+    await expect(heading).toBeVisible();
+    await expect(search).toHaveValue('world');
+    await expect(page.getByText('Could not refresh this run')).toBeVisible();
 
     // Control: the page is back once the poll recovers.
     run.fail = false;
