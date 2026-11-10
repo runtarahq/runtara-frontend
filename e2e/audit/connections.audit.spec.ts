@@ -301,16 +301,14 @@ test.describe('Connections audit', () => {
     await page.waitForTimeout(1_000);
     expect(popup.isClosed()).toBe(false);
 
-    await knownDefect('CN-2', async () => {
-      // Read once: a retrying toHaveCount(0) would pass when the toast expires.
-      expect(
-        await toast(page, 'Reconnect failed: access was denied').count()
-      ).toBe(0);
-      // This popup's real result is still heard.
-      await land(popup, 'result=ok&connection=conn_a');
-      await expect(toast(page, 'Connection reconnected')).toHaveCount(1, {
-        timeout: 1_000,
-      });
+    // Read once: a retrying toHaveCount(0) would pass when the toast expires.
+    expect(
+      await toast(page, 'Reconnect failed: access was denied').count()
+    ).toBe(0);
+    // This popup's real result is still heard.
+    await land(popup, 'result=ok&connection=conn_a');
+    await expect(toast(page, 'Connection reconnected')).toHaveCount(1, {
+      timeout: 1_000,
     });
   });
 

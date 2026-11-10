@@ -40,6 +40,16 @@ class FakeBroadcastChannel {
   }
 }
 
+/** A message as the popup itself posts it: same origin, from that window. */
+function fromPopup(popup: unknown, data: unknown) {
+  const event = new MessageEvent('message', {
+    origin: window.location.origin,
+    data,
+  });
+  Object.defineProperty(event, 'source', { value: popup });
+  return event;
+}
+
 describe('useOAuthPopup', () => {
   let openSpy: { mockRestore: () => void } | undefined;
 
@@ -236,13 +246,10 @@ describe('useOAuthPopup', () => {
       'finish the authorization in the browser you started it in'
     );
     window.dispatchEvent(
-      new MessageEvent('message', {
-        origin: window.location.origin,
-        data: {
-          type: 'oauth-complete',
-          success: false,
-          error: 'browser_mismatch',
-        },
+      fromPopup(popup, {
+        type: 'oauth-complete',
+        success: false,
+        error: 'browser_mismatch',
       })
     );
     await assertion;
@@ -262,13 +269,43 @@ describe('useOAuthPopup', () => {
     const assertion = expect(promise).rejects.toThrow('access was denied');
 
     const send = (data: unknown) =>
-      window.dispatchEvent(
-        new MessageEvent('message', { origin: window.location.origin, data })
-      );
+      window.dispatchEvent(fromPopup(popup, data));
     send({ type: 'oauth-complete', success: true, connectionId: 'conn-2' });
     send({ type: 'oauth-complete', success: false, error: 'access_denied' });
 
     await assertion;
+  });
+
+  it("ignores a failure from another tab's landing page (CN-2)", async () => {
+    const popup = mockPopup();
+    openSpy = vi
+      .spyOn(window, 'open')
+      .mockReturnValue(popup as unknown as Window);
+
+    const { result } = renderHook(() => useOAuthPopup());
+    const promise = result.current.openOAuthPopup(
+      'https://provider.example/auth',
+      'conn-1'
+    );
+    // Not from this popup, and naming no connection.
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: window.location.origin,
+        data: {
+          type: 'oauth-complete',
+          success: false,
+          error: 'access_denied',
+        },
+      })
+    );
+    window.dispatchEvent(
+      fromPopup(popup, {
+        type: 'oauth-complete',
+        success: true,
+        connectionId: 'conn-1',
+      })
+    );
+    await expect(promise).resolves.toMatchObject({ success: true });
   });
 
   it('ignores messages from another origin', async () => {
