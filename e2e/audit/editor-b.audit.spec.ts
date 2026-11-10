@@ -376,9 +376,7 @@ test.describe('Editor audit B', () => {
       valueType: 'immediate',
       value: 'keep-me-too',
     });
-    await knownDefect('ED-20', async () => {
-      expect(saved.first).toEqual({ valueType: 'immediate', value: 'keep-me' });
-    });
+    expect(saved.first).toEqual({ valueType: 'immediate', value: 'keep-me' });
   });
 
   test('ED-21 Cancelling the reference picker restores the original value', async ({
