@@ -672,9 +672,7 @@ test.describe('Operations audit', () => {
     expect(log.requests.length).toBeGreaterThan(requestQueries);
 
     // The row is still valid and still open, so it should still be there.
-    await knownDefect('OP-13', async () => {
-      await expect(known).toBeVisible();
-    });
+    await expect(known).toBeVisible();
 
     hold.open();
     await expect(known).toBeVisible();
