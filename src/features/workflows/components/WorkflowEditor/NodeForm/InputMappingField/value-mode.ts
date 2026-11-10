@@ -54,6 +54,14 @@ export function coerceValueForMode(
 ): { changed: boolean; value: unknown } {
   if (from === to) return { changed: false, value };
 
+  // A reference is a path, so a literal null cannot be one: carried over, it
+  // left the form holding a null the validator refuses as the wrong type
+  // (ED-15). It becomes an empty path, which says plainly what is missing. A
+  // template keeps it, and saves it as the text "null".
+  if (value === null && to === 'reference') {
+    return { changed: true, value: '' };
+  }
+
   // String ↔ string: carry the text over untouched.
   if (STRING_MODES.has(from) && STRING_MODES.has(to)) {
     return { changed: false, value };

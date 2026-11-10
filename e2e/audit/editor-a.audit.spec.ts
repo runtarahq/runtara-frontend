@@ -797,11 +797,18 @@ test.describe('Editor audit A', () => {
     await submitPanel(page, () =>
       page
         .getByTestId('validation-message')
-        .filter({ hasText: 'Step: Finish Step' })
+        .filter({ hasText: /Step: Finish Step|Step 'finish'/ })
     );
-    await knownDefect('ED-15', async () => {
-      await expect(nullError()).toHaveCount(0);
-    });
+    // Fixed: entering reference mode turns the null into an empty path, which
+    // is refused as one rather than as the wrong type.
+    await expect(nullError()).toHaveCount(0);
+    await expect(
+      page
+        .getByTestId('validation-message')
+        .getByText(
+          "Step 'finish' has invalid reference path '': empty reference path"
+        )
+    ).toBeVisible();
     await expect(panel(page)).toHaveCount(1);
     await discardFinish();
 
