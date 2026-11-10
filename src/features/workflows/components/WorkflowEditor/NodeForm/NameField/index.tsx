@@ -27,15 +27,20 @@ import { ConnectionPickerModal } from '../ConnectionPickerModal';
 import { findAgentById, sameAgentId } from '@/shared/utils/agent-id';
 
 /**
- * Monospace step-id row with an inline rename editor. Renames apply to the
- * workflow store immediately (steps ids are not part of the form schema):
- * the store re-points edges/children and rewrites all step references.
+ * Monospace step-id row with an inline rename editor. A rename is staged in
+ * the form (`renameStepTo`), like any other edit: Save applies it, which
+ * re-points edges and children and rewrites all step references, and Cancel
+ * discards it. Applying it at once used to reset the panel's other edits
+ * (ED-4) and survive Cancel (ED-5).
  */
 function StepIdRow({ stepId }: { stepId: string }) {
+  const form = useFormContext();
+  const staged = useWatch({ name: 'renameStepTo', control: form.control });
   // `stepId` is the canvas node id. A step id another container also uses is
   // qualified on the canvas (`<container>/<step id>`), so show and edit the
   // DSL step id itself.
-  const ownStepId = canvasNodeStepId(stepId);
+  const savedStepId = canvasNodeStepId(stepId);
+  const ownStepId = staged || savedStepId;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(ownStepId);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +60,7 @@ function StepIdRow({ stepId }: { stepId: string }) {
   }
 
   const validateDraft = (value: string): string | null => {
-    if (value === ownStepId) return null; // unchanged: confirming is a no-op
+    if (value === ownStepId || value === savedStepId) return null; // no-op
     const ids = useWorkflowStore
       .getState()
       .nodes.map((node) => node.id as string);
@@ -85,11 +90,12 @@ function StepIdRow({ stepId }: { stepId: string }) {
       setError(validationError);
       return;
     }
-    const renameError = useWorkflowStore.getState().renameStep(stepId, next);
-    if (renameError) {
-      setError(renameError);
-      return;
-    }
+    // Back to the saved id clears the staged rename.
+    form.setValue(
+      'renameStepTo',
+      next === savedStepId ? undefined : next,
+      USER_EDIT
+    );
     setEditing(false);
     setError(null);
   };
@@ -114,6 +120,11 @@ function StepIdRow({ stepId }: { stepId: string }) {
           <p className="text-xs text-muted-foreground">
             Another container also has a step with this id; each container
             refers to its own.
+          </p>
+        )}
+        {staged && staged !== savedStepId && (
+          <p className="text-xs text-muted-foreground">
+            Renamed from {savedStepId} when you save.
           </p>
         )}
       </div>

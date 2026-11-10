@@ -626,6 +626,8 @@ export const schema = () =>
     .object({
       name: z.string().nonempty(),
       stepType: z.string().nonempty(),
+      // A step id rename staged in the panel; applied on Save (ED-4, ED-5).
+      renameStepTo: z.string().optional(),
       agentId: z.string().optional(),
       capabilityId: z.string().optional(),
       connectionId: z.string().optional(),

@@ -52,7 +52,10 @@ import {
   NoteNode,
   StartIndicatorNode,
 } from './CustomNodes';
-import { getNodePositionInsideParent } from './CustomNodes/utils.tsx';
+import {
+  canvasNodeStepId,
+  getNodePositionInsideParent,
+} from './CustomNodes/utils.tsx';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { useEditingNode } from './use-editing-node';
 import { DiscardStepChangesDialog } from './NodeConfigPanel/DiscardStepChangesDialog';
@@ -1151,12 +1154,29 @@ function WorkflowEditorContent({
 
   // Node config dialog handlers
   const handleNodeSave = useCallback(
-    async (nodeId: string, data: form.SchemaType) => {
-      const canApply = await validateNodeEditCandidate(nodeId, data);
+    async (nodeId: string, submitted: form.SchemaType) => {
+      // A staged step id rename is applied here, with the rest of the edit.
+      const { renameStepTo, ...data } = submitted;
+      const canApply = await validateNodeEditCandidate(
+        nodeId,
+        data as form.SchemaType
+      );
       if (!canApply) return false;
 
-      updateNode(nodeId, data as unknown as Partial<ExecutionGraphStepDto>);
       onResetNodeChanges?.(nodeId);
+      let savedId = nodeId;
+      if (renameStepTo && renameStepTo !== canvasNodeStepId(nodeId)) {
+        const renameError = useWorkflowStore
+          .getState()
+          .renameStep(nodeId, renameStepTo);
+        if (renameError) {
+          toast.error(renameError);
+          return false;
+        }
+        savedId =
+          useWorkflowStore.getState().lastStepRename?.newId ?? renameStepTo;
+      }
+      updateNode(savedId, data as unknown as Partial<ExecutionGraphStepDto>);
       closeNodeConfig();
       return true;
     },
