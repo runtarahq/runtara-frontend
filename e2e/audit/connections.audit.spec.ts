@@ -1056,27 +1056,11 @@ test.describe('Connections audit', () => {
       await expect(guard(page)).toHaveCount(0, { timeout: 1_000 });
     };
     await cardButton(page, 'Reconnect').click();
-    await knownDefect('CN-19', reconnectsDirectly);
+    await reconnectsDirectly();
 
-    // Saving from the dialog reconnects (CN-14); closing that window, the
-    // card's Reconnect must still go straight through.
-    if ((await guard(page).count()) > 0) {
-      const opened = ctl.popups.length;
-      await guard(page)
-        .getByRole('button', { name: 'Save & Reconnect' })
-        .click();
-      await expect.poll(() => ctl.counts.put).toBe(2);
-      const again = await popupOpened(ctl, opened + 1);
-      await again.close();
-      await wait.getByRole('button', { name: 'Cancel' }).click();
-    } else {
-      // No guard: the card already reconnected; close that window.
-      const direct = await popupOpened(ctl, 3);
-      await direct.close();
-      await wait.getByRole('button', { name: 'Cancel' }).click();
-    }
-    await expect(cardButton(page, 'Reconnect')).toBeEnabled();
-    await cardButton(page, 'Reconnect').click();
-    await knownDefect('CN-19', reconnectsDirectly);
+    // And the popup it opened is the authorization itself.
+    const direct = await popupOpened(ctl, 3);
+    expect(direct.url()).toContain('c=conn_a');
+    await direct.close();
   });
 });
