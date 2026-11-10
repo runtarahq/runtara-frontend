@@ -235,11 +235,9 @@ test.describe('Settings audit', () => {
     await page.keyboard.press('Escape');
     // The key is on screen before Esc: let the dialog finish closing, if it does.
     await page.waitForTimeout(800);
-    await knownDefect('ST-2', async () => {
-      await expect(
-        page.getByText(SECRET).or(page.getByRole('alertdialog')).first()
-      ).toBeVisible();
-    });
+    await expect(
+      page.getByText(SECRET).or(page.getByRole('alertdialog')).first()
+    ).toBeVisible();
     expect(keys.posts).toHaveLength(1);
   });
 
