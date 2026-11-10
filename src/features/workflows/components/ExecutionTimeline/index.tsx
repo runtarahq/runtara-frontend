@@ -125,9 +125,10 @@ function ExecutionTimelineContent({
     queryFn: (token: string) =>
       getWorkflowInstance(token, workflowId, instanceId),
     enabled: !!workflowId && !!instanceId,
-    refetchInterval: (data: any) => {
-      return isActiveStatus(data?.status) ? 5000 : false;
-    },
+    // TanStack passes the query, not its data; reading `data.status` off the
+    // query was always undefined, so this poll never ran (HI-3).
+    refetchInterval: (query) =>
+      isActiveStatus(query.state.data?.status) ? 5000 : false,
   });
 
   // Poll pending input while instance is active

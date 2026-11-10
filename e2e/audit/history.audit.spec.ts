@@ -247,9 +247,7 @@ test.describe('History audit', () => {
     expect(run.pendingGets - pendingBefore).toBeGreaterThanOrEqual(8);
     expect(gaps.length).toBeGreaterThanOrEqual(3);
     // A live 5 s poll on the shared key would show gaps near 5 s.
-    await knownDefect('HI-3', async () => {
-      expect(Math.min(...gaps)).toBeLessThanOrEqual(8_000);
-    });
+    expect(Math.min(...gaps)).toBeLessThanOrEqual(8_000);
   });
 
   test('HI-4 Stale pending inputs stop feeding the timeline after a run finishes', async ({
