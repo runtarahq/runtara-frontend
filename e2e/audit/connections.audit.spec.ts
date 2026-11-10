@@ -1010,8 +1010,8 @@ test.describe('Connections audit', () => {
     await expect(scopes(page)).toHaveValue('read write');
     await expect(page.getByText('1 unsaved change')).toBeVisible();
 
-    // The mock bumps the version here; it cannot say whether the real server
-    // does so when it stores a token.
+    // The real server does bump it here: storing the token rewrites the row's
+    // updated_at, which is the version (runtara service/oauth.rs).
     conn.editProjection = { ...conn.editProjection, version: 'v2' };
     await reconnectWithoutSaving(2);
     // Time for the refetched version to reach the form: until then the field
@@ -1022,9 +1022,9 @@ test.describe('Connections audit', () => {
       .locator('[data-sonner-toast]', { hasText: /unsaved|discard|lost/i })
       .count();
     const outcome = warnings > 0 ? 'warned' : await scopes(page).inputValue();
-    await knownDefect('CN-18', async () => {
-      expect(outcome).toMatch(/^(read write|warned)$/);
-    });
+    // Fixed: a bump we did not cause keeps the edit.
+    expect(outcome).toBe('read write');
+    await expect(page.getByText('1 unsaved change')).toBeVisible();
   });
 
   test('CN-19 After a successful save, the status card reconnects without guarding against unsaved changes', async ({

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -236,12 +236,23 @@ export function DynamicConnectionForm({
   const dirtyCount = Object.values(dirtyFields).filter(Boolean).length;
   const setBlocker = useNavigationBlockerStore((state) => state.setBlocker);
 
-  // A version bump means the server accepted a write (ours or someone
-  // else's): re-sync to the fresh projection and drop staged edits so
+  // Whether a version bump can be our own save landing. Only then are staged
+  // edits done with. A bump we did not cause (a reconnect storing its token,
+  // or another writer) used to drop them too (CN-18): it now takes the new
+  // values for untouched fields and keeps the edits, whose save then meets
+  // the version check if they really conflict.
+  const savedSinceVersionRef = useRef(false);
+
+  // On our own save: re-sync to the fresh projection and drop staged edits so
   // secret inputs empty out and the save bar collapses. The controlled
   // FieldControls read from useWatch, and with keepDirtyValues a bare
   // reset() doesn't reliably re-emit, so set each field explicitly first.
   useEffect(() => {
+    if (!savedSinceVersionRef.current) {
+      form.reset(formValues, { keepDirtyValues: true });
+      return;
+    }
+    savedSinceVersionRef.current = false;
     setClearedSecrets(new Set());
     for (const [name, value] of Object.entries(formValues)) {
       form.setValue(name, value, { shouldDirty: false });
@@ -316,6 +327,7 @@ export function DynamicConnectionForm({
       mode === 'create' && platformApp
         ? onPlatformApp(kept, platformApp)
         : kept;
+    savedSinceVersionRef.current = true;
     onSubmit(submission, {
       clearSecrets: [...clearedSecrets].sort(),
       dirtyFields: Object.entries(form.formState.dirtyFields)
