@@ -6,7 +6,7 @@ import {
   buildSchema,
 } from '../fixtures';
 import type { MockApi } from '../fixtures/mock.fixture';
-import { json, knownDefect } from './helpers';
+import { json } from './helpers';
 
 const SCHEMA_ID = 'sch_1';
 const DEFAULT_CONN = 'conn_object_model_default';
@@ -583,6 +583,8 @@ test.describe('Objects audit', () => {
     // Page change: the selected row is off screen.
     await page.getByRole('button', { name: 'Next page' }).click();
     await expect(rowAt(page, 0)).toContainText('n21');
+    // The selection went with the rows it was made on.
+    await expect(selectionCount(page)).toHaveText('0 selected');
     await expect(allRows(page).filter({ hasText: /\bn1\b/ })).toHaveCount(0);
     await page.getByRole('button', { name: 'Previous page' }).click();
     await expect(rowAt(page, 0)).toContainText('n1');
@@ -627,11 +629,9 @@ test.describe('Objects audit', () => {
         .click();
       await expect.poll(() => backend.requests.bulkDelete.length).toBe(1);
     }
-    await knownDefect('OB-11', async () => {
-      expect(
-        backend.requests.bulkDelete.flatMap((d) => d.body.instanceIds)
-      ).not.toContain('r1');
-    });
+    expect(
+      backend.requests.bulkDelete.flatMap((d) => d.body.instanceIds)
+    ).not.toContain('r1');
   });
 
   test('OB-12 Forward and reload warn about or flush an unsaved row, as a clicked link flushes it', async ({
