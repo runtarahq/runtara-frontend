@@ -514,14 +514,11 @@ test.describe('Connections audit', () => {
     await flow(() => cardButton(page, 'Connect').click());
     await page.waitForTimeout(500);
     expect(ctl.counts.put).toBe(2);
-    await knownDefect('CN-6', async () => {
-      await expect(prompt()).toHaveCount(0, { timeout: 1_000 });
-      await expect(
-        page.getByText(
-          /Because Client Secret changed, the stored authorization/
-        )
-      ).toHaveCount(0, { timeout: 1_000 });
-    });
+    // Fixed: the status card's reconnect answers the armed prompt too.
+    await expect(prompt()).toHaveCount(0, { timeout: 1_000 });
+    await expect(
+      page.getByText(/Because Client Secret changed, the stored authorization/)
+    ).toHaveCount(0, { timeout: 1_000 });
   });
 
   test('CN-7 The pending-confirmation expiry updates while mounted', async ({
