@@ -163,11 +163,9 @@ test.describe('Triggers audit', () => {
     await expect(page.getByLabel('Event type')).toHaveValue('order');
     await expect(addPair(page)).toBeVisible();
 
-    await knownDefect('TR-1', async () => {
-      await expect(keyInputs(page)).toHaveCount(1);
-      await expect(keyInputs(page).nth(0)).toHaveValue('custom_key');
-      await expect(valueInputs(page).nth(0)).toHaveValue('custom_val');
-    });
+    await expect(keyInputs(page)).toHaveCount(1);
+    await expect(keyInputs(page).nth(0)).toHaveValue('custom_key');
+    await expect(valueInputs(page).nth(0)).toHaveValue('custom_val');
   });
 
   test('TR-2 A removed pair is deleted, not merged back by the edit page', async ({
@@ -176,11 +174,9 @@ test.describe('Triggers audit', () => {
   }) => {
     const { puts } = await openApplicationTrigger(page, mockApi);
 
-    // TR-1 hides the stored pair, so naming it is the only way to get a row
-    // for it. A kept pair is added too, proving the form's pairs do reach PUT.
-    await addPair(page).click();
-    await keyInputs(page).nth(0).fill('custom_key');
-    await valueInputs(page).nth(0).fill('edited');
+    // The stored pair loads (TR-1). A kept pair is added too, proving the
+    // form's pairs do reach PUT.
+    await expect(keyInputs(page).nth(0)).toHaveValue('custom_key');
     await addPair(page).click();
     await keyInputs(page).nth(1).fill('fresh_key');
     await valueInputs(page).nth(1).fill('fresh_val');

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useController, useWatch } from 'react-hook-form';
+import { useCallback, useEffect, useState } from 'react';
+import { useController, useFormState, useWatch } from 'react-hook-form';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { FormLabel } from '@/shared/components/ui/form';
@@ -21,7 +21,11 @@ export function ConfigurationField(props: any) {
   const eventTypeWatch = useWatch({ name: 'eventType' });
 
   const [pairs, setPairs] = useState<KeyValuePair[]>([]);
-  const initializedRef = useRef(false);
+  // The configuration the form was loaded with. The edit page's trigger
+  // arrives in a reset after the first render, so reading the field once on
+  // mount missed it and an existing trigger's pairs never showed (TR-1).
+  const { defaultValues } = useFormState({ name: configurationField });
+  const loaded = JSON.stringify(defaultValues?.configuration ?? {});
 
   // Update the configuration when pairs, applicationName, or eventType change
   const updateConfiguration = useCallback(() => {
@@ -49,25 +53,14 @@ export function ConfigurationField(props: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pairs, applicationNameWatch, eventTypeWatch]); // Removed configField - it's a stable reference from useController
 
-  // Initialize pairs from existing configuration on mount
   useEffect(() => {
-    if (
-      !initializedRef.current &&
-      configField.value &&
-      typeof configField.value === 'object'
-    ) {
-      const existingPairs: KeyValuePair[] = [];
-      Object.entries(configField.value).forEach(([key, value]) => {
-        // Skip applicationName and eventType as they are handled separately
-        if (key !== 'applicationName' && key !== 'eventType') {
-          existingPairs.push({ key, value: value as string });
-        }
-      });
-      setPairs(existingPairs);
-      initializedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array - only run on mount
+    const value = JSON.parse(loaded) as Record<string, unknown>;
+    setPairs(
+      Object.entries(value)
+        .filter(([key]) => key !== 'applicationName' && key !== 'eventType')
+        .map(([key, pairValue]) => ({ key, value: pairValue as string }))
+    );
+  }, [loaded]);
 
   // Update configuration when pairs, applicationName, or eventType change
   useEffect(() => {
