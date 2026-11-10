@@ -290,17 +290,11 @@ test.describe('Operations audit', () => {
     const submit = page.getByRole('button', { name: 'Submit answer' });
     await expect(submit).toBeVisible();
 
-    const cell = page
-      .getByRole('row', { name: /RUN-a/ })
-      .getByRole('cell')
-      .last();
-    await page.keyboard.press('Escape');
-
-    // Escape closing the editor and a separate cancel button both satisfy this:
-    // either way, submitting is no longer the cell's only control.
-    await knownDefect('OP-3', async () => {
-      await expect(cell.getByRole('button')).not.toHaveText(['Submit answer']);
-    });
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(submit).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Answer in place' })
+    ).toBeVisible();
   });
 
   test('OP-4 Clicking two options sends one answer, even when both clicks land in one task', async ({

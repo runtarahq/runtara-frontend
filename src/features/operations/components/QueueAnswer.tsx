@@ -112,6 +112,12 @@ export const QueueAnswer = forwardRef<
       choosingRef.current = false;
     }
   }
+  // Leaving the editor drops the draft, so the row returns to its options (OP-3).
+  function cancel() {
+    setEditing(false);
+    setValues({});
+    setAnalysis(null);
+  }
   useImperativeHandle(ref, () => ({
     choose,
     submit: async () => {
@@ -172,7 +178,12 @@ export const QueueAnswer = forwardRef<
         </Button>
       ) : null}
       {editing ? (
-        <div className="space-y-3 rounded border bg-background p-3">
+        <div
+          className="space-y-3 rounded border bg-background p-3"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') cancel();
+          }}
+        >
           <FormRenderer
             definition={definition}
             value={current}
@@ -187,6 +198,9 @@ export const QueueAnswer = forwardRef<
             onClick={() => void send(current)}
           >
             Submit answer
+          </Button>
+          <Button size="sm" variant="secondary" bordered onClick={cancel}>
+            Cancel
           </Button>
         </div>
       ) : null}
