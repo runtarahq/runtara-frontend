@@ -106,6 +106,8 @@ function getWorkflowStoreContentHash(): string {
   });
 }
 
+/** How long a build watch waits for a known status before giving up. */
+const COMPILATION_WATCH_TIMEOUT_MS = 10_000;
 export function Workflow() {
   const { workflowId } = useParams();
   const [selectedVersion, setSelectedVersion] = useState<number | undefined>(
@@ -340,6 +342,40 @@ export function Workflow() {
       window.clearTimeout(id);
     };
   }, [compilationToolbarStatus, workflowId]);
+
+  // Give up on a watch the server cannot report on: a status that stays
+  // `unknown`, or a progress endpoint that keeps failing, used to poll every
+  // second and keep "Rebuilding" up until a reload (WF-4, WF-5). The clock
+  // runs from the last known answer, so a long build that keeps reporting
+  // progress is watched to the end.
+  useEffect(() => {
+    if (watchedCompilationVersion === undefined || !workflowId) return;
+    const key = queryKeys.workflows.compilationProgress(
+      workflowId,
+      watchedCompilationVersion
+    );
+    const startedAt = Date.now();
+    const id = window.setInterval(() => {
+      const state = queryClient.getQueryState(key);
+      const status = (state?.data as { status?: string } | undefined)?.status;
+      if (status === 'success' || status === 'failed') return;
+      const known = Boolean(status) && status !== 'unknown';
+      const lastAnswer = known
+        ? Math.max(startedAt, state!.dataUpdatedAt)
+        : startedAt;
+      if (Date.now() - lastAnswer < COMPILATION_WATCH_TIMEOUT_MS) return;
+      window.clearInterval(id);
+      setWatchedCompilationVersion(undefined);
+      setPendingRebuildVersion(undefined);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.workflows.versions(workflowId),
+      });
+      toast.warning('Could not follow the build', {
+        description: 'Check the Versions tab for its result.',
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [watchedCompilationVersion, workflowId]);
 
   // Extract versions from wrapped response
   const versions = useMemo(
