@@ -58,6 +58,7 @@ import {
 } from './CustomNodes/utils.tsx';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { useEditingNode } from './use-editing-node';
+import { editorLostItsStep } from './editor-lost-step';
 import { DiscardStepChangesDialog } from './NodeConfigPanel/DiscardStepChangesDialog';
 import { NodeFormProvider } from './NodeForm/NodeFormProvider';
 import { StepPickerModal, StepPickerResult } from './NodeForm/StepPickerModal';
@@ -391,6 +392,20 @@ function WorkflowEditorContent({
     // Keyed on the rename event only so a stale rename is never re-applied
     // to a step that later reuses the freed id. (The setter is stable.)
   }, [lastStepRename, setEditingNodeId]);
+
+  // Close the editor once its step is gone, so it does not linger unseen and
+  // reopen on a later single click (ED-2).
+  useEffect(() => {
+    if (
+      editorLostItsStep(
+        editingNodeId,
+        nodes.map((node) => node.id),
+        lastStepRename
+      )
+    ) {
+      closeNodeConfig();
+    }
+  }, [editingNodeId, nodes, lastStepRename, closeNodeConfig]);
 
   const closeCreateStep = useCallback(() => {
     setCreateStepContext(null);
