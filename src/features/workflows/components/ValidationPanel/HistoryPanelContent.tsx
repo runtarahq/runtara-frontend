@@ -87,7 +87,7 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
     [workflowId]
   );
 
-  const { data, isPending } = useTableQuery({
+  const { data, isPending, error } = useTableQuery({
     queryKey: queryKeys.executions.list({
       pageIndex: 0,
       pageSize: MAX_INSTANCES,
@@ -140,7 +140,7 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
 
   // Only the first load shows a skeleton; a poll keeps what is on screen
   // (HI-5).
-  if (isPending) {
+  if (isPending && !error) {
     return (
       <div className="flex-1 overflow-hidden p-3">
         <div className="space-y-2">
@@ -155,6 +155,22 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // A failed list is not an empty one (HI-6).
+  if (error && (!data || data.length === 0)) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-1 flex-col items-center justify-center text-muted-foreground"
+      >
+        <Icons.inbox className="mb-2 size-8 opacity-60" />
+        <p className="text-sm font-medium">Could not load executions</p>
+        <p className="text-xs">
+          {error.message || 'The request failed.'} Retrying automatically.
+        </p>
       </div>
     );
   }

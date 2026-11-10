@@ -365,9 +365,8 @@ test.describe('History audit', () => {
     // One read, not a retrying toHaveCount: the 10 s poll swaps the text for a
     // skeleton (HI-5), which would satisfy a retry without the defect being gone.
     const emptyText = await page.getByText('No executions yet').count();
-    await knownDefect('HI-6', async () => {
-      expect(emptyText).toBe(0);
-    });
+    expect(emptyText).toBe(0);
+    await expect(page.getByText('Could not load executions')).toBeVisible();
   });
 
   test('HI-7 A filter change requests the new filters on the first page only', async ({
