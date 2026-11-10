@@ -346,10 +346,9 @@ test.describe('Shared audit', () => {
     // Let the failure land: the controls are absent until it does.
     await page.waitForTimeout(1_000);
     // The role did not change, only a read failed, so the controls stay away.
-    await knownDefect('SH-4', async () => {
-      await expect(row.getByTitle('Start')).toHaveCount(0);
-      await expect(row.getByTitle('Delete')).toHaveCount(0);
-    });
+    // Fixed: the failed read keeps the known role.
+    await expect(row.getByTitle('Start')).toHaveCount(0);
+    await expect(row.getByTitle('Delete')).toHaveCount(0);
   });
 
   test("SH-5 One field's dependency change clears only that field; no product code supplies a resolver", async ({

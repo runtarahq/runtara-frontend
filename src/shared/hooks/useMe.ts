@@ -42,7 +42,9 @@ export function useMe() {
         });
       })
       .catch(() => {
-        if (!cancelled) clearMe();
+        // Keep what was known: clearing it reads as "no restrictions", so a
+        // failed refresh used to hand a viewer the owner's controls (SH-4).
+        // Signing out still clears it, above.
       });
 
     return () => {
