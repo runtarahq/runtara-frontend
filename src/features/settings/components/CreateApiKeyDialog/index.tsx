@@ -205,7 +205,13 @@ export function CreateApiKeyDialog({ open, onClose }: CreateApiKeyDialogProps) {
 
   const handleCopy = async () => {
     if (!createdKey) return;
-    await navigator.clipboard.writeText(createdKey);
+    // A refused clipboard was an unhandled rejection and no message (ST-3).
+    try {
+      await navigator.clipboard.writeText(createdKey);
+    } catch {
+      toast.error('Could not copy the key. Select it and copy it yourself.');
+      return;
+    }
     setCopied(true);
     toast.success('Copied to clipboard');
     setTimeout(() => setCopied(false), 2000);
