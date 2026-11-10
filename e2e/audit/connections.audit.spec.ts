@@ -589,17 +589,21 @@ test.describe('Connections audit', () => {
     await expect(page.getByRole('button', { name: 'Confirm' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Reject' })).toHaveCount(0);
     // Any of these will do: the notice with its error, an alert, or a toast.
-    await knownDefect('CN-8', async () => {
-      await expect
-        .poll(
-          async () =>
-            (await page.getByText('Waiting for your confirmation').count()) +
-            (await page.getByRole('alert').count()) +
-            (await toasts(page).count()),
-          { timeout: 1_000 }
-        )
-        .toBeGreaterThan(0);
-    });
+    await expect
+      .poll(
+        async () =>
+          (await page.getByText('Waiting for your confirmation').count()) +
+          (await page.getByRole('alert').count()) +
+          (await toasts(page).count()),
+        { timeout: 1_000 }
+      )
+      .toBeGreaterThan(0);
+
+    await expect(
+      page.getByText(
+        'Could not load the authorization waiting for confirmation.'
+      )
+    ).toBeVisible();
 
     // Control: the same page with the query answering shows the decision.
     ctl.pending = (route) =>

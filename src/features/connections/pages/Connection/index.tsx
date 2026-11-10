@@ -1,3 +1,4 @@
+import { Button } from '@/shared/components/ui/button';
 import { useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams } from 'react-router';
@@ -375,6 +376,26 @@ export function Connection() {
         deciding={deciding}
         onDecide={decide}
       />
+    ) : isPendingConfirmation && pendingQuery.error ? (
+      // A failed read rendered nothing, leaving no word of the waiting
+      // decision (CN-8).
+      <div
+        role="alert"
+        className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm"
+      >
+        <p className="font-medium">
+          Could not load the authorization waiting for confirmation.
+        </p>
+        <Button
+          variant="secondary"
+          bordered
+          size="sm"
+          className="mt-2"
+          onClick={() => void pendingQuery.refetch()}
+        >
+          Try again
+        </Button>
+      </div>
     ) : undefined;
 
   const reconnectNotice =
