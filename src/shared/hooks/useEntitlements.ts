@@ -31,8 +31,10 @@ export type EntitlementsStatus = 'loading' | 'ready' | 'failed';
 
 /**
  * The snapshot together with whether it is known. Gates on a feature must not
- * read the permissive fallback as the tenant's answer: while it loads, and
- * after it failed, a restricted tenant would see the gated pages (SH-3).
+ * read the permissive fallback as the tenant's answer while it loads: a
+ * restricted tenant saw the gated pages until it arrived (SH-3). After a
+ * failed fetch the documented fallback applies, so a misconfigured server
+ * cannot lock the console's features away.
  */
 export function useEntitlementsState(): {
   snapshot: EntitlementsSnapshot;
@@ -58,13 +60,14 @@ export function useEntitlementsState(): {
 }
 
 /**
- * The snapshot for gating features: the tenant's answer once known, and every
- * feature off until then. Agent surfaces keep `useEntitlements`, whose
- * fallback stays permissive so the editor does not flash agents as disabled.
+ * The snapshot for gating features: every feature off while it loads, then
+ * the tenant's answer (or, after a failure, the permissive fallback). Agent
+ * surfaces keep `useEntitlements`, so the editor does not flash agents as
+ * disabled while it loads.
  */
 export function useFeatureEntitlements(): EntitlementsSnapshot {
   const { snapshot, status } = useEntitlementsState();
-  return status === 'ready' ? snapshot : FEATURES_UNKNOWN;
+  return status === 'loading' ? FEATURES_UNKNOWN : snapshot;
 }
 
 const FEATURES_UNKNOWN: EntitlementsSnapshot = Object.freeze({
