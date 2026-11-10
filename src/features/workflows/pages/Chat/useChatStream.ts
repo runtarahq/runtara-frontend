@@ -141,6 +141,9 @@ export function useChatStream(workflowId: string) {
   const { refreshPendingInput, submitInput, uncertainResponses } =
     useChatInputs(workflowId, token);
   const abortRef = useRef<AbortController | null>(null);
+  // The stream currently being read, until it ends; a send with one open is
+  // answered on it.
+  const openStream = useRef<AbortController | null>(null);
   const queueIntent = useRef<{
     sessionId: string;
     submission: SessionMessageSubmission;
@@ -162,6 +165,7 @@ export function useChatStream(workflowId: string) {
         throw new Error('Response body is null — SSE stream unavailable');
       }
 
+      openStream.current = abortController;
       let last: string | undefined;
       for await (const event of parseSSEStream(
         response.body,
@@ -175,6 +179,7 @@ export function useChatStream(workflowId: string) {
         handleSSEEvent(event);
         last = event.type;
       }
+      if (openStream.current === abortController) openStream.current = null;
 
       // The server always ends a stream with 'done' or 'error', so ending
       // without one means the connection dropped. Whatever the status (a send
@@ -328,10 +333,18 @@ export function useChatStream(workflowId: string) {
         const current = useChatStore.getState();
         if (current.sessionId !== sessionId) return false;
         store.addUserMessage(content);
-        // Enqueue succeeds independently of SSE or workflow progress. Allow
-        // another queued message even when no browser stream is attached.
+        // Enqueue succeeds independently of SSE or workflow progress. With a
+        // stream open the reply arrives on it, so the chat is busy until its
+        // 'done' or 'error'; it used to read idle while chunks arrived (CH-2).
+        // Without one, allow another queued message.
+        const replying =
+          openStream.current !== null && !openStream.current.signal.aborted;
         store.setStatus(
-          current.pendingInputs.length ? 'waiting_for_input' : 'idle'
+          current.pendingInputs.length
+            ? 'waiting_for_input'
+            : replying
+              ? 'streaming'
+              : 'idle'
         );
         return true;
       } catch (err: unknown) {
