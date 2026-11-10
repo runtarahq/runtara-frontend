@@ -23,6 +23,10 @@ import {
 import { createStepNodeResolver } from '@/features/workflows/utils/step-node-resolver';
 import type { ExecutionStatus } from '@/generated/RuntaraRuntimeApi';
 import { breakpointKey } from './breakpoint-key';
+import {
+  isActiveStatus,
+  isFinishedStatus,
+} from '@/shared/utils/status-display';
 
 /** Owns run scheduling, polling, breakpoint state, and canvas execution status. */
 export function useWorkflowExecution(workflowId: string | undefined) {
@@ -114,10 +118,9 @@ export function useWorkflowExecution(workflowId: string | undefined) {
       staleTime: 0,
       refetchInterval: (query: any) => {
         const status = query.state.data?.status;
-        const isActive =
-          status && ['queued', 'compiling', 'running'].includes(status);
-        // Also keep polling (slower) when suspended to detect resume completion
-        return isActive ? 2000 : status === 'suspended' ? 3000 : false;
+        if (!isActiveStatus(status)) return false;
+        // Poll slower while suspended, to detect resume completion
+        return status === 'suspended' ? 3000 : 2000;
       },
     });
 
@@ -132,12 +135,9 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         getStepEvents(token, workflowId!, executingInstanceId!),
       enabled: !!executingInstanceId && executionDebugMode,
       refetchInterval: () => {
-        // Keep polling while instance is active or suspended
-        const status = executionInstanceData?.status;
-        const isActive =
-          status && ['queued', 'compiling', 'running'].includes(status);
-        // Poll more frequently (500ms) in debug mode to catch intermediate states
-        return isActive || status === 'suspended' ? 500 : false;
+        // Keep polling while the run is live (suspended included), often
+        // enough in debug mode to catch intermediate states
+        return isActiveStatus(executionInstanceData?.status) ? 500 : false;
       },
     });
 
@@ -217,11 +217,9 @@ export function useWorkflowExecution(workflowId: string | undefined) {
   useEffect(() => {
     if (!executionInstanceData?.status || !executingInstanceId) return;
 
-    const terminalStates = ['completed', 'failed', 'timeout', 'cancelled'];
-
     // If execution just finished and we haven't done final refetch for this instance yet
     if (
-      terminalStates.includes(executionInstanceData.status) &&
+      isFinishedStatus(executionInstanceData.status) &&
       lastFinalRefetchInstanceId.current !== executingInstanceId
     ) {
       lastFinalRefetchInstanceId.current = executingInstanceId;
