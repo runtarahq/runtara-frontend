@@ -678,14 +678,12 @@ test.describe('Connections audit', () => {
     // Let the click land: until it does, the URL is still right, and the save
     // bar's "2 unsaved changes" also matches the text the control looks for.
     await page.waitForTimeout(500);
-    await knownDefect('CN-10', async () => {
-      await expect(page).toHaveURL(/\/connections\/acme_oauth\/create$/, {
-        timeout: 1_000,
-      });
-      await expect(
-        page.getByRole('button', { name: 'Keep editing' })
-      ).toBeVisible({ timeout: 1_000 });
+    await expect(page).toHaveURL(/\/connections\/acme_oauth\/create$/, {
+      timeout: 1_000,
     });
+    await expect(
+      page.getByRole('button', { name: 'Keep editing' })
+    ).toBeVisible({ timeout: 1_000 });
   });
 
   test('CN-11 Popup completion leaves the user where they moved to', async ({
@@ -719,6 +717,8 @@ test.describe('Connections audit', () => {
         .getByRole('link', { name: /^Workflows/ })
         .first()
         .click();
+      // The authorization is still to come, so leaving asks first (CN-10).
+      await page.getByRole('button', { name: 'Discard changes' }).click();
       await expect(page).toHaveURL(/\/workflows/);
       await expect(titleField(page)).toHaveCount(0);
 
