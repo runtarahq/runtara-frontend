@@ -46,8 +46,6 @@ interface NodeConfigPanelProps {
     nodeId: string,
     data: form.SchemaType
   ) => void | boolean | Promise<void | boolean>;
-  onStagedChange?: (nodeId: string, data: form.SchemaType) => void;
-  onReset?: (nodeId: string) => void;
   onDelete?: (nodeId: string) => void;
   /** Whether the form holds unsaved edits, for guards outside the panel. */
   onDirtyChange?: (isDirty: boolean) => void;
@@ -118,17 +116,12 @@ export function NodeConfigPanel({
   stateSchemaFields,
   variables,
   onSave,
-  onStagedChange,
-  // onReset is kept in the props interface for backwards compatibility but not
-  // used (we reset locally)
   onDelete,
   onDirtyChange,
   isCreate = false,
   parentNodeId,
   createContainerId,
 }: NodeConfigPanelProps) {
-  const stagedDataRef = useRef<form.SchemaType>(nodeData);
-  const prevOpenRef = useRef(false);
   const formContainerRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
 
@@ -159,13 +152,6 @@ export function NodeConfigPanel({
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, [open]);
-
-  useEffect(() => {
-    if (open && !prevOpenRef.current) {
-      stagedDataRef.current = nodeData;
-    }
-    prevOpenRef.current = open;
-  }, [open, nodeData]);
 
   const docked = isDocked(viewport);
   // A pending node has no canvas node yet, so its lookup finds nothing and
@@ -198,17 +184,6 @@ export function NodeConfigPanel({
     [nodeId, onSave, onOpenChange]
   );
 
-  const handleChangeRef = useRef<(data: form.SchemaType) => void>();
-  handleChangeRef.current = (data: form.SchemaType) => {
-    stagedDataRef.current = data;
-    if (isCreate) {
-      onStagedChange?.(nodeId, data);
-    }
-  };
-  const handleChange = useCallback((data: form.SchemaType) => {
-    handleChangeRef.current?.(data);
-  }, []);
-
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
   const handleDirtyChange = useCallback((dirty: boolean) => {
@@ -226,11 +201,10 @@ export function NodeConfigPanel({
   }, []);
 
   const discard = useCallback(() => {
-    stagedDataRef.current = originalNodeData;
     handleDirtyChange(false);
     setConfirmDiscardOpen(false);
     onOpenChange(false);
-  }, [originalNodeData, onOpenChange, handleDirtyChange]);
+  }, [onOpenChange, handleDirtyChange]);
 
   const requestClose = useCallback(() => {
     if (isDirty) {
@@ -347,7 +321,6 @@ export function NodeConfigPanel({
               isEdit={!isCreate}
               values={nodeData}
               originalValues={originalNodeData}
-              onChange={handleChange}
               onDirtyChange={handleDirtyChange}
               onSubmit={handleSubmit}
               onDelete={isCreate ? undefined : handleDelete}

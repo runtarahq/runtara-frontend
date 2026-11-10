@@ -201,7 +201,6 @@ type WorkflowEditorProps = {
     entryPoint?: string;
   };
   stagedNodeChanges?: StagedNodeChanges;
-  onStagedNodeChange?: (nodeId: string, data: form.SchemaType) => void;
   onResetNodeChanges?: (nodeId: string) => void;
   /** Stages workflow-level changes the canvas makes, such as a new entry point. */
   onWorkflowChange?: (changes: { entryPoint?: string }) => void;
@@ -235,7 +234,6 @@ function WorkflowEditorContent({
   debugInspectMode = false,
   workflow,
   stagedNodeChanges = {},
-  onStagedNodeChange,
   onResetNodeChanges,
   onWorkflowChange,
   canvasDetail = 'detailed',
@@ -1575,8 +1573,6 @@ function WorkflowEditorContent({
           stateSchemaFields={workflow.stateSchemaFields}
           variables={workflow.variables}
           onSave={handleNodeSave}
-          onStagedChange={onStagedNodeChange}
-          onReset={onResetNodeChanges}
           onDelete={handleNodeDelete}
           onDirtyChange={handleEditorDirtyChange}
         />
