@@ -940,12 +940,12 @@ test.describe('Editor audit B', () => {
     await expect(names.nth(0)).toHaveValue('b');
     await expect(names.nth(1)).toHaveValue('c');
     // Staying on "b" or closing are both fine; showing "c" is not.
-    await knownDefect('ED-34', async () => {
-      const shown = await editorValue.evaluateAll((els) =>
-        els.map((el) => (el as HTMLInputElement).value)
-      );
-      expect(shown).not.toContain('ccc');
-    });
+    const shown = await editorValue.evaluateAll((els) =>
+      els.map((el) => (el as HTMLInputElement).value)
+    );
+    expect(shown).not.toContain('ccc');
+    // It stays on "b".
+    await expect(editorValue).toHaveValue('bbb');
   });
 
   test('ED-35 The JSON view toggle is disabled while forced by invalid JSON', async ({
