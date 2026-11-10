@@ -271,10 +271,9 @@ test.describe('Chat audit', () => {
 
     await closeStream(page);
     expect(await page.evaluate(() => window.__sse.closed)).toBe(1);
-    await knownDefect('CH-3', async () => {
-      await expect(cursor(page)).toHaveCount(0, { timeout: 5_000 });
-      expect((await chatState(page)).streaming).toBe(0);
-    });
+    // Fixed: a stream that ends early stops the reply's cursor.
+    await expect(cursor(page)).toHaveCount(0, { timeout: 5_000 });
+    expect((await chatState(page)).streaming).toBe(0);
     expect((await chatState(page)).status).toBe('idle');
   });
 

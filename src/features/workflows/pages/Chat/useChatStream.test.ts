@@ -94,3 +94,36 @@ it('treats a refused message as final: nothing retained, nothing to retry', asyn
     vi.mocked(sendSessionMessage).mock.calls[0][2].operationId
   );
 });
+
+it('stops the reply cursor when the stream ends without done, whatever the status (CH-3)', async () => {
+  const { reconnectSession } = await import('../../queries/chat');
+  let push!: (text: string) => void;
+  let end!: () => void;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      push = (text) => controller.enqueue(encoder.encode(text));
+      end = () => controller.close();
+    },
+  });
+  vi.mocked(reconnectSession).mockResolvedValue(new Response(body));
+  const { result } = renderHook(() => useChatStream('workflow'));
+
+  let done!: Promise<void>;
+  await act(async () => {
+    done = result.current.reconnect('session');
+    push('event: message\ndata: {"type":"message","content":"partial"}\n\n');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  const reply = () =>
+    useChatStore.getState().messages.find((m) => m.role === 'assistant');
+  expect(reply()?.isStreaming).toBe(true);
+
+  // A send leaves the chat 'idle' while the reply still streams.
+  useChatStore.getState().setStatus('idle');
+  await act(async () => {
+    end();
+    await done;
+  });
+  expect(reply()?.isStreaming).toBe(false);
+});

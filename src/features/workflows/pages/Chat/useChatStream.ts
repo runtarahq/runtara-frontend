@@ -174,12 +174,19 @@ export function useChatStream(workflowId: string) {
         handleSSEEvent(event);
       }
 
-      // If stream ends without an explicit 'done' or 'error' event,
-      // and we're still streaming, finalize gracefully
-      const finalState = useChatStore.getState();
-      if (finalState.status === 'streaming') {
+      // The server always ends a stream with 'done' or 'error', so ending
+      // without one means the connection dropped. Whatever the status (a send
+      // leaves it 'idle' while the reply streams), the reply cannot grow any
+      // more: stop its cursor (CH-3). A stream another one has replaced must
+      // not touch the newer reply.
+      if (
+        !abortController.signal.aborted &&
+        abortRef.current === abortController
+      ) {
         store.finalizeAssistantMessage();
-        store.setStatus('idle');
+        if (useChatStore.getState().status === 'streaming') {
+          store.setStatus('idle');
+        }
       }
     },
     []
