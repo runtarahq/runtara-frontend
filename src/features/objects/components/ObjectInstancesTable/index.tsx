@@ -11,6 +11,7 @@ import {
   computeRecordTotals,
   isDraftRow,
   makeDraftInstance,
+  splitDraftIds,
 } from './draft-row';
 import {
   dropEditsForRows,
@@ -570,22 +571,36 @@ export function ObjectInstanceDtosTable({
     lastFocusedRowRef.current = pruned.lastFocusedRowId;
     setEditingCellId(pruned.editingCellId);
 
+    // Drafts exist only here: discard them, and send the server only records
+    // (OB-6). This is also how a draft is discarded at all (OB-7).
+    const { recordIds, draftIds } = splitDraftIds(selectedIds);
+    if (draftIds.length > 0) {
+      setPendingRecords((prev) =>
+        prev.filter((r) => !draftIds.includes(r.id ?? ''))
+      );
+    }
+    if (recordIds.length === 0) {
+      setRowSelection({});
+      setShowBulkDeleteDialog(false);
+      return;
+    }
+
     try {
       await bulkDeleteMutation.mutateAsync({
         schemaId: objectSchemaDto.id || '',
-        instanceIds: selectedIds,
+        instanceIds: recordIds,
       });
       setRowSelection({});
       setShowBulkDeleteDialog(false);
     } catch (error) {
-      // The rows survived, so their unsaved edits are live again (OB-5).
+      // The records survived, so their unsaved edits are live again (OB-5).
       const restored = restoreEditsForRows(
         {
           dirtyRows: dirtyRowsRef.current,
           lastFocusedRowId: lastFocusedRowRef.current,
         },
         beforeDelete,
-        selectedIds
+        recordIds
       );
       dirtyRowsRef.current = restored.dirtyRows;
       setDirtyRows(restored.dirtyRows);
