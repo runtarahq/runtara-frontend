@@ -565,10 +565,6 @@ export function SimpleInputMappingEditor({
     return names;
   }, [fields, customFieldNames]);
 
-  // Track if we've done initial load to avoid triggering onDataChange during setup
-  const isInitializedRef = useRef(false);
-  const previousNodeDataRef = useRef<string>('');
-
   // Create a map for quick lookup of initial data values
   const initialDataMap = useMemo(() => {
     const map = new Map<string, InputMappingEntry>();
@@ -614,14 +610,6 @@ export function SimpleInputMappingEditor({
       // Clear any stale data from previous sessions when initialData is empty
       loadNodeData(nodeId, []);
     }
-    // Mark as initialized after a tick to let initial data settle
-    const timer = setTimeout(() => {
-      isInitializedRef.current = true;
-      // Store initial state for comparison
-      previousNodeDataRef.current = JSON.stringify(nodeData);
-    }, 50);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- nodeData is intentionally excluded to prevent infinite loops
   }, [nodeId, initialData, loadNodeData, fieldDefMap]);
 
   // Initialize required fields if not already present

@@ -440,9 +440,8 @@ test.describe('Editor audit A', () => {
     const dead = ['isInitializedRef', 'previousNodeDataRef'].filter((name) =>
       isDeadRef(file, name)
     );
-    await knownDefect('ED-8', async () => {
-      expect(dead).toEqual([]);
-    });
+    // Fixed: the dead refs are gone.
+    expect(dead).toEqual([]);
   });
 
   test('ED-9 A new Filter step can be added with the default condition it displays', async ({
