@@ -366,8 +366,11 @@ export function DynamicConnectionForm({
   // edits, plus staged secret clears — the set the status card guards against
   // a stale-credential reconnect. `title` is injected into definition.fields by
   // the adapter but is frame chrome, not a credential, so it's excluded.
+  // Only while something is unsaved: after a save, `dirtyFields` can keep
+  // entries that `isDirty` no longer counts, and the card kept guarding a
+  // saved form, its Save & Reconnect re-sending the same value (CN-19).
   const touchedParamFields = new Set<string>([
-    ...Object.entries(dirtyFields)
+    ...Object.entries(hasPendingChanges ? dirtyFields : {})
       .filter(
         ([name, dirty]) =>
           dirty === true && name !== 'title' && name in definition.fields
