@@ -4,6 +4,7 @@ import {
   computeRecordTotals,
   isDraftRow,
   makeDraftInstance,
+  splitDraftIds,
 } from './draft-row';
 
 describe('isDraftRow', () => {
@@ -65,6 +66,22 @@ describe('computeRecordTotals', () => {
     expect(computeRecordTotals(undefined, 20)).toEqual({
       totalPages: 1,
       totalElements: 0,
+    });
+  });
+});
+
+describe('splitDraftIds (OB-6, OB-7)', () => {
+  it('keeps drafts out of the ids sent to the server', () => {
+    expect(splitDraftIds(['r1', 'PENDING_1', 'r2'])).toEqual({
+      recordIds: ['r1', 'r2'],
+      draftIds: ['PENDING_1'],
+    });
+  });
+
+  it('handles a selection of drafts only', () => {
+    expect(splitDraftIds(['PENDING_1'])).toEqual({
+      recordIds: [],
+      draftIds: ['PENDING_1'],
     });
   });
 });

@@ -44,3 +44,18 @@ export function computeRecordTotals(
         : 1;
   return { totalPages, totalElements };
 }
+
+/**
+ * Split selected row ids into server records and drafts. Only records exist on
+ * the server, so only they go in a delete request; a draft is discarded on the
+ * client (OB-6, OB-7).
+ */
+export function splitDraftIds(ids: string[]): {
+  recordIds: string[];
+  draftIds: string[];
+} {
+  const recordIds: string[] = [];
+  const draftIds: string[] = [];
+  for (const id of ids) (isDraftRow(id) ? draftIds : recordIds).push(id);
+  return { recordIds, draftIds };
+}

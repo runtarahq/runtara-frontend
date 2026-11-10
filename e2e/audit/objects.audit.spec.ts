@@ -439,9 +439,8 @@ test.describe('Objects audit', () => {
     await expect.poll(() => backend.requests.bulkDelete.length).toBe(1);
     const ids: string[] = backend.requests.bulkDelete[0].body.instanceIds;
     expect(ids).toEqual(expect.arrayContaining(['r1', 'r2']));
-    await knownDefect('OB-6', async () => {
-      expect(ids.filter((id) => id.startsWith('PENDING_'))).toEqual([]);
-    });
+    // Fixed: only records go to the server; the draft is discarded here.
+    expect(ids.filter((id) => id.startsWith('PENDING_'))).toEqual([]);
   });
 
   test('OB-7 A delete naming a draft discards it', async ({
@@ -466,15 +465,14 @@ test.describe('Objects audit', () => {
       .click();
     await expect.poll(() => backend.requests.bulkDelete.length).toBe(1);
     const named: string[] = backend.requests.bulkDelete[0].body.instanceIds;
-    expect(named.some((id) => id.startsWith('PENDING_'))).toBe(true);
+    expect(named).toEqual(['r1']);
     await expect(allRows(page).filter({ hasText: 'one' })).toHaveCount(0);
     expect(backend.requests.create).toHaveLength(0);
     await settle(page);
 
-    await knownDefect('OB-7', async () => {
-      await expect(draft).toHaveCount(0);
-      await expect(draftFooter(page, 1)).toHaveCount(0);
-    });
+    // Fixed: the delete that names the draft discards it.
+    await expect(draft).toHaveCount(0);
+    await expect(draftFooter(page, 1)).toHaveCount(0);
   });
 
   test('OB-8 Escape reverts the cell to its original value, and a later flush does not send the typed text', async ({
