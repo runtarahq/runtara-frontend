@@ -23,7 +23,14 @@ export function RequestsPage() {
     queryFn: (token: string) =>
       queryAttentionRequests(token, scopes, overdue, page),
     enabled: Boolean(queues.data && views.data),
-    placeholderData: undefined,
+    // The scopes carry each queue's count, so every count change is a new key.
+    // Keep the rows on screen across that; a filter or page change still
+    // starts clean (OP-13).
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[4] === overdue &&
+      previousQuery?.queryKey[5] === page
+        ? previous
+        : undefined,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
