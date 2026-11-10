@@ -111,3 +111,26 @@ describe('coerceValueForMode', () => {
     expect(out.value).toBe('Hello {{name}}');
   });
 });
+
+describe('coerceValueForMode with a literal null (ED-15)', () => {
+  it('turns null into an empty path on entering reference', () => {
+    expect(coerceValueForMode(null, 'template', 'reference')).toEqual({
+      changed: true,
+      value: '',
+    });
+  });
+
+  it('keeps null in template mode, which saves it as text', () => {
+    expect(coerceValueForMode(null, 'immediate', 'template')).toEqual({
+      changed: false,
+      value: null,
+    });
+  });
+
+  it('keeps null in immediate mode', () => {
+    expect(coerceValueForMode(null, 'template', 'immediate')).toEqual({
+      changed: false,
+      value: null,
+    });
+  });
+});
