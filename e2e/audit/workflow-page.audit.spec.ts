@@ -613,10 +613,8 @@ test.describe('Execution audit: status and store', () => {
         !l.includes('stores/executionStore.ts') ||
         !notReads.includes(l.split(':').slice(2).join(':').trim())
     );
-    await knownDefect('EX-5', async () => {
-      // No occurrences at all also counts: the dead field is gone.
-      expect(lines.length === 0 ? 1 : reads.length).toBeGreaterThan(0);
-    });
+    // Fixed: the dead field is gone. Any occurrence must have a reader.
+    expect(lines.length === 0 ? 1 : reads.length).toBeGreaterThan(0);
   });
 
   test('EX-6 An unrecognized run status does not count as finished: Replay is not offered and polling continues', async ({

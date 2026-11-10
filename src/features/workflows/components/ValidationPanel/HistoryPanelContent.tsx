@@ -246,7 +246,6 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
                           store.startExecution(
                             instance.instanceId,
                             workflowId!,
-                            true,
                             true
                           );
                         }
