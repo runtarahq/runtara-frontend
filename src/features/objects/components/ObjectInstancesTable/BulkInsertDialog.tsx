@@ -68,6 +68,15 @@ export function BulkInsertDialog({
   );
 
   const needsConflictColumns = onConflict !== 'error';
+  // The request a result answers. Insert stays off until something changes,
+  // so a second click cannot insert the same records again (OB-15).
+  const request = JSON.stringify([
+    rawJson,
+    onConflict,
+    onError,
+    needsConflictColumns ? [...conflictCols].sort() : [],
+  ]);
+  const [answered, setAnswered] = useState<string | null>(null);
   const conflictColsSelected = conflictCols.size > 0;
 
   const toggleCol = (name: string, picked: boolean) => {
@@ -101,6 +110,7 @@ export function BulkInsertDialog({
     }
 
     const session = sessionRef.current;
+    const sent = request;
     // Conflict columns only mean something when a conflict mode uses them;
     // ones picked before switching back to "error" were still sent (OB-16).
     const out = await onSubmit(
@@ -109,7 +119,10 @@ export function BulkInsertDialog({
       onError,
       needsConflictColumns ? Array.from(conflictCols) : []
     );
-    if (out && session === sessionRef.current) setResult(out);
+    if (out && session === sessionRef.current) {
+      setResult(out);
+      setAnswered(sent);
+    }
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -121,6 +134,7 @@ export function BulkInsertDialog({
       setOnConflict('error');
       setOnError('stop');
       setConflictCols(new Set());
+      setAnswered(null);
     }
     onOpenChange(next);
   };
@@ -248,7 +262,10 @@ export function BulkInsertDialog({
           >
             Close
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting || !rawJson}>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !rawJson || answered === request}
+          >
             {isSubmitting ? 'Inserting…' : 'Insert'}
           </Button>
         </DialogFooter>

@@ -828,15 +828,12 @@ test.describe('Objects audit', () => {
     );
     expect(backend.requests.bulkInsert).toHaveLength(1);
 
-    // A fix may disable or remove the button; the click is only there if not.
-    const again = insertButton(page);
-    if ((await again.count()) > 0 && (await again.isEnabled())) {
-      await again.click();
-    }
+    // The same records cannot be inserted twice; new records can.
+    await expect(insertButton(page)).toBeDisabled();
     await settle(page);
-    await knownDefect('OB-15', async () => {
-      expect(backend.requests.bulkInsert).toHaveLength(1);
-    });
+    expect(backend.requests.bulkInsert).toHaveLength(1);
+    await records(page).fill('[{"name":"y"}]');
+    await expect(insertButton(page)).toBeEnabled();
   });
 
   test('OB-16 Bulk insert: hidden conflict columns are not sent', async ({
