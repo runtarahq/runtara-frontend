@@ -3,53 +3,36 @@ import { useChatInputs } from './useChatInputs';
 import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
 import {
-  createChatSession,
-  sendSessionMessage,
-  reconnectSession,
-  type SessionMessageSubmission,
+  sendConversationMessage,
+  streamConversationEvents,
+  type ConversationEvent,
+  type ConversationMessage,
 } from '@/features/workflows/queries/chat';
 import { parseSSEStream } from '@/features/workflows/utils/sse';
-import { isRefusedSessionMessage } from '@/features/workflows/utils/input-submission';
-import { ChatSSEEvent } from '@/features/workflows/types/chat';
+import { InputSubmissionError } from '@/features/workflows/utils/input-submission';
+
+/** How often a stream that keeps failing is asked for again before the chat
+ * says so. */
+const MAX_STREAM_FAILURES = 5;
+const STREAM_RETRY_MS = 1000;
 
 /**
- * Processes a single SSE event and dispatches it to the chat store.
+ * What a run is doing, as the conversation relays it (`activity`): model and
+ * tool calls and memory, each a line in the transcript.
  */
-function handleSSEEvent(event: ChatSSEEvent) {
+function handleActivity(body: Record<string, unknown>) {
   const store = useChatStore.getState();
 
-  switch (event.type) {
-    case 'session_created': {
-      console.debug('[Chat] session_created event data:', event.data);
-      const sessionId = (event.data.session_id ?? event.data.sessionId) as
-        string | undefined;
-      const instanceId = (event.data.instance_id ?? event.data.instanceId) as
-        string | undefined;
-      if (sessionId) {
-        store.setSessionId(sessionId);
-      }
-      if (instanceId) {
-        store.setInstanceId(instanceId);
-      }
-      break;
-    }
-
-    case 'started':
-      if (typeof event.data.instance_id === 'string') {
-        store.setInstanceId(event.data.instance_id);
-      }
-      store.addSystemMessage('Execution started');
-      break;
-
+  switch (body.type) {
     case 'memory_loaded': {
-      const outputs = event.data.outputs as Record<string, unknown> | undefined;
-      const count = event.data.message_count ?? outputs?.message_count ?? 0;
-      store.addSystemMessage(`Loaded ${count} messages from memory`);
+      const outputs = body.outputs as Record<string, unknown> | undefined;
+      const count = body.message_count ?? outputs?.message_count ?? 0;
+      store.addSystemMessage(`Loaded ${String(count)} messages from memory`);
       break;
     }
 
     case 'llm_start': {
-      const model = event.data.model as string | undefined;
+      const model = body.model as string | undefined;
       store.addSystemMessage(model ? `${model} thinking...` : 'Thinking...');
       break;
     }
@@ -59,81 +42,129 @@ function handleSSEEvent(event: ChatSSEEvent) {
       break;
 
     case 'tool_call': {
-      const toolName = (event.data.tool_name as string) ?? 'tool';
+      const toolName = (body.tool_name as string) ?? 'tool';
       store.addSystemMessage(`Calling tool: ${toolName}`);
       break;
     }
 
     case 'tool_result': {
-      const toolName2 = (event.data.tool_name as string) ?? 'tool';
-      const durationMs = event.data.duration_ms as number | undefined;
+      const toolName = (body.tool_name as string) ?? 'tool';
+      const durationMs = body.duration_ms as number | undefined;
       const durationStr =
         durationMs != null ? ` (${String(durationMs)}ms)` : '';
-      store.addSystemMessage(`${toolName2} completed${durationStr}`);
+      store.addSystemMessage(`${toolName} completed${durationStr}`);
       break;
     }
 
     case 'memory_saved': {
-      const savedCount = event.data.message_count ?? 0;
-      store.addSystemMessage(`Saved ${savedCount} messages to memory`);
+      const savedCount = body.message_count ?? 0;
+      store.addSystemMessage(`Saved ${String(savedCount)} messages to memory`);
       break;
     }
 
     case 'message':
-      if (typeof event.data.content === 'string') {
-        // Lazily create the assistant message so it appears after any
-        // preceding system messages (tool_call, tool_result, etc.)
-        const currentMsgs = useChatStore.getState().messages;
-        const hasStreaming = currentMsgs.some(
-          (m) => m.role === 'assistant' && m.isStreaming
-        );
-        if (!hasStreaming) {
-          store.startAssistantMessage();
-        }
-        store.appendToAssistantMessage(event.data.content);
-      }
+      // An AI Agent step's answer, before the run says or returns it.
+      if (typeof body.content === 'string') say(body.content);
+      break;
+  }
+}
+
+/** Adds what the workflow said, unless it is what it just said: a run's
+ * answer can arrive as its agent's message and again as its reply. */
+function say(text: string) {
+  if (!text.trim()) return;
+  const store = useChatStore.getState();
+  const last = [...store.messages].reverse().find((m) => m.role !== 'system');
+  if (last?.role === 'assistant' && last.content === text) return;
+  store.startAssistantMessage();
+  store.appendToAssistantMessage(text);
+  store.finalizeAssistantMessage();
+}
+
+/** What a reply carries, as text: its own, then its attachments. */
+function replyText(body: Record<string, unknown>): string {
+  const text = typeof body.text === 'string' ? body.text : '';
+  const attachments = Array.isArray(body.attachments)
+    ? (body.attachments as Record<string, unknown>[])
+    : [];
+  const links = attachments
+    .filter((a) => typeof a.url === 'string')
+    .map((a) => `[${String(a.name ?? a.url)}](${String(a.url)})`);
+  return [text, ...links].filter(Boolean).join('\n');
+}
+
+/**
+ * Applies one event of the conversation to the chat store. `sent` holds the
+ * ids of the messages this page sent, which it has shown already.
+ */
+function handleConversationEvent(event: ConversationEvent, sent: Set<string>) {
+  const store = useChatStore.getState();
+  const body = event.body ?? {};
+  const shown = typeof body.messageId === 'string' && sent.has(body.messageId);
+
+  switch (event.kind) {
+    case 'run_started':
+      if (typeof body.instanceId === 'string')
+        store.setInstanceId(body.instanceId);
+      if (!shown && typeof body.text === 'string' && body.text)
+        store.addUserMessage(body.text);
+      store.addSystemMessage('Execution started');
+      store.setStatus('streaming');
+      break;
+
+    case 'message_delivered':
+      if (!shown && typeof body.text === 'string' && body.text)
+        store.addUserMessage(body.text);
+      store.setStatus('streaming');
+      break;
+
+    case 'activity':
+      handleActivity(body);
+      break;
+
+    case 'reply':
+      say(replyText(body));
       break;
 
     case 'waiting_for_input': {
-      store.finalizeAssistantMessage();
-
-      // Only show system message for structured input (not simple "message" field)
-      const responseSchema = event.data.response_schema as
-        Record<string, unknown> | undefined;
-      const schemaKeys =
-        responseSchema && typeof responseSchema === 'object'
-          ? Object.keys(responseSchema)
-          : [];
+      // Only a structured request is announced; a plain "message" one is the
+      // chat's own input box. Managed discovery controls actionable forms.
+      const schema = body.responseSchema as Record<string, unknown> | null;
+      const keys =
+        schema && typeof schema === 'object' ? Object.keys(schema) : [];
       const isSimple =
-        schemaKeys.length === 0 ||
-        (schemaKeys.length === 1 && schemaKeys[0] === 'message');
-      if (!isSimple) {
-        const promptMsg =
-          (event.data.message as string) ?? 'Waiting for input...';
-        store.addSystemMessage(promptMsg);
-      }
-
-      // The event is history only; managed discovery controls actionable forms.
+        keys.length === 0 || (keys.length === 1 && keys[0] === 'message');
+      if (!isSimple)
+        store.addSystemMessage(
+          (body.message as string) ?? 'Waiting for input...'
+        );
       break;
     }
 
-    case 'done':
-      store.finalizeAssistantMessage();
-      // In session mode, 'done' means one execution turn finished —
-      // the session stays alive for the next user message.
-      store.setStatus(
-        store.pendingInputs.length ? 'waiting_for_input' : 'idle'
+    case 'message_failed':
+      store.setError(
+        (body.reason as string) ?? 'The message could not be delivered'
       );
       break;
 
-    case 'error':
-      store.setError(
-        (event.data.message as string) ?? 'An unknown error occurred'
-      );
-      store.finalizeAssistantMessage();
-      store.setStatus('error');
+    case 'run_ended':
+      // One run of the conversation is over; the next message starts the
+      // next one.
+      if (body.status === 'completed') {
+        store.setStatus(
+          store.pendingInputs.length ? 'waiting_for_input' : 'idle'
+        );
+      } else {
+        store.setError((body.error as string) ?? 'Execution failed');
+        store.setStatus('error');
+      }
       break;
   }
+}
+
+interface Unconfirmed {
+  conversationKey: string;
+  message: ConversationMessage & { text: string };
 }
 
 export function useChatStream(workflowId: string) {
@@ -141,28 +172,23 @@ export function useChatStream(workflowId: string) {
   const { refreshPendingInput, submitInput, uncertainResponses } =
     useChatInputs(workflowId, token);
   const abortRef = useRef<AbortController | null>(null);
-  // The stream currently being read, until it ends; a send with one open is
-  // answered on it.
-  const openStream = useRef<AbortController | null>(null);
-  // Every message whose receipt is unconfirmed, each with the ids a retry
-  // reuses so the server can dedupe it. One slot used to hold only the latest,
-  // so sending B dropped A's retry (CH-4).
-  const unconfirmed = useRef<
-    { sessionId: string; submission: SessionMessageSubmission }[]
-  >([]);
+  // The ids of the messages this page sent, which it shows as it sends them
+  // and so does not show again when the conversation reports them.
+  const sent = useRef(new Set<string>());
+  // Every message whose receipt is unconfirmed, each with the id a retry
+  // reuses so the conversation takes it once.
+  const unconfirmed = useRef<Unconfirmed[]>([]);
   const enqueueing = useRef(false);
   const [uncertainMessages, setUncertainMessages] = useState<
-    { sessionId: string; message: string }[]
+    { conversationKey: string; message: string }[]
   >([]);
   const settleUnconfirmed = useCallback(
-    (
-      update: (all: typeof unconfirmed.current) => typeof unconfirmed.current
-    ) => {
+    (update: (all: Unconfirmed[]) => Unconfirmed[]) => {
       unconfirmed.current = update(unconfirmed.current);
       setUncertainMessages(
-        unconfirmed.current.map(({ sessionId, submission }) => ({
-          sessionId,
-          message: submission.message,
+        unconfirmed.current.map(({ conversationKey, message }) => ({
+          conversationKey,
+          message: message.text,
         }))
       );
     },
@@ -170,144 +196,154 @@ export function useChatStream(workflowId: string) {
   );
 
   /**
-   * Shared helper: consumes an SSE Response stream and dispatches events.
+   * Reads the conversation's events from `from` on, for as long as this is
+   * the page's stream. The server ends a stream after a while, and a
+   * connection can drop: either way it is asked for again from the last
+   * event seen, so nothing is missed or shown twice.
    */
-  const consumeStream = useCallback(
-    async (response: Response, abortController: AbortController) => {
+  const follow = useCallback(
+    async (key: string, from: number, abortController: AbortController) => {
       const store = useChatStore.getState();
+      const isCurrent = () =>
+        !abortController.signal.aborted && abortRef.current === abortController;
+      let after = from;
+      let failures = 0;
 
-      if (!response.body) {
-        throw new Error('Response body is null — SSE stream unavailable');
-      }
-
-      openStream.current = abortController;
-      let last: string | undefined;
-      for await (const event of parseSSEStream(
-        response.body,
-        abortController.signal
-      )) {
-        if (
-          abortController.signal.aborted ||
-          abortRef.current !== abortController
-        )
-          break;
-        handleSSEEvent(event);
-        last = event.type;
-      }
-      if (openStream.current === abortController) openStream.current = null;
-
-      // The server always ends a stream with 'done' or 'error', so ending
-      // without one means the connection dropped. Whatever the status (a send
-      // leaves it 'idle' while the reply streams), the reply cannot grow any
-      // more: stop its cursor (CH-3). A stream another one has replaced must
-      // not touch the newer reply.
-      if (
-        !abortController.signal.aborted &&
-        abortRef.current === abortController
-      ) {
-        store.finalizeAssistantMessage();
-        const status = useChatStore.getState().status;
-        // A stream that closes after its last turn's 'done' is the session
-        // finishing: nothing set 'done', so "Completed" never showed (CH-1).
-        if (
-          last === 'done' &&
-          status !== 'error' &&
-          status !== 'waiting_for_input'
-        )
-          store.setStatus('done');
-        else if (status === 'streaming') store.setStatus('idle');
+      while (isCurrent()) {
+        try {
+          const response = await streamConversationEvents(
+            token,
+            workflowId,
+            key,
+            after,
+            abortController.signal
+          );
+          if (!response.body) {
+            throw new Error('Response body is null — SSE stream unavailable');
+          }
+          for await (const parsed of parseSSEStream(
+            response.body,
+            abortController.signal
+          )) {
+            if (!isCurrent()) return;
+            const event = parsed.data as unknown as ConversationEvent;
+            if (typeof event.seq !== 'number' || event.seq <= after) continue;
+            after = event.seq;
+            failures = 0;
+            handleConversationEvent(event, sent.current);
+            if (
+              event.kind === 'waiting_for_input' ||
+              event.kind === 'run_started'
+            )
+              void refreshPendingInput();
+          }
+        } catch (err: unknown) {
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          if (!isCurrent()) return;
+          failures += 1;
+          if (failures >= MAX_STREAM_FAILURES) {
+            store.setError(
+              err instanceof Error
+                ? err.message
+                : 'The conversation could not be read'
+            );
+            store.setStatus('error');
+            return;
+          }
+        }
+        if (isCurrent())
+          await new Promise((resolve) => setTimeout(resolve, STREAM_RETRY_MS));
       }
     },
-    []
+    [token, workflowId, refreshPendingInput]
   );
 
+  /** Makes this the page's one stream, replacing any before it. */
+  const begin = useCallback(() => {
+    abortRef.current?.abort();
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+    const store = useChatStore.getState();
+    store.setError(null);
+    store.setAbortController(abortController);
+    return abortController;
+  }, []);
+
   /**
-   * Start a new chat session. Creates the instance on the backend
-   * and opens the SSE stream. The AI agent initiates the conversation.
+   * Start a new conversation under a key of this page's own, with a first
+   * message that says nothing: the workflow begins, and speaks first if it
+   * has something to say.
    */
   const startSession = useCallback(async () => {
     const store = useChatStore.getState();
-
-    // Abort any previous stream
-    abortRef.current?.abort();
-
+    const abortController = begin();
+    const key = `console:${crypto.randomUUID()}`;
+    store.setConversationKey(key);
     store.setStatus('streaming');
-    store.setError(null);
 
-    const abortController = new AbortController();
-    abortRef.current = abortController;
-    store.setAbortController(abortController);
-
+    const opening: ConversationMessage = {
+      id: crypto.randomUUID(),
+      payload: {},
+    };
+    sent.current.add(opening.id);
     try {
-      const response = await createChatSession(token, workflowId, {
-        signal: abortController.signal,
-      });
-
-      await consumeStream(response, abortController);
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      const started = await sendConversationMessage(
+        token,
+        workflowId,
+        key,
+        opening,
+        abortController.signal
+      );
+      if (started.state === 'failed') {
+        store.setError(started.detail ?? 'The workflow could not be started');
+        store.setStatus('error');
         return;
       }
-      const message =
-        err instanceof Error ? err.message : 'Failed to start session';
-      store.setError(message);
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      store.setError(
+        err instanceof Error ? err.message : 'Failed to start the conversation'
+      );
       store.setStatus('error');
+      return;
     }
-  }, [token, workflowId, consumeStream]);
+    await follow(key, 0, abortController);
+  }, [token, workflowId, begin, follow]);
 
   /**
-   * Reconnect to an existing session's SSE stream (e.g. after page refresh).
+   * Open a conversation that exists (e.g. after a page refresh): its events
+   * from the first are its transcript, and the stream carries on from there.
    */
   const reconnect = useCallback(
-    async (sessionId: string) => {
+    async (key: string) => {
       const store = useChatStore.getState();
-
-      abortRef.current?.abort();
-
-      store.setStatus('streaming');
-      store.setError(null);
-
-      const abortController = new AbortController();
-      abortRef.current = abortController;
-      store.setAbortController(abortController);
-
-      try {
-        const response = await reconnectSession(
-          token,
-          sessionId,
-          abortController.signal
-        );
-
-        await consumeStream(response, abortController);
-      } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return;
-        }
-        const message =
-          err instanceof Error ? err.message : 'Failed to reconnect';
-        store.setError(message);
-        store.setStatus('error');
-      }
+      const abortController = begin();
+      store.setConversationKey(key);
+      await follow(key, 0, abortController);
     },
-    [token, consumeStream]
+    [begin, follow]
   );
 
   /**
-   * Send a user message to the session.
-   * Just POSTs the message — the SSE stream from startSession stays open
-   * and will deliver the response events automatically.
+   * Send what the user typed. A run that waits for it is answered directly;
+   * otherwise the message goes into the conversation, which starts a run
+   * with it or holds it until its turn. The reply arrives on the stream.
    */
   const sendMessage = useCallback(
     async (content: string) => {
       const store = useChatStore.getState();
-      const { sessionId, waitingForInput, pendingInputs, pendingInputError } =
-        store;
+      const {
+        conversationKey,
+        waitingForInput,
+        pendingInputs,
+        pendingInputError,
+      } = store;
       if (enqueueing.current) return false;
       const retry =
         unconfirmed.current.find(
           (intent) =>
-            intent.sessionId === sessionId &&
-            intent.submission.message === content
+            intent.conversationKey === conversationKey &&
+            intent.message.text === content
         ) ?? null;
       if (
         !retry &&
@@ -327,51 +363,59 @@ export function useChatStream(workflowId: string) {
         if (accepted) store.addUserMessage(content);
         return accepted;
       }
-      if (!sessionId) {
-        store.setError('No active session');
+      if (!conversationKey) {
+        store.setError('No active conversation');
         return false;
       }
-      const intent = retry ?? {
-        sessionId,
-        submission: {
-          messageId: crypto.randomUUID(),
-          operationId: crypto.randomUUID(),
-          message: content,
-        },
+      const intent: Unconfirmed = retry ?? {
+        conversationKey,
+        message: { id: crypto.randomUUID(), text: content },
       };
       enqueueing.current = true;
       store.setError(null);
+      // Before it is sent: the conversation may report it before the send
+      // returns.
+      sent.current.add(intent.message.id);
       try {
-        await sendSessionMessage(token, sessionId, intent.submission);
+        const outcome = await sendConversationMessage(
+          token,
+          workflowId,
+          conversationKey,
+          intent.message
+        );
         settleUnconfirmed((all) => all.filter((i) => i !== intent));
         const current = useChatStore.getState();
-        if (current.sessionId !== sessionId) return false;
+        if (current.conversationKey !== conversationKey) return false;
         store.addUserMessage(content);
-        // Enqueue succeeds independently of SSE or workflow progress. With a
-        // stream open the reply arrives on it, so the chat is busy until its
-        // 'done' or 'error'; it used to read idle while chunks arrived (CH-2).
-        // Without one, allow another queued message.
-        const replying =
-          openStream.current !== null && !openStream.current.signal.aborted;
+        if (outcome.state === 'failed') {
+          store.setError(
+            outcome.detail ?? 'The message could not be delivered'
+          );
+          return true;
+        }
+        // Taken: it started a run, answered one, or waits its turn. Either
+        // way a reply is on its way, on the stream.
         store.setStatus(
-          current.pendingInputs.length
-            ? 'waiting_for_input'
-            : replying
-              ? 'streaming'
-              : 'idle'
+          current.pendingInputs.length ? 'waiting_for_input' : 'streaming'
         );
         return true;
       } catch (err: unknown) {
-        if (isRefusedSessionMessage(err)) {
-          // Definitive: nothing (or nothing unambiguous) was waiting, so the
-          // server retained nothing. Retrying the same message cannot help.
+        const refused =
+          err instanceof InputSubmissionError &&
+          err.status !== undefined &&
+          err.status < 500;
+        if (refused) {
+          // Definitive: the conversation kept nothing (its queue is full, or
+          // the message is not one). Sending the same message again as it is
+          // cannot help; a new one may.
+          sent.current.delete(intent.message.id);
           settleUnconfirmed((all) => all.filter((i) => i !== intent));
         } else {
           settleUnconfirmed((all) =>
             all.includes(intent) ? all : [...all, intent]
           );
         }
-        if (useChatStore.getState().sessionId === sessionId)
+        if (useChatStore.getState().conversationKey === conversationKey)
           store.setError(
             err instanceof Error ? err.message : 'Failed to send message'
           );
@@ -380,7 +424,7 @@ export function useChatStream(workflowId: string) {
         enqueueing.current = false;
       }
     },
-    [token, submitInput, settleUnconfirmed]
+    [token, workflowId, submitInput, settleUnconfirmed]
   );
 
   const cancelStream = useCallback(() => {

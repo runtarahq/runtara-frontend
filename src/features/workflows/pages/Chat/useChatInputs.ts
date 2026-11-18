@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../../stores/chatStore';
-import { checkPendingInput } from '../../queries/chat';
 import { deliverSignal, getPendingInput } from '../../queries';
 import {
   InputSubmissionError,
@@ -13,7 +12,7 @@ import type { WaitingForInputData } from '../../types/chat';
 interface UncertainResponse {
   operationId: string;
   instanceId: string;
-  sessionId: string | null;
+  conversationKey: string | null;
   workflowId: string;
   request: WaitingForInputData;
   payload: Record<string, unknown>;
@@ -22,7 +21,7 @@ interface UncertainResponse {
 /** Discovery is independent of optional SSE/debug events and the stream lifetime. */
 export function useChatInputs(workflowId: string, token: string) {
   const instanceId = useChatStore((state) => state.instanceId);
-  const sessionId = useChatStore((state) => state.sessionId);
+  const conversationKey = useChatStore((state) => state.conversationKey);
   const generation = useRef(0);
   const submitting = useRef(false);
   const submissions = useRef(new InputSubmissionTracker());
@@ -48,26 +47,22 @@ export function useChatInputs(workflowId: string, token: string) {
           version === generation.current &&
           current.workflowId === workflowId &&
           current.instanceId === owner.instanceId &&
-          current.sessionId === owner.sessionId
+          current.conversationKey === owner.conversationKey
         );
       };
       try {
-        const page = owner.sessionId
-          ? await checkPendingInput(token, owner.sessionId, signal)
-          : {
-              instanceId: owner.instanceId,
-              pendingInputs: await getPendingInput(
-                token,
-                workflowId,
-                owner.instanceId,
-                signal
-              ),
-            };
+        // What a run waits for is read from the run: the conversation says
+        // which run carries it now (`run_started`).
+        const page = {
+          instanceId: owner.instanceId,
+          pendingInputs: await getPendingInput(
+            token,
+            workflowId,
+            owner.instanceId,
+            signal
+          ),
+        };
         if (!isCurrent()) return false;
-        // Session routing can advance while a prior execution is still displayed.
-        if (page.instanceId !== owner.instanceId) {
-          owner.setInstanceId(page.instanceId);
-        }
         const pending: WaitingForInputData[] = page.pendingInputs.map(
           (request) => ({ ...request, instanceId: page.instanceId })
         );
@@ -77,8 +72,8 @@ export function useChatInputs(workflowId: string, token: string) {
         for (const retry of retries) {
           if (
             retry.workflowId === workflowId &&
-            retry.sessionId === owner.sessionId &&
-            (owner.sessionId !== null ||
+            retry.conversationKey === owner.conversationKey &&
+            (owner.conversationKey !== null ||
               retry.instanceId === owner.instanceId) &&
             !pending.some(
               (item) =>
@@ -118,7 +113,7 @@ export function useChatInputs(workflowId: string, token: string) {
       generation.current += 1;
       clearTimeout(timer);
     };
-  }, [instanceId, sessionId, refresh]);
+  }, [instanceId, conversationKey, refresh]);
 
   const submitInput = useCallback(
     async (
@@ -137,7 +132,7 @@ export function useChatInputs(workflowId: string, token: string) {
             item.requestId === requestId &&
             (!instanceId || item.instanceId === instanceId)
         ) ??
-        (retained?.sessionId === owner.sessionId &&
+        (retained?.conversationKey === owner.conversationKey &&
         retained?.workflowId === workflowId
           ? retained.request
           : undefined);
@@ -162,8 +157,9 @@ export function useChatInputs(workflowId: string, token: string) {
         const current = useChatStore.getState();
         return (
           current.workflowId === owner.workflowId &&
-          current.sessionId === owner.sessionId &&
-          (owner.sessionId !== null || current.instanceId === owner.instanceId)
+          current.conversationKey === owner.conversationKey &&
+          (owner.conversationKey !== null ||
+            current.instanceId === owner.instanceId)
         );
       };
       submitting.current = true;
@@ -202,7 +198,7 @@ export function useChatInputs(workflowId: string, token: string) {
           uncertain.current.set(retryKey, {
             operationId: submission.operationId,
             instanceId: targetInstanceId,
-            sessionId: owner.sessionId,
+            conversationKey: owner.conversationKey,
             workflowId,
             request: { ...request, instanceId: targetInstanceId },
             payload: submission.payload,
@@ -229,8 +225,8 @@ export function useChatInputs(workflowId: string, token: string) {
     uncertainResponses: uncertainResponses.filter(
       (response) =>
         response.workflowId === workflowId &&
-        response.sessionId === sessionId &&
-        (sessionId !== null || response.instanceId === instanceId)
+        response.conversationKey === conversationKey &&
+        (conversationKey !== null || response.instanceId === instanceId)
     ),
   };
 }

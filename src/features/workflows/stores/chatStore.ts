@@ -13,7 +13,8 @@ interface ChatStoreState {
   workflowId: string | null;
   workflowName: string | null;
   instanceId: string | null;
-  sessionId: string | null;
+  /** The client's name for the conversation with the workflow. */
+  conversationKey: string | null;
   messages: ChatMessage[];
   status: ChatStatus;
   waitingForInput: WaitingForInputData | null;
@@ -39,7 +40,7 @@ interface ChatStoreState {
   finalizeAssistantMessage: () => void;
   setStatus: (status: ChatStatus) => void;
   setInstanceId: (instanceId: string) => void;
-  setSessionId: (token: string | null) => void;
+  setConversationKey: (key: string | null) => void;
   setPendingInputs: (data: WaitingForInputData[]) => void;
   setPendingInputError: (error: string | null) => void;
   setWaitingForInput: (data: WaitingForInputData | null) => void;
@@ -62,7 +63,7 @@ export const useChatStore = create<ChatStoreState>()(
       workflowId: null,
       workflowName: null,
       instanceId: null,
-      sessionId: null,
+      conversationKey: null,
       messages: [],
       status: 'idle' as ChatStatus,
       waitingForInput: null,
@@ -77,7 +78,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.workflowId = workflowId;
           state.workflowName = workflowName;
           state.instanceId = null;
-          state.sessionId = null;
+          state.conversationKey = null;
           state.messages = [];
           state.status = 'idle';
           state.waitingForInput = null;
@@ -93,7 +94,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.workflowId = workflowId;
           state.workflowName = workflowName;
           state.instanceId = instanceId;
-          state.sessionId = null;
+          state.conversationKey = null;
           state.messages = [];
           state.status = 'idle';
           state.waitingForInput = null;
@@ -192,14 +193,14 @@ export const useChatStore = create<ChatStoreState>()(
         });
       },
 
-      setSessionId: (token) => {
+      setConversationKey: (key) => {
         set((state) => {
-          if (state.sessionId !== token) {
+          if (state.conversationKey !== key) {
             state.pendingInputs = [];
             state.waitingForInput = null;
             state.pendingInputError = null;
           }
-          state.sessionId = token;
+          state.conversationKey = key;
         });
       },
 
@@ -264,7 +265,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.workflowId = null;
           state.workflowName = null;
           state.instanceId = null;
-          state.sessionId = null;
+          state.conversationKey = null;
           state.messages = [];
           state.status = 'idle';
           state.waitingForInput = null;

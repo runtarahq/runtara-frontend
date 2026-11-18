@@ -1,7 +1,6 @@
 // Chat feature type definitions
 
 export type ChatSSEEventType =
-  | 'session_created'
   | 'started'
   | 'memory_loaded'
   | 'llm_start'
@@ -37,7 +36,7 @@ export type ChatStatus =
   'idle' | 'streaming' | 'waiting_for_input' | 'done' | 'error';
 
 export interface WaitingForInputData {
-  /** Original target, retained when a session advances after a lost acknowledgement. */
+  /** Original target, retained when the conversation moves to its next run after a lost acknowledgement. */
   instanceId?: string;
   requestId: string;
   signalId: string;

@@ -11,7 +11,6 @@ import { fetchChatHistory } from '@/features/workflows/queries/chat';
 import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
 import { useChatStream } from './useChatStream';
-import { SessionDeliveries } from './SessionDeliveries';
 import { ChatMessageList } from '@/features/workflows/components/ChatMessageList';
 import { ChatInput } from '@/features/workflows/components/ChatInput';
 import { toast } from 'sonner';
@@ -57,7 +56,7 @@ export function ChatPage() {
   const pendingInputError = useChatStore((s) => s.pendingInputError);
   const error = useChatStore((s) => s.error);
   const storeInstanceId = useChatStore((s) => s.instanceId);
-  const sessionId = useChatStore((s) => s.sessionId);
+  const conversationKey = useChatStore((s) => s.conversationKey);
 
   // Chat stream actions
   const {
@@ -89,30 +88,33 @@ export function ChatPage() {
     if (instanceId) {
       store.resumeChat(workflowId, workflowName, instanceId);
 
-      // Fetch instance detail to get sessionId from inputs.data.sessionId,
-      // and load chat history in parallel
-      Promise.all([
-        getWorkflowInstance(token, workflowId, instanceId),
-        fetchChatHistory(token, workflowId, instanceId),
-      ])
-        .then(([instanceData, historyMessages]) => {
+      // A run a conversation started names it in its input. The
+      // conversation's events are then the transcript, from the first, and
+      // the stream carries on from there. A run nothing of the kind started
+      // (one waiting for input, opened from Invocation History) has only
+      // its own history.
+      getWorkflowInstance(token, workflowId, instanceId)
+        .then(async (instanceData) => {
           if (disposed) return;
-          store.loadHistory(historyMessages);
-
-          // Extract sessionId from instance inputs and reconnect
-          const sessionId = instanceData?.inputs?.data?.sessionId as
+          const key = instanceData?.inputs?.data?.conversation?.key as
             string | undefined;
-          if (sessionId) {
-            store.setSessionId(sessionId);
-            reconnect(sessionId);
+          if (key) {
+            void reconnect(key);
+            return;
           }
+          const historyMessages = await fetchChatHistory(
+            token,
+            workflowId,
+            instanceId
+          );
+          if (!disposed) store.loadHistory(historyMessages);
         })
         .catch(() => {
           if (!disposed) toast.error('Failed to load chat history');
         });
     } else {
       store.initChat(workflowId, workflowName);
-      // Start a new session — AI agent initiates the conversation
+      // Start a new conversation: the workflow begins, and speaks first
       startSession();
     }
 
@@ -179,7 +181,6 @@ export function ChatPage() {
         <>
           {/* Message list */}
           <ChatMessageList messages={messages} />
-          <SessionDeliveries token={token} />
           {uncertainResponses?.map((response) => (
             <div
               key={response.operationId}
@@ -205,7 +206,9 @@ export function ChatPage() {
             </div>
           ))}
           {uncertainMessages
-            .filter((unconfirmed) => unconfirmed.sessionId === sessionId)
+            .filter(
+              (unconfirmed) => unconfirmed.conversationKey === conversationKey
+            )
             .map(({ message }) => (
               <div
                 key={message}
@@ -233,7 +236,7 @@ export function ChatPage() {
               useChatStore.getState().setWaitingForInput(input)
             }
             onSubmitInput={submitInput}
-            key={sessionId ?? storeInstanceId ?? 'new-session'}
+            key={conversationKey ?? storeInstanceId ?? 'new-conversation'}
           />
         </>
       )}

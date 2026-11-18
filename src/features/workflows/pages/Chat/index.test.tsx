@@ -10,7 +10,8 @@ import { ChatPage } from './index';
 const mocks = vi.hoisted(() => ({
   getWorkflow: vi.fn(),
   getWorkflowInstance: vi.fn(),
-  createChatSession: vi.fn(),
+  sendConversationMessage: vi.fn(),
+  streamConversationEvents: vi.fn(),
   fetchChatHistory: vi.fn(),
 }));
 
@@ -28,7 +29,8 @@ vi.mock('@/features/workflows/queries/chat', async (importOriginal) => ({
   ...(await importOriginal<
     typeof import('@/features/workflows/queries/chat')
   >()),
-  createChatSession: mocks.createChatSession,
+  sendConversationMessage: mocks.sendConversationMessage,
+  streamConversationEvents: mocks.streamConversationEvents,
   fetchChatHistory: mocks.fetchChatHistory,
 }));
 
@@ -78,21 +80,22 @@ function renderChat(instanceId?: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   useChatStore.getState().resetChat();
-  // An SSE response that closes immediately — enough to prove the session was
-  // opened without standing up a real stream.
-  mocks.createChatSession.mockResolvedValue({
-    body: new ReadableStream({
-      start(controller) {
-        controller.close();
-      },
-    }),
+  mocks.sendConversationMessage.mockResolvedValue({
+    messageId: 'opening',
+    state: 'started',
+    duplicate: false,
+  });
+  // A stream with nothing on it yet: enough to prove the conversation was
+  // opened without standing up a real one.
+  mocks.streamConversationEvents.mockResolvedValue({
+    body: new ReadableStream({ start() {} }),
   } as unknown as Response);
   mocks.getWorkflowInstance.mockResolvedValue({ inputs: { data: {} } });
   mocks.fetchChatHistory.mockResolvedValue([]);
 });
 
 describe('ChatPage on a workflow that cannot chat', () => {
-  it('explains the dead end instead of opening a session', async () => {
+  it('explains the dead end instead of starting a conversation', async () => {
     mocks.getWorkflow.mockResolvedValue({ data: buildWorkflow(false) });
 
     renderChat();
@@ -108,17 +111,17 @@ describe('ChatPage on a workflow that cannot chat', () => {
     expect(
       screen.queryByPlaceholderText('Type a message...')
     ).not.toBeInTheDocument();
-    expect(mocks.createChatSession).not.toHaveBeenCalled();
+    expect(mocks.sendConversationMessage).not.toHaveBeenCalled();
   });
 
-  it('does not open a session while the workflow is still loading', async () => {
+  it('does not start a conversation while the workflow is still loading', async () => {
     // Never resolves — the page must not start anything on an assumption.
     mocks.getWorkflow.mockReturnValue(new Promise(() => {}));
 
     renderChat();
 
     await waitFor(() => {
-      expect(mocks.createChatSession).not.toHaveBeenCalled();
+      expect(mocks.sendConversationMessage).not.toHaveBeenCalled();
     });
     expect(
       screen.queryByText('This workflow does not support chat')
@@ -147,20 +150,22 @@ describe('ChatPage on a workflow that cannot chat', () => {
       screen.getByPlaceholderText('Type a message...')
     ).toBeInTheDocument();
     // Resuming attaches to the existing run rather than starting another.
-    expect(mocks.createChatSession).not.toHaveBeenCalled();
+    expect(mocks.sendConversationMessage).not.toHaveBeenCalled();
   });
 });
 
 describe('ChatPage on a chat-capable workflow', () => {
-  it('opens a session and offers the composer', async () => {
+  it('starts a conversation under a key of its own and offers the composer', async () => {
     mocks.getWorkflow.mockResolvedValue({ data: buildWorkflow(true) });
 
     renderChat();
 
     await waitFor(() => {
-      expect(mocks.createChatSession).toHaveBeenCalledWith(
+      expect(mocks.sendConversationMessage).toHaveBeenCalledWith(
         'test-token',
         WORKFLOW_ID,
+        expect.stringMatching(/^console:/),
+        expect.objectContaining({ payload: {} }),
         expect.anything()
       );
     });

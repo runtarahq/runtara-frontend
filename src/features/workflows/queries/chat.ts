@@ -1,219 +1,106 @@
 import { ChatMessage, ChatSSEEvent } from '@/features/workflows/types/chat';
 import { getRuntimeBaseUrl } from '@/shared/queries/utils';
-import type {
-  DeliveryStatus,
-  DeliveryPage,
-  ResolveDeliveryRequest,
-} from '@/generated/RuntaraRuntimeApi';
 import { InputSubmissionError } from '../utils/input-submission';
 
-export type { DeliveryStatus };
-export interface SessionMessageSubmission {
-  messageId: string;
-  operationId: string;
-  message: string;
+// ---------------------------------------------------------------------------
+// A conversation with a workflow
+// ---------------------------------------------------------------------------
+
+/** Something a conversation has for its user. Numbered, and kept. */
+export interface ConversationEvent {
+  seq: number;
+  kind: string;
+  body: Record<string, unknown>;
+  createdAt: string;
 }
 
-async function deliveryResponse<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as {
+export interface ConversationMessage {
+  /** The sender's own id for it: the same id again is the same message. */
+  id: string;
+  text?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface SentMessage {
+  messageId: string;
+  state: 'queued' | 'started' | 'delivered' | 'failed';
+  instanceId?: string;
+  detail?: string;
+  duplicate: boolean;
+}
+
+function conversationUrl(workflowId: string, key: string): string {
+  return `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/conversations/${encodeURIComponent(key)}`;
+}
+
+/**
+ * Send a message into a conversation, which is opened if it was not. It
+ * starts a run, answers a waiting one, or waits its turn; the answer says
+ * which. A refusal (a full queue, a malformed message) is an
+ * `InputSubmissionError` with its status.
+ */
+export async function sendConversationMessage(
+  token: string,
+  workflowId: string,
+  key: string,
+  message: ConversationMessage,
+  signal?: AbortSignal
+): Promise<SentMessage> {
+  const response = await fetch(`${conversationUrl(workflowId, key)}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(message),
+    signal,
+  });
+  const body = (await response.json().catch(() => ({}))) as {
     success?: boolean;
-    data?: T;
+    data?: SentMessage;
     code?: string;
     message?: string;
   };
   if (!response.ok || !body.success || !body.data) {
     throw new InputSubmissionError(
-      body.message ?? 'Delivery could not be confirmed',
+      body.message ?? 'The message could not be sent',
       body.code,
       response.status
     );
   }
+  if (body.data.messageId !== message.id) {
+    throw new InputSubmissionError('The message could not be confirmed');
+  }
   return body.data;
 }
 
-// ---------------------------------------------------------------------------
-// Session-based chat API
-// ---------------------------------------------------------------------------
-
-export interface CreateSessionOptions {
-  data?: Record<string, unknown>;
-  variables?: Record<string, unknown>;
-  version?: number | null;
-  signal?: AbortSignal;
-}
-
 /**
- * Create a new chat session. Returns the raw SSE Response.
- * The stream will emit a `session_created` event with `sessionId`
- * and `instanceId`, followed by regular chat events.
+ * The conversation's events after `after`, as a stream. The server ends a
+ * stream after a while; the caller reads on from the last event it saw.
  */
-export async function createChatSession(
+export async function streamConversationEvents(
   token: string,
   workflowId: string,
-  options?: CreateSessionOptions
+  key: string,
+  after: number,
+  signal?: AbortSignal
 ): Promise<Response> {
-  const url = `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/sessions`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      data: options?.data ?? {},
-      variables: options?.variables ?? {},
-      version: options?.version ?? null,
-    }),
-    signal: options?.signal,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => response.statusText);
-    throw new Error(`Session creation failed: ${errorText}`);
-  }
-
-  return response;
-}
-
-/**
- * Send a message to an existing session.
- * Uses the same JWT auth as all other runtime endpoints.
- */
-export async function sendSessionMessage(
-  token: string,
-  sessionId: string,
-  submission: SessionMessageSubmission,
-  signal?: AbortSignal
-): Promise<DeliveryStatus> {
-  const url = `${getRuntimeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/events`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(submission),
-    signal,
-  });
-
-  const status = await deliveryResponse<DeliveryStatus>(response);
-  if (
-    status.messageId !== submission.messageId ||
-    status.operationId !== submission.operationId ||
-    !['queued', 'leased', 'retry', 'blocked', 'accepted', 'failed'].includes(
-      status.state
-    )
-  ) {
-    throw new InputSubmissionError(
-      'Queue acknowledgement could not be confirmed'
-    );
-  }
-  return status;
-}
-
-export async function listSessionDeliveries(
-  token: string,
-  sessionId: string,
-  cursor = '0',
-  signal?: AbortSignal
-): Promise<DeliveryPage> {
   const response = await fetch(
-    `${getRuntimeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/deliveries?cursor=${encodeURIComponent(cursor)}&limit=50`,
+    `${conversationUrl(workflowId, key)}/events?after=${String(after)}`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${token}`,
+      },
       signal,
     }
   );
-  return deliveryResponse<DeliveryPage>(response);
-}
-
-export async function resolveSessionDelivery(
-  token: string,
-  sessionId: string,
-  messageId: string,
-  resolution: ResolveDeliveryRequest
-): Promise<DeliveryStatus> {
-  const response = await fetch(
-    `${getRuntimeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/deliveries/${encodeURIComponent(messageId)}/resolve`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(resolution),
-    }
-  );
-  return deliveryResponse<DeliveryStatus>(response);
-}
-
-/**
- * Reconnect to an existing session's SSE stream (e.g. after page refresh).
- * Returns the raw Response so the caller can consume the SSE stream.
- */
-export async function reconnectSession(
-  token: string,
-  sessionId: string,
-  signal?: AbortSignal
-): Promise<Response> {
-  const url = `${getRuntimeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/events`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Accept: 'text/event-stream',
-      Authorization: `Bearer ${token}`,
-    },
-    signal,
-  });
-
   if (!response.ok) {
     const errorText = await response.text().catch(() => response.statusText);
-    throw new Error(`Session reconnect failed: ${errorText}`);
+    throw new Error(`The conversation could not be read: ${errorText}`);
   }
-
   return response;
-}
-
-export type PendingInputResponse =
-  import('@/generated/RuntaraRuntimeApi').PendingInputPage;
-
-/**
- * Check if a session has a pending input request (used after page refresh
- * to restore the waiting_for_input state).
- */
-export async function checkPendingInput(
-  token: string,
-  sessionId: string,
-  signal?: AbortSignal
-): Promise<PendingInputResponse> {
-  const url = `${getRuntimeBaseUrl()}/sessions/${encodeURIComponent(sessionId)}/pending-input`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to check pending input: ${response.statusText}`);
-  }
-
-  const result = await response.json();
-  if (
-    !result.success ||
-    !result.data ||
-    !Array.isArray(result.data.pendingInputs)
-  ) {
-    throw new Error('Invalid pending input response');
-  }
-  return result.data;
 }
 
 /**
