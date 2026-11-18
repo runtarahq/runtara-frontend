@@ -60,22 +60,13 @@ export function TriggerForm(props: Props) {
   const triggerType = entireForm.watch('triggerType');
   const workflows = fieldProps?.workflows || EMPTY_WORKFLOWS;
 
-  const connections = useMemo(
-    () => fieldProps?.connections || [],
-    [fieldProps?.connections]
-  );
-
-  // Filter fieldsConfig based on triggerType and inject workflows/connections
+  // Filter fieldsConfig based on triggerType and inject workflows
   const filteredFieldsConfig = useMemo(() => {
     return form.fieldsConfig
       .filter((field) => {
         // Only include applicationName and eventType fields if triggerType is APPLICATION
         if (field.name === 'applicationName' || field.name === 'eventType') {
           return triggerType === 'APPLICATION';
-        }
-        // Only include connectionId and sessionMode fields if triggerType is CHANNEL
-        if (field.name === 'connectionId' || field.name === 'sessionMode') {
-          return triggerType === 'CHANNEL';
         }
         // Only include static inputs and debug mode fields if triggerType is CRON
         if (field.name === 'cronInputs' || field.name === 'cronDebug') {
@@ -106,26 +97,9 @@ export function TriggerForm(props: Props) {
             ).filter((option) => !hiddenTriggerTypes.includes(option.value)),
           };
         }
-        // Inject messaging connections into the connectionId select
-        if (field.name === 'connectionId') {
-          const messagingConnections = connections.filter(
-            (c: any) =>
-              c.integrationId === 'telegram_bot' ||
-              c.integrationId === 'slack_bot' ||
-              c.integrationId === 'teams_bot' ||
-              c.integrationId === 'mailgun'
-          );
-          return {
-            ...field,
-            options: messagingConnections.map((c: any) => ({
-              label: `${c.title} (${c.integrationId?.replace('_bot', '')})`,
-              value: c.id,
-            })),
-          };
-        }
         return field;
       });
-  }, [triggerType, workflows, connections, hiddenTriggerTypes]);
+  }, [triggerType, workflows, hiddenTriggerTypes]);
 
   const handleSubmit = (values: TriggerSchemaType) => {
     onSubmit(values);

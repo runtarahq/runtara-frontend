@@ -41,11 +41,3 @@ export function getEmailTriggerAddress(triggerId: string): string {
     import.meta.env.VITE_EMAIL_EVENTS_DOMAIN || 'events.example.com';
   return `workflow-${triggerId}@${domain}`;
 }
-
-export function getChannelWebhookUrl(
-  tenantId: string,
-  connectionId: string,
-  platform: string = 'telegram'
-): string {
-  return `${resolveEventsBaseUrl()}/api/events/${tenantId}/webhook/${platform}/${connectionId}`;
-}

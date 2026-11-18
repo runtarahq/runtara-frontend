@@ -84,8 +84,6 @@ export function EditTrigger() {
       triggerType,
       applicationName,
       eventType,
-      connectionId,
-      sessionMode,
       cronInputs,
       cronDebug,
       webhookDebug,
@@ -127,19 +125,6 @@ export function EditTrigger() {
           applicationName,
           eventType,
         };
-        break;
-      case 'CHANNEL':
-        finalConfiguration = {
-          ...existingConfiguration,
-          connection_id:
-            connectionId || (existingConfiguration as any)?.connection_id,
-        };
-        if (sessionMode && sessionMode !== 'per_sender') {
-          finalConfiguration.session_mode = sessionMode;
-        } else {
-          // per_sender is the default; remove the key so it doesn't linger
-          delete finalConfiguration.session_mode;
-        }
         break;
       case 'HTTP':
       case 'EMAIL': {
@@ -226,15 +211,6 @@ export function EditTrigger() {
     initValues.webhookDebug = initValues.configuration.debug === true;
     initValues.webhookConnectionId =
       initValues.configuration.connection_id || '';
-  }
-
-  // Extract connectionId and sessionMode for CHANNEL triggers
-  if (initValues.triggerType === 'CHANNEL') {
-    if (initValues.configuration?.connection_id) {
-      initValues.connectionId = initValues.configuration.connection_id;
-    }
-    initValues.sessionMode =
-      initValues.configuration?.session_mode || 'per_sender';
   }
 
   // Ensure triggerType is set to APPLICATION if configuration exists and has applicationName

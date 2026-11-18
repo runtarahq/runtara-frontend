@@ -8,7 +8,7 @@ import { createAuthHeaders } from '@/shared/queries/utils';
 
 // Helper function to convert snake_case API response to camelCase EnrichedTrigger for UI
 function transformTriggerFromAPI(
-  trigger: RuntimeAPI.InvocationTrigger & { webhookUrl?: string | null },
+  trigger: RuntimeAPI.InvocationTrigger,
   workflowName?: string
 ): EnrichedTrigger {
   return {
@@ -24,7 +24,6 @@ function transformTriggerFromAPI(
     lastRun: trigger.last_run,
     createdAt: trigger.created_at,
     updatedAt: trigger.updated_at,
-    webhookUrl: trigger.webhookUrl,
   };
 }
 
@@ -92,18 +91,11 @@ export async function getInvocationTriggerById(
         }
       : {};
 
-  // Extract connectionId for CHANNEL triggers
-  const channelData =
-    restTrigger.triggerType === 'CHANNEL'
-      ? { connectionId: config?.connection_id || '' }
-      : {};
-
   return {
     ...restTrigger,
     configuration,
     ...humanCron,
     ...applicationData,
-    ...channelData,
   };
 }
 

@@ -21,6 +21,4 @@ export interface EnrichedTrigger {
   lastRun?: string | null;
   createdAt: string;
   updatedAt: string;
-  /** Webhook URL for Channel triggers (computed by backend). */
-  webhookUrl?: string | null;
 }
