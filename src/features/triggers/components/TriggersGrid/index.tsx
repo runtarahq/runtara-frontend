@@ -7,7 +7,6 @@ import {
   Copy,
   Globe,
   Mail,
-  MessageSquare,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -20,7 +19,6 @@ import {
   getHttpTriggerUrl,
   getHttpSyncUrl,
   getEmailTriggerAddress,
-  getChannelWebhookUrl,
 } from '@/features/triggers/utils/endpoints';
 import { formatDate } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
@@ -73,7 +71,6 @@ const TRIGGER_TYPES: Partial<
   CRON: { label: 'Cron', icon: Clock },
   EMAIL: { label: 'Email', icon: Mail },
   APPLICATION: { label: 'Application', icon: AppWindow },
-  CHANNEL: { label: 'Channel', icon: MessageSquare },
 };
 
 /** Neutral chip: the type is a category, so green stays the status's alone. */
@@ -103,16 +100,6 @@ function getEndpoint(trigger: EnrichedTrigger): string | null {
   }
   if (triggerType === 'EMAIL') {
     return getEmailTriggerAddress(id);
-  }
-  if (triggerType === 'CHANNEL') {
-    const connectionId = (trigger.configuration as any)?.connection_id;
-    return (
-      trigger.webhookUrl ||
-      (tenantId &&
-        connectionId &&
-        getChannelWebhookUrl(tenantId, connectionId)) ||
-      null
-    );
   }
   return null;
 }

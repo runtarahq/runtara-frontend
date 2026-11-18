@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { config } from '@/shared/config/runtimeConfig';
-import {
-  getChannelWebhookUrl,
-  getHttpSyncUrl,
-  getHttpTriggerUrl,
-} from './endpoints';
+import { getHttpSyncUrl, getHttpTriggerUrl } from './endpoints';
 
 describe('trigger URLs', () => {
   const saved = { ...config };
@@ -21,9 +17,6 @@ describe('trigger URLs', () => {
     );
     expect(getHttpSyncUrl('w1', 'acme')).toBe(
       'https://events.runtara.dev/api/events/acme/http-sync/w1'
-    );
-    expect(getChannelWebhookUrl('acme', 'c1', 'slack')).toBe(
-      'https://events.runtara.dev/api/events/acme/webhook/slack/c1'
     );
   });
 

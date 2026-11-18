@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { WorkflowField } from './WorkflowField';
 import { ScheduleField } from './ScheduleField';
 import { ConfigurationField } from './ConfigurationField';
-import { ChannelConnectionField } from './ChannelConnectionField';
 import { WebhookConnectionField } from './WebhookConnectionField';
 import { CronInputsField } from './CronInputsField';
 import { type ScheduleConfig } from '@/features/triggers/utils/cron';
@@ -33,12 +32,10 @@ export const fieldsConfig = [
     type: 'select',
     label: 'Trigger Type',
     name: 'triggerType',
-    options: ['HTTP', 'CRON', 'EMAIL', 'APPLICATION', 'CHANNEL'].map(
-      (type) => ({
-        label: type,
-        value: type,
-      })
-    ),
+    options: ['HTTP', 'CRON', 'EMAIL', 'APPLICATION'].map((type) => ({
+      label: type,
+      value: type,
+    })),
     initialValue: 'HTTP',
   },
   {
@@ -101,34 +98,6 @@ export const fieldsConfig = [
     label: 'Event type',
     name: 'eventType',
     initialValue: '',
-  },
-  {
-    label: 'Channel Connection',
-    name: 'connectionId',
-    initialValue: '',
-    renderFormField: (config: Record<string, unknown>) => (
-      <ChannelConnectionField
-        label={config.label as string}
-        disabled={config.disabled as boolean}
-      />
-    ),
-  },
-  {
-    type: 'select',
-    label: 'Session Mode',
-    name: 'sessionMode',
-    options: [
-      {
-        label: 'Per sender (each user gets their own conversation)',
-        value: 'per_sender',
-      },
-      {
-        label: 'Per trigger (all messages share one session)',
-        value: 'per_trigger',
-      },
-      { label: 'Per message (no session continuity)', value: 'per_message' },
-    ],
-    initialValue: 'per_sender',
   },
   {
     label: 'Additional Configuration',
@@ -204,8 +173,6 @@ export const schema = z
     scheduleConfig: scheduleConfigSchema.optional(),
     applicationName: z.string().optional(),
     eventType: z.string().optional(),
-    connectionId: z.string().optional(),
-    sessionMode: z.string().optional(),
     cronInputs: z.string().optional(),
     cronDebug: z.boolean().optional(),
     webhookDebug: z.boolean().optional(),
@@ -290,16 +257,6 @@ export const schema = z
 
         return 'Please configure at least one time.';
       },
-    }
-  )
-  .refine(
-    ({ triggerType, connectionId }) => {
-      if (triggerType !== 'CHANNEL') return true;
-      return !!connectionId;
-    },
-    {
-      message: 'Please select a channel connection.',
-      path: ['connectionId'],
     }
   )
   .superRefine(({ triggerType, cronInputs }, ctx) => {

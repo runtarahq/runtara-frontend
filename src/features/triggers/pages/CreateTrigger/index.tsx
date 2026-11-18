@@ -60,8 +60,6 @@ export function CreateTrigger() {
     const {
       scheduleConfig,
       triggerType,
-      connectionId,
-      sessionMode,
       cronInputs,
       cronDebug,
       webhookDebug,
@@ -86,13 +84,6 @@ export function CreateTrigger() {
         Object.keys(webhookConfiguration).length > 0
           ? webhookConfiguration
           : null;
-    } else if (triggerType === 'CHANNEL' && connectionId) {
-      configuration = {
-        connection_id: connectionId,
-        ...(sessionMode && sessionMode !== 'per_sender'
-          ? { session_mode: sessionMode }
-          : {}),
-      };
     }
 
     mutate({
