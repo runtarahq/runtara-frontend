@@ -2,11 +2,9 @@ import { act, renderHook, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatInputs } from './useChatInputs';
 import { useChatStore } from '../../stores/chatStore';
-import { checkPendingInput } from '../../queries/chat';
 import { deliverSignal, getPendingInput } from '../../queries';
 import { InputSubmissionError } from '../../utils/input-submission';
 
-vi.mock('../../queries/chat', () => ({ checkPendingInput: vi.fn() }));
 vi.mock('../../queries', () => ({
   deliverSignal: vi.fn(),
   getPendingInput: vi.fn(),
@@ -18,11 +16,6 @@ const request = {
   message: 'Answer',
   responseSchema: { message: { type: 'string' } },
 };
-const page = (pendingInputs = [request], instanceId = 'instance') => ({
-  instanceId,
-  pendingInputs,
-  count: pendingInputs.length,
-});
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -34,8 +27,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   useChatStore.getState().resetChat();
   useChatStore.getState().resumeChat('workflow', 'Workflow', 'instance');
-  useChatStore.getState().setSessionId('session');
-  vi.mocked(checkPendingInput).mockResolvedValue(page());
+  useChatStore.getState().setConversationKey('conversation');
+  vi.mocked(getPendingInput).mockResolvedValue([request]);
 });
 afterEach(() => {
   cleanup();
@@ -61,7 +54,7 @@ describe('authoritative chat input discovery and acceptance', () => {
     const original = result.current.uncertainResponses[0];
     const originalCall = vi.mocked(deliverSignal).mock.calls[0];
     act(() => useChatStore.getState().setInstanceId('replacement'));
-    vi.mocked(checkPendingInput).mockResolvedValue(page([], 'replacement'));
+    vi.mocked(getPendingInput).mockResolvedValue([]);
     vi.mocked(deliverSignal).mockResolvedValueOnce({
       receiptId: 'receipt',
       requestId: 'request',
@@ -78,7 +71,7 @@ describe('authoritative chat input discovery and acceptance', () => {
     expect(vi.mocked(deliverSignal).mock.calls[2]).toEqual(originalCall);
     expect(result.current.uncertainResponses).toHaveLength(1);
   });
-  it('advances the session without SSE while retaining an uncertain reply against its original instance', async () => {
+  it('follows the conversation to its next run while retaining an uncertain reply against its original instance', async () => {
     const { result } = renderHook(() => useChatInputs('workflow', 'token'));
     await waitFor(() =>
       expect(useChatStore.getState().pendingInputs).toHaveLength(1)
@@ -91,9 +84,9 @@ describe('authoritative chat input discovery and acceptance', () => {
     );
     const original = vi.mocked(deliverSignal).mock.calls[0];
     // Identical compiled signal identities in two executions must remain distinct.
-    vi.mocked(checkPendingInput).mockResolvedValue(
-      page([request], 'replacement')
-    );
+    vi.mocked(getPendingInput).mockResolvedValue([request]);
+    // The conversation said which run carries it now (`run_started`).
+    act(() => useChatStore.getState().setInstanceId('replacement'));
     await act(() => result.current.refreshPendingInput());
     await waitFor(() =>
       expect(useChatStore.getState().instanceId).toBe('replacement')
@@ -118,9 +111,10 @@ describe('authoritative chat input discovery and acceptance', () => {
     ).toEqual(['replacement']);
   });
   it('discovers without SSE, retains explicit selection, and clears only on a successful empty result', async () => {
-    vi.mocked(checkPendingInput).mockResolvedValue(
-      page([request, { ...request, requestId: 'second' }])
-    );
+    vi.mocked(getPendingInput).mockResolvedValue([
+      request,
+      { ...request, requestId: 'second' },
+    ]);
     const { result } = renderHook(() => useChatInputs('workflow', 'token'));
     await waitFor(() =>
       expect(useChatStore.getState().pendingInputs).toHaveLength(2)
@@ -133,7 +127,7 @@ describe('authoritative chat input discovery and acceptance', () => {
     );
     await act(() => result.current.refreshPendingInput());
     expect(useChatStore.getState().waitingForInput?.requestId).toBe('request');
-    vi.mocked(checkPendingInput).mockRejectedValueOnce(
+    vi.mocked(getPendingInput).mockRejectedValueOnce(
       new Error('Discovery unavailable')
     );
     await act(() => result.current.refreshPendingInput());
@@ -141,7 +135,7 @@ describe('authoritative chat input discovery and acceptance', () => {
       'Discovery unavailable'
     );
     expect(useChatStore.getState().pendingInputs).toHaveLength(2);
-    vi.mocked(checkPendingInput).mockResolvedValue(page([]));
+    vi.mocked(getPendingInput).mockResolvedValue([]);
     await act(() => result.current.refreshPendingInput());
     expect(useChatStore.getState().pendingInputs).toEqual([]);
     expect(useChatStore.getState().waitingForInput).toBeNull();
@@ -149,26 +143,26 @@ describe('authoritative chat input discovery and acceptance', () => {
   });
 
   it('ignores a delayed snapshot after switching executions', async () => {
-    const old = deferred<ReturnType<typeof page>>();
-    vi.mocked(checkPendingInput).mockReturnValueOnce(old.promise);
+    const old = deferred<(typeof request)[]>();
+    vi.mocked(getPendingInput).mockReturnValueOnce(old.promise);
     renderHook(() => useChatInputs('workflow', 'token'));
+    vi.mocked(getPendingInput).mockResolvedValue([]);
     act(() => useChatStore.getState().setInstanceId('replacement'));
-    vi.mocked(checkPendingInput).mockResolvedValue(page([], 'replacement'));
     await act(async () => {
-      old.resolve(page());
+      old.resolve([request]);
     });
     expect(useChatStore.getState().pendingInputs).toEqual([]);
     expect(useChatStore.getState().instanceId).toBe('replacement');
   });
 
   it('rejects older overlapping refreshes even within the same execution', async () => {
-    const old = deferred<ReturnType<typeof page>>();
-    vi.mocked(checkPendingInput).mockReturnValueOnce(old.promise);
+    const old = deferred<(typeof request)[]>();
+    vi.mocked(getPendingInput).mockReturnValueOnce(old.promise);
     const { result } = renderHook(() => useChatInputs('workflow', 'token'));
-    vi.mocked(checkPendingInput).mockResolvedValue(page([]));
+    vi.mocked(getPendingInput).mockResolvedValue([]);
     await act(() => result.current.refreshPendingInput());
     await act(async () => {
-      old.resolve(page());
+      old.resolve([request]);
     });
     expect(useChatStore.getState().pendingInputs).toEqual([]);
   });
@@ -181,7 +175,7 @@ describe('authoritative chat input discovery and acceptance', () => {
     vi.mocked(deliverSignal).mockRejectedValueOnce(
       new TypeError('network lost')
     );
-    vi.mocked(checkPendingInput).mockResolvedValue(page([]));
+    vi.mocked(getPendingInput).mockResolvedValue([]);
     let accepted;
     await act(async () => {
       accepted = await result.current.submitInput('request', {
@@ -213,9 +207,9 @@ describe('authoritative chat input discovery and acceptance', () => {
     await waitFor(() =>
       expect(useChatStore.getState().waitingForInput).not.toBeNull()
     );
-    vi.mocked(checkPendingInput).mockResolvedValue(
-      page([{ ...request, requestId: 'second' }])
-    );
+    vi.mocked(getPendingInput).mockResolvedValue([
+      { ...request, requestId: 'second' },
+    ]);
     vi.mocked(deliverSignal).mockRejectedValueOnce(
       new InputSubmissionError(
         'Already answered',
@@ -244,7 +238,7 @@ describe('authoritative chat input discovery and acceptance', () => {
     );
     expect(result.current.uncertainResponses).toHaveLength(1);
     // The request then times out; discovery no longer lists it.
-    vi.mocked(checkPendingInput).mockResolvedValue(page([]));
+    vi.mocked(getPendingInput).mockResolvedValue([]);
     vi.mocked(deliverSignal).mockRejectedValueOnce(
       new InputSubmissionError('Input closed', 'INPUT_INACTIVE', 409)
     );
@@ -256,8 +250,8 @@ describe('authoritative chat input discovery and acceptance', () => {
     expect(useChatStore.getState().pendingInputs).toEqual([]);
   });
 
-  it('supports a resumed instance without a session and polls with tracking disabled', async () => {
-    useChatStore.getState().setSessionId(null);
+  it('supports a resumed instance without a conversation', async () => {
+    useChatStore.getState().setConversationKey(null);
     vi.mocked(getPendingInput).mockResolvedValue([
       { ...request, requestedAt: 'now' },
     ]);
@@ -265,6 +259,5 @@ describe('authoritative chat input discovery and acceptance', () => {
     await waitFor(() =>
       expect(useChatStore.getState().waitingForInput?.requestId).toBe('request')
     );
-    expect(checkPendingInput).not.toHaveBeenCalled();
   });
 });

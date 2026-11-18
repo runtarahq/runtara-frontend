@@ -184,12 +184,12 @@ describe('chatStore', () => {
     });
   });
 
-  it('clears pending selection and discovery failure when the session changes', () => {
+  it('clears pending selection and discovery failure when the conversation changes', () => {
     const store = useChatStore.getState();
-    store.setSessionId('first');
+    store.setConversationKey('first');
     store.setPendingInputs([{ requestId: 'request', signalId: 'signal' }]);
     store.setPendingInputError('Unavailable');
-    store.setSessionId('second');
+    store.setConversationKey('second');
     expect(useChatStore.getState().pendingInputs).toEqual([]);
     expect(useChatStore.getState().waitingForInput).toBeNull();
     expect(useChatStore.getState().pendingInputError).toBeNull();

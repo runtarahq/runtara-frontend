@@ -2,7 +2,11 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useChatStream } from './useChatStream';
 import { useChatStore } from '../../stores/chatStore';
-import { sendSessionMessage } from '../../queries/chat';
+import {
+  sendConversationMessage,
+  streamConversationEvents,
+} from '../../queries/chat';
+import { InputSubmissionError } from '../../utils/input-submission';
 
 const submitInput = vi.hoisted(() => vi.fn());
 vi.mock('./useChatInputs', () => ({
@@ -10,50 +14,86 @@ vi.mock('./useChatInputs', () => ({
 }));
 vi.mock('@/shared/hooks/useToken', () => ({ useToken: () => 'token' }));
 vi.mock('../../queries/chat', () => ({
-  sendSessionMessage: vi.fn(),
-  createChatSession: vi.fn(),
-  reconnectSession: vi.fn(),
+  sendConversationMessage: vi.fn(),
+  streamConversationEvents: vi.fn(),
 }));
 beforeEach(() => {
   vi.resetAllMocks();
   useChatStore.getState().resetChat();
   useChatStore.getState().resumeChat('workflow', 'Workflow', 'instance');
-  useChatStore.getState().setSessionId('session');
+  useChatStore.getState().setConversationKey('conversation');
 });
 afterEach(cleanup);
 
-it('retries uncertain enqueue before newly discovered inputs and allocates fresh identities only for new intent', async () => {
+const sentMessage = (call: number) =>
+  vi.mocked(sendConversationMessage).mock.calls[call][3];
+const queued = (messageId: string) => ({
+  messageId,
+  state: 'queued' as const,
+  duplicate: false,
+});
+
+/** A stream the test writes conversation events to. */
+function stream() {
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+  });
+  const encoder = new TextEncoder();
+  let seq = 0;
+  return {
+    response: new Response(body),
+    push(kind: string, eventBody: Record<string, unknown>, at?: number) {
+      seq = at ?? seq + 1;
+      const event = { seq, kind, body: eventBody, createdAt: 'now' };
+      controller.enqueue(
+        encoder.encode(
+          `id: ${String(seq)}\nevent: ${kind}\ndata: ${JSON.stringify(event)}\n\n`
+        )
+      );
+    },
+    end: () => controller.close(),
+  };
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const transcript = () =>
+  useChatStore
+    .getState()
+    .messages.filter((m) => m.role !== 'system')
+    .map((m) => [m.role, m.content]);
+
+it('retries an unconfirmed message under its own id before newly discovered inputs, and gives a new message a new id', async () => {
   const { result } = renderHook(() => useChatStream('workflow'));
-  vi.mocked(sendSessionMessage).mockRejectedValueOnce(
+  vi.mocked(sendConversationMessage).mockRejectedValueOnce(
     new TypeError('lost acknowledgement')
   );
   await act(async () =>
     expect(await result.current.sendMessage('Hello')).toBe(false)
   );
-  const original = vi.mocked(sendSessionMessage).mock.calls[0][2];
+  const original = sentMessage(0);
+  expect(result.current.uncertainMessages).toEqual([
+    { conversationKey: 'conversation', message: 'Hello' },
+  ]);
   useChatStore
     .getState()
     .setPendingInputs([{ requestId: 'wait', signalId: 'signal' }]);
-  vi.mocked(sendSessionMessage).mockResolvedValue({
-    ...original,
-    state: 'queued',
-    enqueuedAtMs: 1,
-  });
+  vi.mocked(sendConversationMessage).mockResolvedValue(queued(original.id));
   await act(async () =>
     expect(await result.current.sendMessage('Hello')).toBe(true)
   );
-  expect(vi.mocked(sendSessionMessage).mock.calls[1][2]).toEqual(original);
+  expect(sentMessage(1)).toEqual(original);
   expect(submitInput).not.toHaveBeenCalled();
+  expect(result.current.uncertainMessages).toEqual([]);
   useChatStore.getState().setPendingInputs([]);
   await act(() => result.current.sendMessage('Hello'));
-  expect(vi.mocked(sendSessionMessage).mock.calls[2][2].operationId).not.toBe(
-    original.operationId
-  );
+  expect(sentMessage(2).id).not.toBe(original.id);
 });
 
-it('does not duplicate an in-flight enqueue or put an old-session error into a new session', async () => {
+it("does not duplicate an in-flight send or put an old conversation's error into a new one", async () => {
   let reject!: (error: Error) => void;
-  vi.mocked(sendSessionMessage).mockReturnValue(
+  vi.mocked(sendConversationMessage).mockReturnValue(
     new Promise((_resolve, fail) => {
       reject = fail;
     })
@@ -61,23 +101,22 @@ it('does not duplicate an in-flight enqueue or put an old-session error into a n
   const { result } = renderHook(() => useChatStream('workflow'));
   const first = result.current.sendMessage('Hello');
   expect(await result.current.sendMessage('Hello')).toBe(false);
-  expect(sendSessionMessage).toHaveBeenCalledTimes(1);
-  useChatStore.getState().setSessionId('replacement');
+  expect(sendConversationMessage).toHaveBeenCalledTimes(1);
+  useChatStore.getState().setConversationKey('replacement');
   await act(async () => {
-    reject(new Error('Old session failed'));
+    reject(new Error('Old conversation failed'));
     await first;
   });
   expect(useChatStore.getState().error).toBeNull();
 });
 
-it('treats a refused message as final: nothing retained, nothing to retry', async () => {
-  const { InputSubmissionError } = await import('../../utils/input-submission');
+it('treats a refused message as final: nothing kept, nothing to retry', async () => {
   const { result } = renderHook(() => useChatStream('workflow'));
-  vi.mocked(sendSessionMessage).mockRejectedValueOnce(
+  vi.mocked(sendConversationMessage).mockRejectedValueOnce(
     new InputSubmissionError(
-      'The session is not waiting for input',
-      'INPUT_NOT_WAITING',
-      409
+      'the conversation already holds 32 messages waiting their turn',
+      'CONVERSATION_QUEUE_FULL',
+      429
     )
   );
   await act(async () =>
@@ -85,45 +124,130 @@ it('treats a refused message as final: nothing retained, nothing to retry', asyn
   );
   expect(result.current.uncertainMessages).toEqual([]);
   expect(useChatStore.getState().error).toBe(
-    'The session is not waiting for input'
+    'the conversation already holds 32 messages waiting their turn'
   );
-  vi.mocked(sendSessionMessage).mockRejectedValueOnce(new TypeError('lost'));
+  vi.mocked(sendConversationMessage).mockRejectedValueOnce(
+    new TypeError('lost')
+  );
   await act(() => result.current.sendMessage('Hello'));
-  // A fresh intent, not a replay of the refused one.
-  expect(vi.mocked(sendSessionMessage).mock.calls[1][2].operationId).not.toBe(
-    vi.mocked(sendSessionMessage).mock.calls[0][2].operationId
-  );
+  // A fresh message, not a replay of the refused one.
+  expect(sentMessage(1).id).not.toBe(sentMessage(0).id);
 });
 
-it('stops the reply cursor when the stream ends without done, whatever the status (CH-3)', async () => {
-  const { reconnectSession } = await import('../../queries/chat');
-  let push!: (text: string) => void;
-  let end!: () => void;
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const encoder = new TextEncoder();
-      push = (text) => controller.enqueue(encoder.encode(text));
-      end = () => controller.close();
-    },
-  });
-  vi.mocked(reconnectSession).mockResolvedValue(new Response(body));
+it('says so when the message was taken but no run could be started for it', async () => {
   const { result } = renderHook(() => useChatStream('workflow'));
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => ({
+      messageId: message.id,
+      state: 'failed',
+      detail: 'Workflow not found',
+      duplicate: false,
+    })
+  );
+  await act(() => result.current.sendMessage('Hello'));
+  expect(useChatStore.getState().error).toBe('Workflow not found');
+  expect(result.current.uncertainMessages).toEqual([]);
+});
 
-  let done!: Promise<void>;
+it("reads a conversation's events as its transcript, both sides of it", async () => {
+  const events = stream();
+  vi.mocked(streamConversationEvents).mockResolvedValue(events.response);
+  const { result } = renderHook(() => useChatStream('workflow'));
   await act(async () => {
-    done = result.current.reconnect('session');
-    push('event: message\ndata: {"type":"message","content":"partial"}\n\n');
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    void result.current.reconnect('conversation');
+    await settle();
+    events.push('run_started', {
+      instanceId: 'run-1',
+      messageId: 'theirs',
+      text: 'Hello',
+    });
+    events.push('activity', { type: 'tool_call', tool_name: 'lookup' });
+    events.push('reply', { text: 'Working on it.' });
+    events.push('waiting_for_input', {
+      requestId: 'r',
+      message: 'What next?',
+      responseSchema: { message: { type: 'string' } },
+    });
+    events.push('message_delivered', { messageId: 'theirs-2', text: 'This' });
+    // An AI Agent step's answer, and the same text as the run's reply.
+    events.push('activity', { type: 'message', content: 'Done.' });
+    events.push('reply', { text: 'Done.' });
+    events.push('run_ended', { instanceId: 'run-1', status: 'completed' });
+    await settle();
   });
-  const reply = () =>
-    useChatStore.getState().messages.find((m) => m.role === 'assistant');
-  expect(reply()?.isStreaming).toBe(true);
+  expect(transcript()).toEqual([
+    ['user', 'Hello'],
+    ['assistant', 'Working on it.'],
+    ['user', 'This'],
+    ['assistant', 'Done.'],
+  ]);
+  expect(useChatStore.getState().instanceId).toBe('run-1');
+  expect(useChatStore.getState().status).toBe('idle');
+  expect(
+    useChatStore.getState().messages.some((m) => m.content.includes('lookup'))
+  ).toBe(true);
+});
 
-  // A send leaves the chat 'idle' while the reply still streams.
-  useChatStore.getState().setStatus('idle');
+it('does not show a message it sent again when the conversation reports it', async () => {
+  const events = stream();
+  vi.mocked(streamConversationEvents).mockResolvedValue(events.response);
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => ({
+      messageId: message.id,
+      state: 'started',
+      duplicate: false,
+    })
+  );
+  const { result } = renderHook(() => useChatStream('workflow'));
   await act(async () => {
-    end();
-    await done;
+    void result.current.reconnect('conversation');
+    await settle();
+    await result.current.sendMessage('Hello');
+    events.push('run_started', {
+      instanceId: 'run-1',
+      messageId: sentMessage(0).id,
+      text: 'Hello',
+    });
+    events.push('run_ended', {
+      instanceId: 'run-1',
+      status: 'failed',
+      error: 'boom',
+    });
+    await settle();
   });
-  expect(reply()?.isStreaming).toBe(false);
+  expect(transcript()).toEqual([['user', 'Hello']]);
+  expect(useChatStore.getState().error).toBe('boom');
+  expect(useChatStore.getState().status).toBe('error');
+});
+
+it('reads on from the last event it saw when a stream ends', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout'] });
+  try {
+    const first = stream();
+    const second = stream();
+    vi.mocked(streamConversationEvents)
+      .mockResolvedValueOnce(first.response)
+      .mockResolvedValueOnce(second.response);
+    const { result } = renderHook(() => useChatStream('workflow'));
+    await act(async () => {
+      void result.current.reconnect('conversation');
+      await vi.advanceTimersByTimeAsync(0);
+      first.push('reply', { text: 'one' }, 7);
+      first.end();
+      await vi.advanceTimersByTimeAsync(1500);
+      // Seen already: a stream that repeats it does not show it twice.
+      second.push('reply', { text: 'one' }, 7);
+      second.push('reply', { text: 'two' }, 8);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(vi.mocked(streamConversationEvents).mock.calls[0][3]).toBe(0);
+    expect(vi.mocked(streamConversationEvents).mock.calls[1][3]).toBe(7);
+    expect(transcript()).toEqual([
+      ['assistant', 'one'],
+      ['assistant', 'two'],
+    ]);
+    act(() => result.current.cancelStream());
+  } finally {
+    vi.useRealTimers();
+  }
 });

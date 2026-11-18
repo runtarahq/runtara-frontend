@@ -65,12 +65,3 @@ export function isStaleInputSubmission(error: unknown): boolean {
     )
   );
 }
-
-/** A session message the server refused to retain: it is bound to an open
- * request when sent, and none (or several) were waiting. Nothing to retry. */
-export function isRefusedSessionMessage(error: unknown): boolean {
-  return (
-    error instanceof InputSubmissionError &&
-    ['INPUT_NOT_WAITING', 'INPUT_AMBIGUOUS'].includes(error.code ?? '')
-  );
-}
