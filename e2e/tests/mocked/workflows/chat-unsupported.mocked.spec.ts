@@ -3,12 +3,6 @@ import { buildWorkflow, expect, test } from '../../../fixtures';
 import { WorkflowChatPage } from '../../../pages/WorkflowExtraPages';
 import { appPath } from '../../../utils/app-path';
 
-/** Same shape the mock fixture uses, so tenant-prefixed URLs still match. */
-function runtimeUrl(suffix: string): RegExp {
-  const escaped = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`/api/runtime(?:/[^/]+)?/${escaped}(?:\\?[^/]*)?$`);
-}
-
 test.describe('Workflow chat on an unsupported workflow (mocked)', () => {
   test('withholds the Chat action from a workflow that never waits', async ({
     page,
@@ -42,7 +36,7 @@ test.describe('Workflow chat on an unsupported workflow (mocked)', () => {
     await expect(plainRow.getByTitle('Start')).toHaveCount(1);
   });
 
-  test('explains the dead end and opens no session on a direct URL', async ({
+  test('explains the dead end and starts no conversation on a direct URL', async ({
     page,
     mockApi,
   }) => {
@@ -52,15 +46,15 @@ test.describe('Workflow chat on an unsupported workflow (mocked)', () => {
       supportsChat: false,
     });
 
-    let sessionRequests = 0;
+    let conversationRequests = 0;
 
     await mockApi.bootstrap(page);
     await mockApi.workflows.get(page, workflow.id, workflow);
     await mockApi.raw(
       page,
-      runtimeUrl(`workflows/${workflow.id}/sessions`),
+      new RegExp(`/workflows/${workflow.id}/conversations/`),
       async (route: Route) => {
-        sessionRequests += 1;
+        conversationRequests += 1;
         await route.fulfill({ status: 200, body: '' });
       }
     );
@@ -74,6 +68,6 @@ test.describe('Workflow chat on an unsupported workflow (mocked)', () => {
       page.getByText('This workflow does not support chat')
     ).toBeVisible();
     await expect(page.getByPlaceholder('Type a message...')).toHaveCount(0);
-    expect(sessionRequests).toBe(0);
+    expect(conversationRequests).toBe(0);
   });
 });
