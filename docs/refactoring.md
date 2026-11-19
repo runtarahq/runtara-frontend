@@ -676,7 +676,7 @@ undocumented.
 - Real-backend Playwright projects run in no workflow.
 - Unit tests and Playwright share no mock layer.
 
-**Status: partly done.**
+**Status: done but for the identity-provider projects.**
 
 - `e2e/**` and `playwright.config.ts` are type-checked (`tsconfig.e2e.json`);
   the 51 errors that surfaced are fixed. `vitest.config.ts` was already
@@ -692,9 +692,13 @@ undocumented.
   eighteen it rendered are committed. The mocked job has not yet run against
   them: it runs on a pull request.
 
-Not done: the real-backend projects run in no workflow. They need a runtara
-server: its evaluation stack could be started in a job, but that could not be
-tried from a developer's machine here, and an untried job was not added.
+- The smoke project runs in CI against a real server (`E2E (real backend)`):
+  runtara's evaluation stack at the release this repository builds against,
+  with the commit's console pointed at its API. The pull request that added
+  the baselines ran the mocked job against them.
+
+Not done: the `e2e` and `chromium` projects, which sign in through a real
+identity provider, still run in no workflow.
 
 ## Low priority
 

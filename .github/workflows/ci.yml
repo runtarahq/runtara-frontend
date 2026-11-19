@@ -180,3 +180,87 @@ jobs:
       - name: Container log
         if: always()
         run: docker logs console || true
+
+  # The smoke specs against a real server: runtara's evaluation stack, at the
+  # release this repository builds against, with this commit's console
+  # pointed at its API. Local auth, one tenant, no identity provider.
+  e2e-smoke:
+    name: E2E (real backend)
+    # As the mocked job: Playwright 1.59.1 supports Ubuntu 24.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    env:
+      RUNTARA_PORT: '7101'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      # The release the validation WASM and the generated client come from.
+      - name: Find the runtara release
+        id: runtara
+        run: |
+          version="$(node -p "require('./package.json').dependencies['runtara-validation-wasm'].match(/download\/v([^/]+)\//)[1]")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start the runtara evaluation stack
+        env:
+          RUNTARA_IMAGE_TAG: ${{ steps.runtara.outputs.version }}
+        run: |
+          mkdir stack
+          curl -fsSL "https://raw.githubusercontent.com/runtarahq/runtara/v${RUNTARA_IMAGE_TAG}/docker-compose.yml" -o stack/docker-compose.yml
+          docker compose -f stack/docker-compose.yml -p runtara-smoke up -d
+          npx wait-on "http://localhost:${RUNTARA_PORT}/api/runtime/workflows" --timeout 180000
+
+      - name: Build the console for that server
+        env:
+          VITE_RUNTARA_AUTH_MODE: local
+          VITE_RUNTARA_TENANT_ID: evaluation
+          VITE_STRIP_ORG_ID: 'true'
+          VITE_RUNTARA_API_BASE_URL: http://localhost:7101
+        run: npm run build
+
+      - name: Serve preview build
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 8081 &
+          npx wait-on http://127.0.0.1:8081 --timeout 60000
+
+      - name: Run smoke Playwright project
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8081
+          E2E_SMOKE_AUTH_MODE: local
+          CI: 'true'
+        run: npx playwright test --project=smoke
+
+      - name: Server logs
+        if: failure()
+        env:
+          RUNTARA_IMAGE_TAG: ${{ steps.runtara.outputs.version }}
+        run: docker compose -f stack/docker-compose.yml -p runtara-smoke logs --tail 200 runtara
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-smoke-report
+          path: |
+            e2e-report/
+            e2e-results/
+          retention-days: 7
