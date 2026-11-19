@@ -16,19 +16,12 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/shared/components/ui/tabs';
-import { FinishStepField } from './FinishStepField';
-import { SplitStepField } from './SplitStepField';
-import { ErrorStepField } from './ErrorStepField';
-import { FilterStepField } from './FilterStepField';
-import { GroupByStepField } from './GroupByStepField';
-import { AiAgentStepField } from './AiAgentStepField';
-import { WaitForSignalStepField } from './WaitForSignalStepField';
-import { WaitForInstancesStepField } from './WaitForInstancesStepField';
-import { SetStateStepField } from './SetStateStepField';
-import { LogStepField } from './LogStepField';
-import { WhileStepField } from './WhileStepField';
-import { DelayStepField } from './DelayStepField';
 import { SuspendingStepHint } from './SuspendingStepHint';
+import {
+  resolveStepType,
+  stepTypeTraits,
+} from '@/features/workflows/step-types/catalog';
+import { STEP_TYPE_UI } from '@/features/workflows/step-types/ui';
 import {
   Collapsible,
   CollapsibleContent,
@@ -138,16 +131,6 @@ function FormTabs() {
   );
 }
 
-const DURABLE_STEP_TYPES = new Set([
-  'Agent',
-  'Split',
-  'EmbedWorkflow',
-  'Delay',
-  'AiAgent',
-]);
-
-const RETRY_STEP_TYPES = new Set(['Agent', 'EmbedWorkflow']);
-
 /**
  * One-line answer to "is anything in here worth opening?".
  *
@@ -194,8 +177,9 @@ function StepAdvancedFields() {
     return null;
   }
 
-  const showDurable = DURABLE_STEP_TYPES.has(stepType);
-  const showRetries = RETRY_STEP_TYPES.has(stepType);
+  const traits = stepTypeTraits(stepType);
+  const showDurable = traits?.durable ?? false;
+  const showRetries = traits?.retries ?? false;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -499,64 +483,12 @@ function InputMappingWrapper(config: Record<string, unknown>) {
     return null;
   }
 
-  if (stepType === 'Finish') {
-    return <FinishStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Split') {
-    return <SplitStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Error') {
-    return <ErrorStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Filter') {
-    return <FilterStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'GroupBy') {
-    return <GroupByStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'AiAgent') {
-    return <AiAgentStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'WaitForSignal') {
-    return <WaitForSignalStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'WaitForInstances') {
-    return (
-      <WaitForInstancesStepField {...config} name={config.name as string} />
-    );
-  }
-
-  if (stepType === 'SetState') {
-    return <SetStateStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'GetState') {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Reads the run&apos;s state as of this point:{' '}
-        <code>steps.&lt;id&gt;.outputs.&lt;field&gt;</code>. The read is
-        checkpointed, so a replay sees what the first execution read.
-      </p>
-    );
-  }
-
-  if (stepType === 'Log') {
-    return <LogStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'While') {
-    return <WhileStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Delay') {
-    return <DelayStepField {...config} name={config.name as string} />;
+  // A step type with a form of its own (step-types/ui.tsx); the others are
+  // configured by their input mapping.
+  const known = resolveStepType(stepType);
+  const StepFormField = known ? STEP_TYPE_UI[known].FormField : null;
+  if (StepFormField) {
+    return <StepFormField {...config} name={config.name as string} />;
   }
 
   return (

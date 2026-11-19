@@ -1,47 +1,25 @@
-// Literal key/value types (as const) so a typo'd key is a compile error,
-// not a silent `undefined` registration.
-export const NODE_TYPES = {
-  CreateNode: 'CREATE_NODE',
-  BasicNode: 'BASIC_NODE',
-  ConditionalNode: 'CONDITIONAL_NODE',
-  SwitchNode: 'SWITCH_NODE',
-  ContainerNode: 'CONTAINER_NODE',
-  AiAgentNode: 'AI_AGENT_NODE',
-  NoteNode: 'NOTE_NODE',
-  StartIndicatorNode: 'START_INDICATOR_NODE',
-} as const;
+import { NODE_TYPES } from './node-types';
+import { STEP_TYPE_CATALOG } from '@/features/workflows/step-types/catalog';
 
-export type NodeTypeId = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
+export { NODE_TYPES, type NodeTypeId } from './node-types';
 
-// Canvas node type for each DSL step type (and its display name)
-// Note: Start step type has been removed - entry point now points to first real step
+/**
+ * Canvas node type by step type name, as code that holds a bare string looks
+ * it up: a DSL step type, the display name the server gives it ("AI Agent"),
+ * or one of the two names that are no DSL step. What each DSL step type is
+ * drawn as is said once, in the step-type catalog.
+ */
 export const STEP_TYPES: Record<string, string> = {
+  // The placeholder a new step is picked from.
   Create: NODE_TYPES.CreateNode,
-  Finish: NODE_TYPES.BasicNode,
-  Agent: NODE_TYPES.BasicNode,
-  Conditional: NODE_TYPES.ConditionalNode,
-  Split: NODE_TYPES.ContainerNode,
-  While: NODE_TYPES.ContainerNode,
-  Switch: NODE_TYPES.SwitchNode,
-  EmbedWorkflow: NODE_TYPES.BasicNode,
-  'Start Workflow': NODE_TYPES.BasicNode, // Backend format (with space)
-  // Legacy: Start step mapping kept for backward compatibility during migration
+  // Legacy: graphs saved before the entry point named the first real step.
   Start: NODE_TYPES.BasicNode,
-  Filter: NODE_TYPES.BasicNode,
-  GroupBy: NODE_TYPES.BasicNode,
-  AiAgent: NODE_TYPES.AiAgentNode,
-  'AI Agent': NODE_TYPES.AiAgentNode, // Backend format (with space)
-  WaitForSignal: NODE_TYPES.BasicNode,
-  'Wait for Signal': NODE_TYPES.BasicNode, // Backend format (with space)
-  WaitForInstances: NODE_TYPES.BasicNode,
-  'Wait for Instances': NODE_TYPES.BasicNode, // Backend display name
-  SetState: NODE_TYPES.BasicNode,
-  'Set State': NODE_TYPES.BasicNode, // Backend display name
-  GetState: NODE_TYPES.BasicNode,
-  'Get State': NODE_TYPES.BasicNode, // Backend display name
-  Delay: NODE_TYPES.BasicNode,
-  Log: NODE_TYPES.BasicNode,
-  Error: NODE_TYPES.BasicNode,
+  ...Object.fromEntries(
+    Object.entries(STEP_TYPE_CATALOG).flatMap(([stepType, traits]) => [
+      [stepType, traits.nodeType],
+      ...(traits.displayName ? [[traits.displayName, traits.nodeType]] : []),
+    ])
+  ),
 };
 
 // All node sizes must be multiples of 12px grid for proper alignment, and
