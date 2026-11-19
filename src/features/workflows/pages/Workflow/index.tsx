@@ -5,11 +5,7 @@ import {
 import { useWorkflowExecution } from './useWorkflowExecution';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
-import {
-  useCustomMutation,
-  useCustomQuery,
-  isEntitlementDenial,
-} from '@/shared/hooks/api';
+import { useCustomMutation, isEntitlementDenial } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { WorkflowEditor } from '@/features/workflows/components/WorkflowEditor';
 import { WorkflowActionsForm } from '@/features/workflows/pages/Workflow/WorkflowActionsForm';
@@ -18,28 +14,26 @@ import { composeExecutionGraph } from '@/features/workflows/components/WorkflowE
 import '@xyflow/react/dist/base.css';
 import { queryClient } from '@/bootstrap.tsx';
 import { slugify } from '@/shared/utils/string-utils';
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
 import { DebugStepInspector } from '@/features/workflows/components/DebugStepInspector';
 
 import { WorkflowExecuteDialog } from '@/features/workflows/components/WorkflowExecuteDialog';
 import {
-  getWorkflowVersions,
-  getWorkflowWorkflow,
   setCurrentVersion,
   updateWorkflow,
   toggleTrackEvents,
-  WorkflowVersionInfoDto,
 } from '@/features/workflows/queries';
 import { usePageTitle } from '@/shared/hooks/usePageTitle';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
 
-import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
 import { dropSavedEntries } from './drop-saved-entries';
 import { parseWorkflowImport } from './import-workflow';
 import { useCompilationWatch } from './use-compilation-watch';
+import { useUnsavedChangesGuard } from './use-unsaved-changes-guard';
+import { useVersionSelection, useWorkflowLoad } from './use-workflow-load';
 import { prepareWorkflowSave } from './save-workflow';
 import { graphOptions, mergeWorkflowSettings } from './workflow-settings';
 import { useOneAtATime } from './use-one-at-a-time';
@@ -49,7 +43,6 @@ import { ValidationPanel } from '@/features/workflows/components/ValidationPanel
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { convertServerErrors } from '@/features/workflows/utils/validation-helpers';
 
-import { buildSchemaFromFields } from '@/features/workflows/utils/schema';
 import {
   NODE_TYPES,
   NODE_TYPE_SIZES,
@@ -67,40 +60,17 @@ function hasOwn(object: object, key: string) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
-function getWorkflowStoreContentHash(): string {
-  const { nodes, edges } = useWorkflowStore.getState();
-
-  return JSON.stringify({
-    nodes: nodes
-      .map((node) => ({
-        id: node.id,
-        parentId: node.parentId,
-        type: node.type,
-        data: node.data,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-    edges: edges
-      .map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-  });
-}
 export function Workflow() {
   const { workflowId } = useParams();
-  const [selectedVersion, setSelectedVersion] = useState<number | undefined>(
-    undefined
-  );
-  const [queryVersion, setQueryVersion] = useState<number | undefined>(
-    undefined
-  );
-  const [versionsWithDebug, setVersionsWithDebug] = useState<
-    WorkflowVersionInfoDto[]
-  >([]);
+  // Which version is shown and which is loaded (./use-workflow-load.ts).
+  const versionSelection = useVersionSelection();
+  const {
+    selectedVersion,
+    setSelectedVersion,
+    queryVersion,
+    setQueryVersion,
+    isSwitchingVersion,
+  } = versionSelection;
 
   const [executeDialogOpen, setExecuteDialogOpen] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
@@ -116,235 +86,45 @@ export function Workflow() {
     compilationToolbarStatus,
   } = useCompilationWatch(workflowId);
 
-  const [isUnsavedChangesDialogOpen, setIsUnsavedChangesDialogOpen] =
-    useState(false);
-  const pendingUnsavedChangesActionRef = useRef<(() => void) | null>(null);
-  // Track if we're switching versions (for showing inline loading instead of full page loader)
-  const [isSwitchingVersion, setIsSwitchingVersion] = useState(false);
-
   // Staged workflow changes (name, description, variables, schemas, timeout) - preserved until global save
   const [stagedWorkflowChanges, setStagedWorkflowChanges] =
     useState<WorkflowChanges>({});
+  const discardStagedChanges = useCallback(
+    () => setStagedWorkflowChanges({}),
+    []
+  );
 
   // A new page starts with no steps highlighted as staged.
   useEffect(() => {
     useWorkflowStore.getState().setStagedNodeIds(new Set());
   }, []);
 
-  // Reactively subscribe to isDirty state
-  const isDirty = useWorkflowStore((state) => state.isDirty);
-  const isStructurallyDirty = useWorkflowStore(
-    (state) => state.isStructurallyDirty
-  );
-
-  // Compute if there are any unsaved changes (workflow dirty or staged node/workflow changes)
-  // Ignore dirty state during version switching to prevent button flickering
-  const hasUnsavedChanges = useMemo(() => {
-    // During version switch, we don't have unsaved changes (they were intentionally discarded)
-    if (isSwitchingVersion) {
-      return false;
-    }
-    const hasWorkflowChanges = Object.keys(stagedWorkflowChanges).length > 0;
-    return isDirty || hasWorkflowChanges;
-  }, [isDirty, stagedWorkflowChanges, isSwitchingVersion]);
-
-  // Structural changes (add/remove/edit nodes or edges) block execution.
-  // Position-only changes (dragging, auto-layout) do not.
-  const hasStructuralUnsavedChanges = useMemo(() => {
-    if (isSwitchingVersion) {
-      return false;
-    }
-    return isStructurallyDirty || Object.keys(stagedWorkflowChanges).length > 0;
-  }, [isStructurallyDirty, stagedWorkflowChanges, isSwitchingVersion]);
-
-  // Helper to check for unsaved changes before performing a destructive action (version change, import)
-  const confirmIfUnsavedChanges = useCallback(
-    (action: () => void) => {
-      if (hasUnsavedChanges) {
-        pendingUnsavedChangesActionRef.current = action;
-        setIsUnsavedChangesDialogOpen(true);
-      } else {
-        action();
-      }
-    },
-    [hasUnsavedChanges]
-  );
-
-  const handleConfirmUnsavedChanges = useCallback(() => {
-    const pendingAction = pendingUnsavedChangesActionRef.current;
-    pendingUnsavedChangesActionRef.current = null;
-    setIsUnsavedChangesDialogOpen(false);
-
-    if (pendingAction) {
-      pendingAction();
-    }
-  }, []);
-
-  const handleCancelUnsavedChanges = useCallback(() => {
-    pendingUnsavedChangesActionRef.current = null;
-    setIsUnsavedChangesDialogOpen(false);
-  }, []);
-
-  // Use the global navigation blocker store
-  const setBlocker = useNavigationBlockerStore((state) => state.setBlocker);
-
-  // Register/unregister the blocker based on hasUnsavedChanges
-  useEffect(() => {
-    setBlocker(hasUnsavedChanges, () => {
-      setStagedWorkflowChanges({});
-      useWorkflowStore.getState().clearDirtyFlag();
-    });
-
-    return () => {
-      setBlocker(false);
-    };
-  }, [hasUnsavedChanges, setBlocker]);
-
-  // Fetch available versions
-  const { data: versionsResponse } = useCustomQuery({
-    queryKey: queryKeys.workflows.versions(workflowId ?? ''),
-    queryFn: () => getWorkflowVersions(workflowId!),
-    enabled: !!workflowId,
-    placeholderData: { data: [], message: '', success: true } as any,
+  // Whether there is anything unsaved, and asking before it is thrown away
+  // (./use-unsaved-changes-guard.ts).
+  const {
+    hasUnsavedChanges,
+    hasStructuralUnsavedChanges,
+    confirmIfUnsavedChanges,
+    isUnsavedChangesDialogOpen,
+    handleConfirmUnsavedChanges,
+    handleCancelUnsavedChanges,
+  } = useUnsavedChangesGuard({
+    isSwitchingVersion,
+    stagedWorkflowChanges,
+    discardStagedChanges,
   });
 
-  // Extract versions from wrapped response
-  const versions = useMemo(
-    () => (versionsResponse as any)?.data || [],
-    [versionsResponse]
-  );
-
-  // Use queryVersion for the actual query to control when it changes
-  const { data: response, isFetching } = useCustomQuery({
-    queryKey: queryKeys.workflows.workflow(workflowId ?? '', queryVersion),
-    queryFn: () => getWorkflowWorkflow(workflowId!, queryVersion),
-    enabled: !!workflowId,
-    placeholderData: {
-      data: {
-        nodes: [],
-        edges: [],
-      },
-      message: '',
-      success: true,
-    } as any,
-  });
-
-  // Extract workflow data from wrapped response
-  const data = useMemo(
-    () => (response as any)?.data || { nodes: [], edges: [] },
-    [response]
-  );
-  const hasInputSchema = useMemo(
-    () => ((data as any)?.inputSchemaFields ?? []).length > 0,
-    [data]
-  );
-  const workflowInputSchema = useMemo(() => {
-    const fields = (data as any)?.inputSchemaFields ?? [];
-    return fields.length > 0 ? buildSchemaFromFields(fields) : {};
-  }, [data]);
-
-  // Reset selectedVersion and invalidate queries when workflowId changes
-  useEffect(() => {
-    // Reset execution state when switching workflows
-    useExecutionStore.getState().resetExecution();
-
-    // Reset workflow state when switching workflows
-    useWorkflowStore.getState().resetState();
-
-    // Clear validation problems from previous workflow
-    useValidationStore.getState().clearMessages();
-
-    // Clear staged workflow changes
-    setStagedWorkflowChanges({});
-
-    setSelectedVersion(undefined);
-    setQueryVersion(undefined);
-
-    // Batch invalidate queries to ensure fresh data is fetched for the new workflow
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.workflows.workflow(workflowId ?? ''),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.workflows.versions(workflowId ?? ''),
-      }),
-    ]);
-  }, [workflowId]);
-
-  // Reset execution state when leaving the workflow page
-  useEffect(() => {
-    return () => {
-      useExecutionStore.getState().resetExecution();
-    };
-  }, []);
-
-  // Clear dirty flag after workflow data is loaded and rendered
-  useEffect(() => {
-    if (!isFetching) {
-      const loadedContentHash = getWorkflowStoreContentHash();
-      // Use a small timeout to ensure React Flow has finished initializing
-      const timer = setTimeout(() => {
-        if (getWorkflowStoreContentHash() === loadedContentHash) {
-          useWorkflowStore.getState().clearDirtyFlag();
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isFetching, workflowId, queryVersion]);
-
-  // Set the current version as the default selected version when data is loaded
-  useEffect(() => {
-    if (data.currentVersionNumber && selectedVersion === undefined) {
-      setSelectedVersion(data.currentVersionNumber);
-      setQueryVersion(data.currentVersionNumber);
-    }
-  }, [data.currentVersionNumber, selectedVersion]);
-
-  // Set versions with debug mode from API response
-  useEffect(() => {
-    if (!versions || versions.length === 0) {
-      setVersionsWithDebug([]);
-      return;
-    }
-
-    // API now provides trackEvents directly in WorkflowVersionInfoDto
-    setVersionsWithDebug(versions);
-  }, [versions]);
-
-  // Reset isSwitchingVersion when fetching completes and dirty flag is cleared
-  // Use the same delay as the dirty flag clearing to prevent button flickering
-  useEffect(() => {
-    if (!isFetching && isSwitchingVersion) {
-      const timer = setTimeout(() => {
-        setIsSwitchingVersion(false);
-      }, 150); // Slightly longer than the 100ms dirty flag clear timeout
-      return () => clearTimeout(timer);
-    }
-  }, [isFetching, isSwitchingVersion]);
-
-  // Internal version change handler (bypasses unsaved changes check)
-  const performVersionChange = useCallback(
-    (version: number | undefined) => {
-      // Clear dirty flag when switching versions
-      useWorkflowStore.getState().clearDirtyFlag();
-      // Clear staged workflow changes when switching versions
-      setStagedWorkflowChanges({});
-
-      // Mark that we're switching versions to show inline loading
-      setIsSwitchingVersion(true);
-
-      // Remove cached data for the target version to force a fresh fetch
-      // This ensures we always get the correct workflow data for each version
-      queryClient.removeQueries({
-        queryKey: queryKeys.workflows.workflow(workflowId ?? '', version),
-        exact: true,
-      });
-
-      setSelectedVersion(version);
-      setQueryVersion(version); // This will trigger a new query
-    },
-    [workflowId]
-  );
+  // The workflow at the loaded version, its versions, and switching between
+  // them (./use-workflow-load.ts).
+  const {
+    data,
+    isFetching,
+    versionsWithDebug,
+    setVersionsWithDebug,
+    hasInputSchema,
+    workflowInputSchema,
+    performVersionChange,
+  } = useWorkflowLoad(workflowId, versionSelection, discardStagedChanges);
 
   // Sync queryVersion with selectedVersion only when user explicitly changes version
   // Not when we programmatically update it after save
@@ -818,7 +598,12 @@ export function Workflow() {
       setWatchedCompilationVersion(version);
       rebuildMutation.mutate({ workflowId, version });
     },
-    [workflowId, rebuildMutation]
+    [
+      workflowId,
+      rebuildMutation,
+      setRebuildingVersions,
+      setWatchedCompilationVersion,
+    ]
   );
 
   const handleExportJSON = () => {
