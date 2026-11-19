@@ -250,25 +250,15 @@ jobs:
         run: npx playwright test --project=smoke
 
       # The local-auth project: connections created, edited and deleted, and
-      # workflows built on the canvas, through the console alone. Two of the
-      # connection tests still expect how the sign-in popup behaved before
-      # the console waited for it, and are left out (docs/refactoring.md,
-      # M14).
+      # workflows built on the canvas, through the console alone. Its
+      # operations specs skip themselves: they need a prepared fixture
+      # (E2E_OPERATIONS_FIXTURE).
       - name: Run local-ui Playwright project
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8081
           E2E_RUNTIME_URL: http://127.0.0.1:7101
           CI: 'true'
-          STALE_TESTS: >-
-            prompts a reconnect after a save that resets authorization|creates
-            an OAuth connection without supplying the managed realm_id field
-        run: >-
-          npx playwright test --project=local-ui --workers=2
-          e2e/tests/e2e/connections.local.e2e.spec.ts
-          e2e/tests/e2e/connection-crud.local.e2e.spec.ts
-          e2e/tests/e2e/connection-editor.local.e2e.spec.ts
-          e2e/tests/e2e/workflow-builder.local.e2e.spec.ts
-          --grep-invert "$STALE_TESTS"
+        run: npx playwright test --project=local-ui --workers=2
 
       # The flows that go through the console and the server's API together:
       # building, validating, running and inspecting workflows.

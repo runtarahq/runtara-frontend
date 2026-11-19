@@ -677,44 +677,46 @@ test keeps complete; two that did nothing were removed.
 - Real-backend Playwright projects run in no workflow.
 - Unit tests and Playwright share no mock layer.
 
-**Status: done but for the identity-provider projects.**
+**Status: done, but for one project that needs an identity provider.**
 
 - `e2e/**` and `playwright.config.ts` are type-checked (`tsconfig.e2e.json`);
   the 51 errors that surfaced are fixed. `vitest.config.ts` was already
-  covered by `tsconfig.node.json`. The casts in `e2e/` are still there (46).
+  covered by `tsconfig.node.json`. The casts in `e2e/` are still there.
 - Coverage has a floor in `vitest.config.ts`, just under what the suite
   covers, and the lint job fails beyond the 21 warnings there are.
 - Unit tests and Playwright build the server's objects from the same
   builders, `src/test/builders.ts`.
-
 - `expectMatchesSnapshot` compares wherever a baseline for the platform is
   committed and skips where there is none, with no flag. The **Visual
   baselines** workflow renders them on the runner the mocked job uses; the
-  eighteen it rendered are committed. The mocked job has not yet run against
-  them: it runs on a pull request.
-
-- The smoke project runs in CI against a real server (`E2E (real backend)`):
+  eighteen it rendered are committed and the mocked job compares with them.
+- The real-backend projects run in CI (`E2E (real backend)`), against
   runtara's evaluation stack at the release this repository builds against,
-  with the commit's console pointed at its API. The pull request that added
-  the baselines ran the mocked job against them.
+  with the commit's console pointed at its API: `smoke`, `local-ui` and
+  `e2e`. The `e2e` project and the workflow-builder spec had been written
+  for the console before its redesign and were brought up to date; they
+  need no identity provider where the server needs no sign-in
+  (`e2e/utils/api-auth.ts`).
 
-  The same job runs the connection specs of the `local-ui` project, except
-  two tests that expect how the sign-in popup behaved before the console
-  waited for it (`Reconnect after Save & Reconnect saves`, on main).
+Running them found defects in the console, on main before this work, which
+are fixed:
 
-Not done, and why:
+- A Split, a While and a routing Switch could not be added, and a Conditional
+  only by inserting it on a route: a step edit was refused for errors about
+  the canvas's shape, which only exist until the step has its body or routes.
+- A step following a nested container was put outside every container.
+- A memory could not be added to an AI Agent: its provider failed validation
+  in ways the agent's form could not fix, the lack of a connection among
+  them.
+- The Execute dialog ran a workflow with a required list or object left
+  empty, and refused a required text input given as empty.
+- The Problems tab named a step by its id for the in-browser validator's
+  errors.
 
-- The `chromium` project tests signing in through an identity provider. It
-  needs one, with credentials as CI secrets.
-- The `e2e` project and the `local-ui` workflow-builder spec were tried
-  against that stack under local auth and are out of step with it: 16 of the
-  `e2e` tests fail on stale selectors and API contracts, and the
-  workflow-builder spec adds a lone Conditional, which the 10.0.0 validator
-  refuses. Twelve of the sixteen fail identically on the branch as it was
-  before the medium-priority work; the other four are serial suites that
-  failed one step earlier there. Bringing those specs up to date is work of
-  its own. The workflow-builder page object's two clean-up helpers, which
-  looked for a list that is now a table, are fixed.
+Not done: the `chromium` project tests signing in through an identity
+provider, and is left for runs with a developer's credentials. The
+`local-ui` operations specs skip themselves without a prepared fixture
+(`E2E_OPERATIONS_FIXTURE`).
 
 ## Low priority
 

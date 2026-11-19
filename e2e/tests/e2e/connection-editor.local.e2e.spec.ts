@@ -33,6 +33,16 @@ async function createApiConnection(
   return payload.connectionId;
 }
 
+/** Gives up the wait the console starts when a sign-in window closes. */
+async function cancelSignInWait(page: Page) {
+  const waiting = page
+    .getByRole('listitem')
+    .filter({ hasText: 'Waiting for the sign-in to finish' });
+  await expect(waiting).toBeVisible({ timeout: 15000 });
+  await waiting.getByRole('button', { name: 'Cancel' }).click();
+  await expect(waiting).toHaveCount(0);
+}
+
 async function getApiConnection(
   request: APIRequestContext,
   id: string
@@ -628,8 +638,12 @@ test.describe.serial('Connection schema form local UI', () => {
 
   test('prompts a reconnect after a save that resets authorization', async ({
     page,
+    context,
     request,
   }) => {
+    // Save & Reconnect saves, then starts the reconnect itself: the sign-in
+    // window opens. Close it at once, as a user who backs out would.
+    context.on('page', (popup) => void popup.close().catch(() => {}));
     const title = `E2E reconnect handoff QBO ${runId}`;
     const id = await createApiConnection(request, {
       title,
@@ -655,7 +669,7 @@ test.describe.serial('Connection schema form local UI', () => {
     await saveAndReconnect.click();
 
     // The save stays on the page and hands off to a reconnect prompt naming
-    // the changed field, without auto-opening a popup.
+    // the changed field.
     const notice = page.getByRole('alert').filter({
       hasText: 'Saved — reconnection needed',
     });
@@ -674,6 +688,10 @@ test.describe.serial('Connection schema form local UI', () => {
     expect(saved.editProjection.secretState.client_secret.configured).toBe(
       true
     );
+
+    // With its window gone the console goes on waiting for the sign-in, in
+    // case it finishes elsewhere; give that up, as the user can.
+    await cancelSignInWait(page);
 
     // "Later" dismisses the prompt but the card keeps a Connect affordance.
     await notice.getByRole('button', { name: 'Later' }).click();
@@ -764,6 +782,9 @@ test.describe.serial('Connection schema form local UI', () => {
 
     // The managed Realm ID field is left blank (populated only by OAuth).
     await page.getByRole('button', { name: 'Create & Connect' }).click();
+
+    // The console waits for a sign-in whose window closed; give that up.
+    await cancelSignInWait(page);
 
     // Lands on the new connection's edit page after the popup is abandoned.
     await expect(page).toHaveURL(/\/connections\/[0-9a-f-]{36}$/);
