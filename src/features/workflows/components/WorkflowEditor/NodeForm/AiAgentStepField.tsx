@@ -195,7 +195,6 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
 
   // Initialize default fields for new AiAgent steps
   useEffect(() => {
-    if (stepType !== 'AiAgent') return;
     if (nodeId) return; // Don't reset in edit mode
 
     const currentMapping = form.getValues(name) || [];
@@ -300,10 +299,6 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
     const providerNode = nodes.find((n) => n.id === providerStepId);
     return (providerNode?.data as any)?.agentId || null;
   }, [nodes, inputMapping]);
-
-  if (stepType !== 'AiAgent') {
-    return null;
-  }
 
   // Helper to get current value from inputMapping array
   const getValue = (fieldName: string) => {

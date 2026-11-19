@@ -22,7 +22,6 @@ export function DelayStepField({ name }: DelayStepFieldProps) {
   const stepType = useWatch({ name: 'stepType', control: form.control });
 
   useEffect(() => {
-    if (stepType !== 'Delay') return;
     if (nodeId) return;
 
     const currentMapping = form.getValues(name) || [];
@@ -44,10 +43,6 @@ export function DelayStepField({ name }: DelayStepFieldProps) {
     control: form.control,
     defaultValue: [],
   });
-
-  if (stepType !== 'Delay') {
-    return null;
-  }
 
   const getValue = (fieldName: string) => {
     const field = (inputMapping || []).find(

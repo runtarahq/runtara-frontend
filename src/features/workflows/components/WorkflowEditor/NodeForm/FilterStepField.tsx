@@ -107,15 +107,10 @@ export function FilterStepField({ name }: FilterStepFieldProps) {
 
   // Initialize default condition for new Filter steps
   useEffect(() => {
-    if (stepType !== 'Filter') return;
     if (onCanvas) return; // Don't reset in edit mode
     // Again if a form reset clears it: the editor never sets it to nothing.
     if (!filterCondition) form.setValue('filterCondition', defaultCondition);
   }, [stepType, onCanvas, filterCondition, form, defaultCondition]);
-
-  if (stepType !== 'Filter') {
-    return null;
-  }
 
   const handleConditionChange = (value: string) => {
     try {

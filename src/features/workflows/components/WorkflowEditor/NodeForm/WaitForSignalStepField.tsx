@@ -62,7 +62,6 @@ export function WaitForSignalStepField({ name }: WaitForSignalStepFieldProps) {
 
   // Initialize default inputMapping entries for new nodes
   useEffect(() => {
-    if (stepType !== 'WaitForSignal') return;
     if (nodeId) return; // Don't reset in edit mode
 
     const currentMapping = form.getValues(name) || [];
@@ -107,10 +106,6 @@ export function WaitForSignalStepField({ name }: WaitForSignalStepFieldProps) {
     control: form.control,
     defaultValue: [],
   });
-
-  if (stepType !== 'WaitForSignal') {
-    return null;
-  }
 
   // Helpers to read/write inputMapping entries
   const getValue = (fieldName: string) => {

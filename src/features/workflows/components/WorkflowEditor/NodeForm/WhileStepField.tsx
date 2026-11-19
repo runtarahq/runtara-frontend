@@ -75,7 +75,6 @@ export function WhileStepField({ name }: WhileStepFieldProps) {
   // Initialize missing defaults for While steps.
   // A step being created already has a node id, so missing-field checks are safer than nodeId.
   useEffect(() => {
-    if (stepType !== 'While') return;
     if (hasInitializedRef.current) return;
 
     hasInitializedRef.current = true;
@@ -87,10 +86,6 @@ export function WhileStepField({ name }: WhileStepFieldProps) {
       form.setValue('whileMaxIterations', 10);
     }
   }, [stepType, whileCondition, whileMaxIterations, form, defaultCondition]);
-
-  if (stepType !== 'While') {
-    return null;
-  }
 
   const handleConditionChange = (value: string) => {
     try {

@@ -92,7 +92,6 @@ export function WaitForInstancesStepField({
   const stepType = useWatch({ name: 'stepType', control: form.control });
 
   useEffect(() => {
-    if (stepType !== 'WaitForInstances') return;
     if (nodeId) return; // Don't reset in edit mode
 
     const currentMapping = form.getValues(name) || [];
@@ -107,10 +106,6 @@ export function WaitForInstancesStepField({
     control: form.control,
     defaultValue: [],
   });
-
-  if (stepType !== 'WaitForInstances') {
-    return null;
-  }
 
   const findField = (fieldName: string) =>
     (inputMapping || []).find((item: any) => item.type === fieldName);
