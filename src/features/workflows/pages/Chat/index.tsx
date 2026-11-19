@@ -103,7 +103,6 @@ export function ChatPage() {
             return;
           }
           const historyMessages = await fetchChatHistory(
-            token,
             workflowId,
             instanceId
           );

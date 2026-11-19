@@ -32,8 +32,10 @@ import {
 } from './InputMappingField/MappingValueInput';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { getRuntimeBaseUrl } from '@/shared/queries/utils';
-import { getConnections } from '@/features/connections/queries';
+import {
+  getConnectionResourceOptions,
+  getConnections,
+} from '@/features/connections/queries';
 import { getPlatformIcon, getPlatformName } from '@/shared/utils/platform-info';
 import {
   dirtied,
@@ -54,40 +56,6 @@ const AI_AGENT_FIELD_TYPE_HINTS: Record<string, string> = {
 interface ModelOption {
   value: string;
   label: string;
-}
-
-interface ConnectionResourcePage {
-  items?: Array<{
-    value: unknown;
-    label: string;
-  }>;
-}
-
-async function getConnectionModels(token: string | undefined, context?: any) {
-  const connectionId = String(context?.queryKey?.[1] || '');
-  const resourceName = String(context?.queryKey?.[2] || '');
-  const response = await fetch(
-    `${getRuntimeBaseUrl()}/connections/${encodeURIComponent(
-      connectionId
-    )}/resources`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ resourceName }),
-    }
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to resolve connection models: ${response.statusText}`
-    );
-  }
-  const data = (await response.json()) as ConnectionResourcePage;
-  return (data.items ?? [])
-    .filter((item) => typeof item.value === 'string')
-    .map((item) => ({ value: item.value as string, label: item.label }));
 }
 
 const RESERVED_HANDLE_IDS = new Set([
@@ -184,7 +152,11 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
       connectionId || '',
       selectedModelResourceName || ''
     ),
-    queryFn: getConnectionModels,
+    queryFn: () =>
+      getConnectionResourceOptions(
+        connectionId || '',
+        selectedModelResourceName || ''
+      ),
     placeholderData: [],
     enabled: Boolean(connectionId && selectedModelResourceName),
   });

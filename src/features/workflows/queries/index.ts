@@ -25,7 +25,8 @@ import {
   getStaticStepTypesWithRust,
 } from '@/features/workflows/utils/rust-workflow-validation';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders, getRuntimeBaseUrl } from '@/shared/queries/utils';
+import { runtimeFetch } from '@/shared/queries/runtime-fetch';
+import { createAuthHeaders } from '@/shared/queries/utils';
 
 export interface StepEventsFilters {
   stepId?: string;
@@ -464,20 +465,20 @@ export async function getCompilationProgress(
  * progress poll keyed on `watchedCompilationVersion` reflects status live.
  */
 export async function rebuildWorkflowVersion(
-  token: string,
   workflowId: string,
   version: number
 ): Promise<void> {
-  const base = getRuntimeBaseUrl();
-  const url = `${base}/workflows/${encodeURIComponent(
-    workflowId
-  )}/versions/${version}/compile?forceRecompile=true`;
   // Intentionally not awaiting on the UI thread — the backend blocks its
   // HTTP response until the compile finishes (~30 s), but the toolbar
-  // polling endpoint already drives status, including the failure case.
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  void fetch(url, { method: 'POST', headers });
+  // polling endpoint already drives status, including the failure case. A
+  // request that never reaches the server is not seen by that poll, so it is
+  // logged here rather than dropped.
+  void runtimeFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/versions/${version}/compile?forceRecompile=true`,
+    { method: 'POST' }
+  ).catch((error) => {
+    console.warn('[workflows] the rebuild request was not sent', error);
+  });
 }
 
 export async function scheduleWorkflow(
@@ -519,19 +520,13 @@ export async function resumeInstance(token: string, instanceId: string) {
  * POST /api/runtime/workflows/instances/{instanceId}/pause
  * (api/handlers/workflows.rs::pause_instance_handler). Only instances in the
  * 'running' state can be paused; already-suspended instances are a no-op 200
- * and any other state returns 400 "Instance not pausable". The generated API
- * client does not expose this handler yet, so call it with a raw fetch like
- * rebuildWorkflowVersion does.
+ * and any other state returns 400 "Instance not pausable".
  */
-export async function pauseInstance(token: string, instanceId: string) {
-  const base = getRuntimeBaseUrl();
-  const url = `${base}/workflows/instances/${encodeURIComponent(
-    instanceId
-  )}/pause`;
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const response = await fetch(url, { method: 'POST', headers });
+export async function pauseInstance(instanceId: string) {
+  const response = await runtimeFetch(
+    `/workflows/instances/${encodeURIComponent(instanceId)}/pause`,
+    { method: 'POST' }
+  );
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -587,15 +582,13 @@ export async function getWorkflowStepTypes(
 }
 
 // Helper function to fetch agent details using path parameter
-async function fetchAgentDetails(token: string, agentId: string) {
-  const url = `${getRuntimeBaseUrl()}/agents/${encodeURIComponent(agentId)}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
+async function fetchAgentDetails(agentId: string) {
+  const response = await runtimeFetch(
+    `/agents/${encodeURIComponent(agentId)}`,
+    {
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch agent details: ${response.statusText}`);
@@ -634,7 +627,7 @@ export async function getAgents(
     // skip them to avoid the round-trip and the console noise.
     const enabledSummaries = result.data.agents.filter((a) => isEnabled(a.id));
     const agentDetailsPromises = enabledSummaries.map((agentSummary) =>
-      fetchAgentDetails(token, agentSummary.id)
+      fetchAgentDetails(agentSummary.id)
     );
 
     const agentsWithDetails = await Promise.all(agentDetailsPromises);
@@ -644,7 +637,7 @@ export async function getAgents(
 }
 
 export async function getAgentDetails(
-  token: string,
+  _token: string,
   agentId: string
 ): Promise<AgentInfo | null> {
   if (!agentId) {
@@ -660,7 +653,7 @@ export async function getAgentDetails(
     console.warn('Static WASM agent metadata unavailable; using HTTP', error);
   }
 
-  return fetchAgentDetails(token, agentId);
+  return fetchAgentDetails(agentId);
 }
 
 export async function replayWorkflow(token: string, instanceId: string) {
@@ -927,21 +920,14 @@ export type PendingInput =
   import('@/generated/RuntaraRuntimeApi').PendingInputResponse;
 
 export async function getPendingInput(
-  token: string,
   workflowId: string,
   instanceId: string,
   signal?: AbortSignal
 ): Promise<PendingInput[]> {
-  const url = `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/instances/${encodeURIComponent(instanceId)}/pending-input`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await runtimeFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/instances/${encodeURIComponent(instanceId)}/pending-input`,
+    { signal, headers: { 'Content-Type': 'application/json' } }
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch pending input: ${response.statusText}`);
@@ -955,21 +941,15 @@ export async function getPendingInput(
   return json.data.pendingInputs;
 }
 
-export async function deliverSignal(
-  token: string,
-  instanceId: string,
-  body: InputSubmission
-) {
-  const url = `${getRuntimeBaseUrl()}/signals/${encodeURIComponent(instanceId)}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+export async function deliverSignal(instanceId: string, body: InputSubmission) {
+  const response = await runtimeFetch(
+    `/signals/${encodeURIComponent(instanceId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
 
   const result = await response.json().catch(() => null);
   if (!response.ok) {

@@ -218,3 +218,27 @@ export async function getConnectionTypes(token: string) {
 
   return result.data.connectionTypes || [];
 }
+
+/** A value a step may take from a connection (a model, say), with its label. */
+export interface ConnectionResourceOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * The values of `resourceName` that a connection offers (the models of an AI
+ * provider, say). Values that are not strings are left out: a step field
+ * holds a string.
+ */
+export async function getConnectionResourceOptions(
+  connectionId: string,
+  resourceName: string
+): Promise<ConnectionResourceOption[]> {
+  const result = await RuntimeREST.api.resolveConnectionResourceHandler(
+    connectionId,
+    { resourceName }
+  );
+  return (result.data.items ?? [])
+    .filter((item) => typeof item.value === 'string')
+    .map((item) => ({ value: item.value as string, label: item.label }));
+}

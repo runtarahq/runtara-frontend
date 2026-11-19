@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe('authoritative chat input discovery and acceptance', () => {
   it('retains exact payloads and operations for an uncertain original reply after editing and route advancement', async () => {
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    const { result } = renderHook(() => useChatInputs('workflow'));
     await waitFor(() =>
       expect(useChatStore.getState().pendingInputs).toHaveLength(1)
     );
@@ -72,7 +72,7 @@ describe('authoritative chat input discovery and acceptance', () => {
     expect(result.current.uncertainResponses).toHaveLength(1);
   });
   it('follows the conversation to its next run while retaining an uncertain reply against its original instance', async () => {
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    const { result } = renderHook(() => useChatInputs('workflow'));
     await waitFor(() =>
       expect(useChatStore.getState().pendingInputs).toHaveLength(1)
     );
@@ -115,7 +115,7 @@ describe('authoritative chat input discovery and acceptance', () => {
       request,
       { ...request, requestId: 'second' },
     ]);
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    const { result } = renderHook(() => useChatInputs('workflow'));
     await waitFor(() =>
       expect(useChatStore.getState().pendingInputs).toHaveLength(2)
     );
@@ -145,7 +145,7 @@ describe('authoritative chat input discovery and acceptance', () => {
   it('ignores a delayed snapshot after switching executions', async () => {
     const old = deferred<(typeof request)[]>();
     vi.mocked(getPendingInput).mockReturnValueOnce(old.promise);
-    renderHook(() => useChatInputs('workflow', 'token'));
+    renderHook(() => useChatInputs('workflow'));
     vi.mocked(getPendingInput).mockResolvedValue([]);
     act(() => useChatStore.getState().setInstanceId('replacement'));
     await act(async () => {
@@ -158,7 +158,7 @@ describe('authoritative chat input discovery and acceptance', () => {
   it('rejects older overlapping refreshes even within the same execution', async () => {
     const old = deferred<(typeof request)[]>();
     vi.mocked(getPendingInput).mockReturnValueOnce(old.promise);
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    const { result } = renderHook(() => useChatInputs('workflow'));
     vi.mocked(getPendingInput).mockResolvedValue([]);
     await act(() => result.current.refreshPendingInput());
     await act(async () => {
@@ -168,7 +168,7 @@ describe('authoritative chat input discovery and acceptance', () => {
   });
 
   it('retains a lost-ack form and replays the exact operation after discovery excludes acceptance', async () => {
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    const { result } = renderHook(() => useChatInputs('workflow'));
     await waitFor(() =>
       expect(useChatStore.getState().waitingForInput).not.toBeNull()
     );
@@ -196,14 +196,14 @@ describe('authoritative chat input discovery and acceptance', () => {
       });
     });
     expect(accepted).toBe(true);
-    expect(vi.mocked(deliverSignal).mock.calls[1][2]).toEqual(
-      vi.mocked(deliverSignal).mock.calls[0][2]
+    expect(vi.mocked(deliverSignal).mock.calls[1][1]).toEqual(
+      vi.mocked(deliverSignal).mock.calls[0][1]
     );
     expect(useChatStore.getState().pendingInputs).toEqual([]);
   });
 
   it('clears a stale target without delivering it to another request', async () => {
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    const { result } = renderHook(() => useChatInputs('workflow'));
     await waitFor(() =>
       expect(useChatStore.getState().waitingForInput).not.toBeNull()
     );
@@ -226,7 +226,7 @@ describe('authoritative chat input discovery and acceptance', () => {
   });
 
   it('drops every uncertain retry once its request closed unanswered', async () => {
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    const { result } = renderHook(() => useChatInputs('workflow'));
     await waitFor(() =>
       expect(useChatStore.getState().pendingInputs).toHaveLength(1)
     );
@@ -255,7 +255,7 @@ describe('authoritative chat input discovery and acceptance', () => {
     vi.mocked(getPendingInput).mockResolvedValue([
       { ...request, requestedAt: 'now' },
     ]);
-    renderHook(() => useChatInputs('workflow', 'token'));
+    renderHook(() => useChatInputs('workflow'));
     await waitFor(() =>
       expect(useChatStore.getState().waitingForInput?.requestId).toBe('request')
     );

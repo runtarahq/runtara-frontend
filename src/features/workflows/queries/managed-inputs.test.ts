@@ -26,9 +26,9 @@ describe('managed input HTTP contract', () => {
         async () => new Response(JSON.stringify({ success: true, data }))
       );
     vi.stubGlobal('fetch', fetch);
-    expect(
-      await sendConversationMessage('token', 'workflow', 'a key', message)
-    ).toEqual(data);
+    expect(await sendConversationMessage('workflow', 'a key', message)).toEqual(
+      data
+    );
     expect(fetch.mock.calls[0][0]).toContain(
       '/workflows/workflow/conversations/a%20key/messages'
     );
@@ -39,7 +39,7 @@ describe('managed input HTTP contract', () => {
       )
     );
     await expect(
-      sendConversationMessage('token', 'workflow', 'a key', message)
+      sendConversationMessage('workflow', 'a key', message)
     ).rejects.toThrow('could not be confirmed');
   });
   it('reports a full conversation with its code and status', async () => {
@@ -57,7 +57,7 @@ describe('managed input HTTP contract', () => {
       )
     );
     await expect(
-      sendConversationMessage('token', 'workflow', 'key', { id: 'm' })
+      sendConversationMessage('workflow', 'key', { id: 'm' })
     ).rejects.toMatchObject({
       code: 'CONVERSATION_QUEUE_FULL',
       status: 429,
@@ -70,9 +70,7 @@ describe('managed input HTTP contract', () => {
         new Response(JSON.stringify({ success: true, data: receipt }))
       );
     vi.stubGlobal('fetch', fetch);
-    expect(await deliverSignal('token', 'instance', submission)).toEqual(
-      receipt
-    );
+    expect(await deliverSignal('instance', submission)).toEqual(receipt);
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(submission);
     expect(fetch.mock.calls[0][1].body).not.toContain('checkpointId');
   });
@@ -88,9 +86,10 @@ describe('managed input HTTP contract', () => {
           )
         )
     );
-    await expect(
-      deliverSignal('token', 'instance', submission)
-    ).rejects.toMatchObject({ code: 'INPUT_INACTIVE', status: 409 });
+    await expect(deliverSignal('instance', submission)).rejects.toMatchObject({
+      code: 'INPUT_INACTIVE',
+      status: 409,
+    });
   });
   it('does not acknowledge a malformed or mismatched success response', async () => {
     vi.stubGlobal(
@@ -104,9 +103,9 @@ describe('managed input HTTP contract', () => {
         )
       )
     );
-    await expect(
-      deliverSignal('token', 'instance', submission)
-    ).rejects.toBeInstanceOf(InputSubmissionError);
+    await expect(deliverSignal('instance', submission)).rejects.toBeInstanceOf(
+      InputSubmissionError
+    );
   });
   it('unwraps the same authoritative pending page for session and execution callers', async () => {
     const data = {
@@ -122,7 +121,7 @@ describe('managed input HTTP contract', () => {
           async () => new Response(JSON.stringify({ success: true, data }))
         )
     );
-    expect(await getPendingInput('token', 'workflow', 'instance')).toEqual(
+    expect(await getPendingInput('workflow', 'instance')).toEqual(
       data.pendingInputs
     );
   });
@@ -135,8 +134,8 @@ describe('managed input HTTP contract', () => {
           async () => new Response(JSON.stringify({ success: false }))
         )
     );
-    await expect(
-      getPendingInput('token', 'workflow', 'instance')
-    ).rejects.toThrow('Invalid pending input response');
+    await expect(getPendingInput('workflow', 'instance')).rejects.toThrow(
+      'Invalid pending input response'
+    );
   });
 });

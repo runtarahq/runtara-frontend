@@ -39,6 +39,7 @@ const cases = [
   {
     name: 'Stop',
     call: queries.stopInstance,
+    args: (token: string) => [token, 'run-1'],
     click: () => {
       renderWithQueries(<StopButton instanceId="run-1" />);
       fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
@@ -47,6 +48,8 @@ const cases = [
   {
     name: 'Pause',
     call: queries.pauseInstance,
+    // Sent through runtimeFetch, which carries the token itself.
+    args: () => ['run-1'],
     click: () => {
       renderWithQueries(<PauseButton instanceId="run-1" />);
       fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
@@ -56,6 +59,7 @@ const cases = [
   {
     name: 'Resume',
     call: queries.resumeInstance,
+    args: (token: string) => [token, 'run-1'],
     click: () => {
       renderWithQueries(<ResumeButton instanceId="run-1" />);
       fireEvent.click(
@@ -65,7 +69,7 @@ const cases = [
   },
 ];
 
-describe.each(cases)('$name button', ({ call, click }) => {
+describe.each(cases)('$name button', ({ call, click, args }) => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryClient = new QueryClient();
@@ -75,7 +79,7 @@ describe.each(cases)('$name button', ({ call, click }) => {
     auth.oidc = false;
     auth.token = '';
     click();
-    await waitFor(() => expect(call).toHaveBeenCalledWith('', 'run-1'));
+    await waitFor(() => expect(call).toHaveBeenCalledWith(...args('')));
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -96,7 +100,7 @@ describe.each(cases)('$name button', ({ call, click }) => {
     auth.token = 'access-token';
     click();
     await waitFor(() =>
-      expect(call).toHaveBeenCalledWith('access-token', 'run-1')
+      expect(call).toHaveBeenCalledWith(...args('access-token'))
     );
   });
 

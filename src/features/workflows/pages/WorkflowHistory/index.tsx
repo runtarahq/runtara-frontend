@@ -94,8 +94,7 @@ function WorkflowHistoryContent() {
       workflowId ?? '',
       instanceId ?? ''
     ),
-    queryFn: (token: string) =>
-      getPendingInput(token, workflowId!, instanceId!),
+    queryFn: () => getPendingInput(workflowId!, instanceId!),
     enabled: !!workflowId && !!instanceId,
     placeholderData: undefined,
     refetchInterval: () => {

@@ -138,7 +138,6 @@ describe('ChatPage on a workflow that cannot chat', () => {
 
     await waitFor(() => {
       expect(mocks.fetchChatHistory).toHaveBeenCalledWith(
-        'test-token',
         WORKFLOW_ID,
         INSTANCE_ID
       );
@@ -162,7 +161,6 @@ describe('ChatPage on a chat-capable workflow', () => {
 
     await waitFor(() => {
       expect(mocks.sendConversationMessage).toHaveBeenCalledWith(
-        'test-token',
         WORKFLOW_ID,
         expect.stringMatching(/^console:/),
         expect.objectContaining({ payload: {} }),

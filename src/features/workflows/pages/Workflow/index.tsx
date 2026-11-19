@@ -1137,8 +1137,8 @@ export function Workflow() {
     void,
     { workflowId: string; version: number }
   >({
-    mutationFn: (token, { workflowId: wid, version }) =>
-      rebuildWorkflowVersion(token, wid, version),
+    mutationFn: (_token, { workflowId: wid, version }) =>
+      rebuildWorkflowVersion(wid, version),
   });
 
   const handleVersionRebuild = useCallback(

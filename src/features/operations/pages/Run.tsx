@@ -56,7 +56,7 @@ export function RunPage() {
   const finished = Boolean(run.data) && !isActiveStatus(run.data?.status);
   const pending = useCustomQuery({
     queryKey: ['operations', tenant, 'pending', workflowId, instanceId],
-    queryFn: (token: string) => getPendingInput(token, workflowId, instanceId),
+    queryFn: () => getPendingInput(workflowId, instanceId),
     refetchInterval: finished ? false : 10_000,
     placeholderData: undefined,
   });

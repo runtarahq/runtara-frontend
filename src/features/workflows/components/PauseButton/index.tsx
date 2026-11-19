@@ -52,7 +52,7 @@ export function PauseButton(props: Props) {
     setConfirmOpen(false);
     setIsLoading(true);
     try {
-      await pauseInstance(token, instanceId);
+      await pauseInstance(instanceId);
       await refreshRunViews(queryClient);
       toast.success('Workflow instance has been paused');
     } catch (error) {

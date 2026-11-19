@@ -26,6 +26,7 @@ vi.mock('runtara-validation-wasm/runtara_validation_bg.wasm?url', () => ({
   default: '/validation.wasm',
 }));
 vi.mock('@/shared/config/runtimeConfig', () => ({
+  isOidcAuth: false,
   config: { oidc: { authority: '', clientId: '' } },
 }));
 vi.mock('@/shared/queries/utils', () => ({

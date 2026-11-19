@@ -136,7 +136,7 @@ function ExecutionTimelineContent({
     PendingInput[]
   >({
     queryKey: queryKeys.workflows.pendingInput(workflowId, instanceId),
-    queryFn: (token: string) => getPendingInput(token, workflowId, instanceId),
+    queryFn: () => getPendingInput(workflowId, instanceId),
     enabled: !!workflowId && !!instanceId,
     placeholderData: undefined,
     refetchInterval: () => {

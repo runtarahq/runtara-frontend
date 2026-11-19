@@ -1,5 +1,3 @@
-import { User } from 'oidc-client-ts';
-
 import initRustValidation, {
   agentCatalogLoaded,
   analyzeFormJson,
@@ -14,8 +12,7 @@ import initRustValidation, {
   validateWorkflowStartInputsJson,
 } from 'runtara-validation-wasm';
 import rustValidationWasmUrl from 'runtara-validation-wasm/runtara_validation_bg.wasm?url';
-import { config } from '@/shared/config/runtimeConfig';
-import { getRuntimeBaseUrl } from '@/shared/queries/utils';
+import { runtimeFetch } from '@/shared/queries/runtime-fetch';
 
 export {
   analyzeFormJson,
@@ -32,44 +29,18 @@ export {
 let initPromise: Promise<unknown> | null = null;
 let agentCatalogPromise: Promise<void> | null = null;
 
-function readAccessTokenFromStorage(): string | undefined {
-  const authority = config.oidc.authority;
-  const clientId = config.oidc.clientId;
-  if (!authority || !clientId) {
-    return undefined;
-  }
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return undefined;
-  }
-  const raw = window.localStorage.getItem(`oidc.user:${authority}:${clientId}`);
-  if (!raw) {
-    return undefined;
-  }
-  try {
-    const user = User.fromStorageString(raw);
-    return user.expired ? undefined : user.access_token;
-  } catch {
-    return undefined;
-  }
-}
-
 async function loadAgentCatalogIntoWasm(): Promise<void> {
   if (agentCatalogLoaded()) {
     return;
   }
-  const url = `${getRuntimeBaseUrl()}/agents`;
-  const token = readAccessTokenFromStorage();
-  const headers: Record<string, string> = { accept: 'application/json' };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  const response = await fetch(url, {
+  const headers = { accept: 'application/json' };
+  const response = await runtimeFetch('/agents', {
     credentials: 'include',
     headers,
   });
   if (!response.ok) {
     throw new Error(
-      `${url} returned HTTP ${response.status} ${response.statusText}`
+      `/agents returned HTTP ${response.status} ${response.statusText}`
     );
   }
   const body = (await response.json()) as { agents?: unknown };
@@ -83,14 +54,14 @@ async function loadAgentCatalogIntoWasm(): Promise<void> {
       if (typeof id !== 'string' || id.length === 0) {
         throw new Error('Agent catalog summary is missing a valid id');
       }
-      const detailUrl = `${url}/${encodeURIComponent(id)}`;
-      const detailResponse = await fetch(detailUrl, {
+      const detailPath = `/agents/${encodeURIComponent(id)}`;
+      const detailResponse = await runtimeFetch(detailPath, {
         credentials: 'include',
         headers,
       });
       if (!detailResponse.ok) {
         throw new Error(
-          `${detailUrl} returned HTTP ${detailResponse.status} ${detailResponse.statusText}`
+          `${detailPath} returned HTTP ${detailResponse.status} ${detailResponse.statusText}`
         );
       }
       return detailResponse.json();

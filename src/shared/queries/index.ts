@@ -1,8 +1,10 @@
 import * as ManagementAPI from '@/generated/RuntaraManagementApi.ts';
 import * as RuntimeAPI from '@/generated/RuntaraRuntimeApi.ts';
-import { config, isOidcAuth } from '@/shared/config/runtimeConfig';
+import type { AxiosHeaders } from 'axios';
+import { currentAccessToken } from '@/shared/auth/access-token';
+import { config } from '@/shared/config/runtimeConfig';
 import { useAuthStore } from '@/shared/stores/authStore.ts';
-import { useMaintenanceStore } from '@/shared/stores/maintenanceStore.ts';
+import { reportResponseStatus } from './response-status';
 
 // Resolve the API base URL. When unset (one host routing /api to the server,
 // or vite dev), we use relative URLs and let the browser resolve them.
@@ -39,50 +41,36 @@ RuntimeREST.instance.interceptors.request.use((requestConfig) => {
   return requestConfig;
 });
 
-// Interceptor: detect 503 (Service Unavailable) and activate maintenance mode
-const maintenanceInterceptor = (error: any) => {
-  if (error?.response?.status === 503) {
-    useMaintenanceStore.getState().setMaintenanceMode(true);
+/**
+ * Sends the signed-in user's token with a call to the API, unless the caller
+ * set an `Authorization` header itself. A query function therefore needs no
+ * token of its own; those that still pass one keep working.
+ */
+export const attachAccessToken = <
+  T extends { url?: string; headers: AxiosHeaders },
+>(
+  requestConfig: T
+): T => {
+  if (
+    requestConfig.url?.startsWith('/api/') &&
+    !requestConfig.headers.has('Authorization')
+  ) {
+    const token = currentAccessToken();
+    if (token) requestConfig.headers.set('Authorization', `Bearer ${token}`);
   }
+  return requestConfig;
+};
+
+// 503 turns maintenance mode on and a 401 sends the user to sign in: the same
+// for every way of calling the API (see reportResponseStatus).
+const statusInterceptor = (error: any) => {
+  reportResponseStatus(error?.response?.status);
   return Promise.reject(error);
 };
 
-// Interceptor: redirect to login on 401 Unauthorized (expired/invalid token).
-// Non-OIDC modes have no login to return to, so a 401 there is a genuine server
-// error — propagate it to the caller instead of triggering a redirect loop.
-let isRedirectingToLogin = false;
-const unauthorizedInterceptor = (error: any) => {
-  if (isOidcAuth && error?.response?.status === 401 && !isRedirectingToLogin) {
-    isRedirectingToLogin = true;
-    useAuthStore.getState().clearOrgId();
-    useAuthStore.getState().clearUserGroups();
-    // Clear OIDC session from storage before redirecting to prevent
-    // re-authentication loop (useAutoSignin would re-auth, hit 401 again)
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('oidc.')) {
-        localStorage.removeItem(key);
-      }
-    }
-    window.location.href = window.location.origin;
-  }
-  return Promise.reject(error);
-};
-
-ManagementAPIClient.instance.interceptors.response.use(
-  undefined,
-  maintenanceInterceptor
-);
-ManagementAPIClient.instance.interceptors.response.use(
-  undefined,
-  unauthorizedInterceptor
-);
-RuntimeREST.instance.interceptors.response.use(
-  undefined,
-  maintenanceInterceptor
-);
-RuntimeREST.instance.interceptors.response.use(
-  undefined,
-  unauthorizedInterceptor
-);
+for (const client of [ManagementAPIClient, RuntimeREST]) {
+  client.instance.interceptors.request.use(attachAccessToken);
+  client.instance.interceptors.response.use(undefined, statusInterceptor);
+}
 
 export * from './billing';
