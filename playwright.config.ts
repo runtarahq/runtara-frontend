@@ -104,11 +104,12 @@ export default defineConfig({
       testIgnore: /.*\.local\.e2e\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
-        storageState: authFile,
+        // No signed-in state where the server needs no sign-in.
+        ...(smokeUsesNonOidcAuth ? {} : { storageState: authFile }),
         viewport: { width: 1920, height: 1080 },
         video: { mode: 'on', size: { width: 1920, height: 1080 } },
       },
-      dependencies: ['setup'],
+      ...(smokeUsesNonOidcAuth ? {} : { dependencies: ['setup'] }),
       timeout: 120000, // 120s for full-stack round trips
     },
 

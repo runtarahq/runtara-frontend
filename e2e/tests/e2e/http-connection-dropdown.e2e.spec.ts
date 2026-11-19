@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -27,31 +28,6 @@ const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const RUNTIME_API = `${GATEWAY_URL}/api/runtime`;
 
 // ── Auth helpers ──────────────────────────────────────────────────
-
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-  throw new Error('No access token found in auth state file');
-}
-
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
 
 // ── Test ──────────────────────────────────────────────────────────
 
