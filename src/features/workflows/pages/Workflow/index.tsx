@@ -2,7 +2,6 @@ import type { SchemaField as EditorSchemaField } from '@/features/workflows/comp
 import {
   useWorkflowSettings,
   type WorkflowChanges,
-  type WorkflowVariable,
 } from './useWorkflowSettings';
 import { useWorkflowExecution } from './useWorkflowExecution';
 import { useParams } from 'react-router';
@@ -17,10 +16,6 @@ import { WorkflowEditor } from '@/features/workflows/components/WorkflowEditor';
 import { WorkflowActionsForm } from '@/features/workflows/pages/Workflow/WorkflowActionsForm';
 import { Loader } from '@/shared/components/loader.tsx';
 import { composeExecutionGraph } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
-import {
-  validateExecutionGraphWithRust,
-  validateSchemaFieldsWithRust,
-} from '@/features/workflows/utils/rust-workflow-validation';
 import '@xyflow/react/dist/base.css';
 import { queryClient } from '@/bootstrap.tsx';
 import { slugify } from '@/shared/utils/string-utils';
@@ -44,6 +39,8 @@ import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
 import { dropSavedEntries } from './drop-saved-entries';
+import { prepareWorkflowSave } from './save-workflow';
+import { graphOptions, mergeWorkflowSettings } from './workflow-settings';
 import { useOneAtATime } from './use-one-at-a-time';
 import { BackgroundBuildWatch, useBuildWatchTimeout } from './build-watch';
 import {
@@ -53,16 +50,11 @@ import {
 import type { CompilationToolbarStatus } from '@/features/workflows/pages/Workflow/WorkflowActionsForm';
 import { ValidationPanel } from '@/features/workflows/components/ValidationPanel';
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
-import {
-  convertClientErrors,
-  convertClientWarnings,
-  convertServerErrors,
-} from '@/features/workflows/utils/validation-helpers';
+import { convertServerErrors } from '@/features/workflows/utils/validation-helpers';
 
 import {
   parseSchema,
   buildSchemaFromFields,
-  buildStateSchemaFromFields,
   type SchemaField,
 } from '@/features/workflows/utils/schema';
 import {
@@ -714,219 +706,35 @@ export function Workflow() {
   const submitWorkflow = async ({ name }: Record<string, any>) => {
     // What this save sends; see dropSavedEntries.
     const sentWorkflowChanges = stagedWorkflowChanges;
-    // Get the current state from Zustand store
-    const { isDirty } = useWorkflowStore.getState();
+    const finalState = useWorkflowStore.getState();
+    const savedRevision = finalState.dirtyRevision;
 
-    // Check if the name has changed
-    const nameChanged = name !== data.name;
-
-    // Check if there are staged workflow changes (metadata: variables, schemas, description)
-    const hasStagedWorkflowChanges =
-      Object.keys(stagedWorkflowChanges).length > 0;
-
-    // Check if the canvas has changed
-    const hasWorkflowChanges = isDirty;
-
-    // If nothing has changed, just show a message and return
-    if (!hasWorkflowChanges && !nameChanged && !hasStagedWorkflowChanges) {
+    // Composed and checked by the browser's validator (./save-workflow.ts).
+    const prepared = await prepareWorkflowSave({
+      name,
+      data,
+      staged: stagedWorkflowChanges,
+      isDirty: finalState.isDirty,
+      nodes: finalState.nodes,
+      edges: finalState.edges,
+    });
+    if (prepared.outcome === 'unchanged') {
       toast.info('No changes to save');
       return;
     }
-
-    const finalState = useWorkflowStore.getState();
-    const savedRevision = finalState.dirtyRevision;
-    // Build variables object for execution graph
-    // Use staged changes if available, otherwise use original data
-    // Convert from UI format [{ name, value, type }, ...] to API format { varName: { type, value }, ... }
-    // Values are already typed correctly (boolean, number, etc.) from VariablesEditor
-    const variablesArray =
-      stagedWorkflowChanges.variables ?? data.variables ?? [];
-    let variables:
-      | Record<string, { type: string; value: unknown; description?: string }>
-      | undefined;
-    if (variablesArray.length > 0) {
-      variables = variablesArray.reduce(
-        (
-          acc: Record<
-            string,
-            { type: string; value: unknown; description?: string }
-          >,
-          variable: WorkflowVariable
-        ) => {
-          acc[variable.name] = {
-            type: variable.type || 'string',
-            value: variable.value,
-            ...(variable.description
-              ? { description: variable.description }
-              : {}),
-          };
-          return acc;
-        },
-        {} as Record<
-          string,
-          { type: string; value: unknown; description?: string }
-        >
-      );
-    }
-
-    // Build input/output schemas for execution graph
-    // Use staged changes if available, otherwise use original data
-    const inputSchemaFieldsToUse =
-      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [];
-    const outputSchemaFieldsToUse =
-      stagedWorkflowChanges.outputSchemaFields ?? data.outputSchemaFields ?? [];
-    const stateSchemaFieldsToUse =
-      stagedWorkflowChanges.stateSchemaFields ?? data.stateSchemaFields ?? [];
-
-    const [
-      inputSchemaValidation,
-      outputSchemaValidation,
-      stateSchemaValidation,
-    ] = await Promise.all([
-      validateSchemaFieldsWithRust('Input schema', inputSchemaFieldsToUse),
-      validateSchemaFieldsWithRust('Output schema', outputSchemaFieldsToUse),
-      validateSchemaFieldsWithRust('State schema', stateSchemaFieldsToUse),
-    ]);
-    // WASM unavailability is an unknown state, not a failure — surface it as
-    // a warning and continue. The backend validator is authoritative for
-    // schema fields, so blocking save here just on missing WASM punishes
-    // users for an environment problem (e.g. agent components not staged).
-    // Mirrors the execution-graph path's treatment of `unavailable` below.
-    const schemaFieldUnavailableWarnings = convertClientWarnings(
-      [inputSchemaValidation, outputSchemaValidation, stateSchemaValidation]
-        .filter((result) => result.status === 'unavailable')
-        .map((result) => result.message),
-      finalState.nodes
-    );
-
-    const schemaFieldErrors = [
-      ...(inputSchemaValidation.status === 'invalid'
-        ? inputSchemaValidation.errors.length > 0
-          ? inputSchemaValidation.errors
-          : [inputSchemaValidation.message]
-        : []),
-      ...(outputSchemaValidation.status === 'invalid'
-        ? outputSchemaValidation.errors.length > 0
-          ? outputSchemaValidation.errors
-          : [outputSchemaValidation.message]
-        : []),
-      ...(stateSchemaValidation.status === 'invalid'
-        ? stateSchemaValidation.errors.length > 0
-          ? stateSchemaValidation.errors
-          : [stateSchemaValidation.message]
-        : []),
-    ];
-
-    if (schemaFieldErrors.length > 0) {
-      useValidationStore
-        .getState()
-        .setMessages([
-          ...convertClientErrors(schemaFieldErrors, finalState.nodes),
-          ...schemaFieldUnavailableWarnings,
-        ]);
-      return;
-    }
-
-    const inputSchema =
-      inputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(inputSchemaFieldsToUse)
-        : undefined;
-    const outputSchema =
-      outputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(outputSchemaFieldsToUse)
-        : undefined;
-    const stateSchema =
-      stateSchemaFieldsToUse.length > 0
-        ? buildStateSchemaFromFields(stateSchemaFieldsToUse)
-        : undefined;
-
-    // Get execution timeout from staged changes or original data
-    const executionTimeoutSeconds =
-      stagedWorkflowChanges.executionTimeoutSeconds ??
-      data.executionTimeoutSeconds;
-
-    // Get rate limit budget from staged changes or original data
-    const rateLimitBudgetMs =
-      stagedWorkflowChanges.rateLimitBudgetMs ?? data.rateLimitBudgetMs;
-    const durable = hasOwn(stagedWorkflowChanges, 'durable')
-      ? stagedWorkflowChanges.durable
-      : data.durable;
-    const entryPoint = hasOwn(stagedWorkflowChanges, 'entryPoint')
-      ? stagedWorkflowChanges.entryPoint
-      : data.entryPoint;
-    const memoryMb = hasOwn(stagedWorkflowChanges, 'memoryMb')
-      ? stagedWorkflowChanges.memoryMb
-      : data.memoryMb;
-    const trackEvents = hasOwn(stagedWorkflowChanges, 'trackEvents')
-      ? stagedWorkflowChanges.trackEvents
-      : data.trackEvents;
-
-    // Get name and description for the execution graph
-    // Name is required - prefer staged changes, fall back to current data, ensure non-empty
-    const workflowName = stagedWorkflowChanges.name || data.name || '';
-    // Description is optional - only include if it has a value
-    const workflowDescription =
-      stagedWorkflowChanges.description ?? data.description ?? '';
-
-    // Compose execution graph with name, description, variables, schemas, and timeout included
-    const executionGraph =
-      composeExecutionGraph(finalState.nodes, finalState.edges, {
-        name: workflowName,
-        description: workflowDescription,
-        variables,
-        inputSchema,
-        outputSchema,
-        stateSchema,
-        executionTimeoutSeconds,
-        rateLimitBudgetMs,
-        durable,
-        entryPoint,
-      }) ?? {};
-
-    const rustValidation = await validateExecutionGraphWithRust(executionGraph);
-    const rustErrors =
-      rustValidation.status === 'invalid'
-        ? rustValidation.errors.length > 0
-          ? convertClientErrors(
-              rustValidation.errors,
-              finalState.nodes,
-              rustValidation.errorGraphPaths
-            )
-          : convertClientErrors([rustValidation.message], finalState.nodes)
-        : [];
-    const rustWarnings = convertClientWarnings(
-      rustValidation.warnings,
-      finalState.nodes,
-      rustValidation.warningGraphPaths
-    );
-    // WASM unavailability is unknown validation state, not success. Surface it
-    // while still letting the backend validator decide the save request.
-    const wasmUnavailableWarnings =
-      rustValidation.status === 'unavailable'
-        ? convertClientWarnings([rustValidation.message], finalState.nodes)
-        : [];
-    const preSaveWarnings = [
-      ...rustWarnings,
-      ...wasmUnavailableWarnings,
-      ...schemaFieldUnavailableWarnings,
-    ];
-
-    if (rustValidation.status === 'invalid') {
-      useValidationStore
-        .getState()
-        .setMessages([...rustErrors, ...preSaveWarnings]);
-
-      const firstErrorStepId = useValidationStore
-        .getState()
-        .getFirstErrorStepId();
+    if (prepared.outcome === 'invalid') {
+      useValidationStore.getState().setMessages(prepared.messages);
+      const firstErrorStepId = prepared.focusFirstError
+        ? useValidationStore.getState().getFirstErrorStepId()
+        : null;
       if (firstErrorStepId) {
         useWorkflowStore.getState().setSelectedNodeId(firstErrorStepId);
         useWorkflowStore.getState().setPendingCenterNodeId(firstErrorStepId);
       }
       return;
     }
-
-    // If only warnings, still show them but continue with save.
+    const preSaveWarnings = prepared.warnings;
+    // Warnings alone are shown, and the save goes on.
     if (preSaveWarnings.length > 0) {
       useValidationStore.getState().setMessages(preSaveWarnings);
     }
@@ -937,12 +745,7 @@ export function Workflow() {
       savingWorkflowChangesRef.current = sentWorkflowChanges;
       await new Promise((resolve, reject) => {
         updateMutation.mutate(
-          {
-            id: workflowId!,
-            data: executionGraph,
-            memoryMb,
-            trackEvents,
-          },
+          { id: workflowId!, ...prepared.request },
           {
             onSuccess: resolve,
             onError: reject,
@@ -1165,90 +968,17 @@ export function Workflow() {
     // Get the current state from Zustand store
     const { nodes, edges } = useWorkflowStore.getState();
 
-    // Build variables object for export
-    const variablesArray =
-      stagedWorkflowChanges.variables ?? data.variables ?? [];
-    let variables:
-      | Record<string, { type: string; value: unknown; description?: string }>
-      | undefined;
-    if (variablesArray.length > 0) {
-      variables = variablesArray.reduce(
-        (
-          acc: Record<
-            string,
-            { type: string; value: unknown; description?: string }
-          >,
-          variable: WorkflowVariable
-        ) => {
-          acc[variable.name] = {
-            type: variable.type || 'string',
-            value: variable.value,
-            ...(variable.description
-              ? { description: variable.description }
-              : {}),
-          };
-          return acc;
-        },
-        {} as Record<
-          string,
-          { type: string; value: unknown; description?: string }
-        >
-      );
-    }
-
-    // Build schemas for export
-    const inputSchemaFieldsToUse =
-      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [];
-    const outputSchemaFieldsToUse =
-      stagedWorkflowChanges.outputSchemaFields ?? data.outputSchemaFields ?? [];
-    const inputSchema =
-      inputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(inputSchemaFieldsToUse)
-        : undefined;
-    const outputSchema =
-      outputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(outputSchemaFieldsToUse)
-        : undefined;
-    const stateSchemaFieldsToUse =
-      stagedWorkflowChanges.stateSchemaFields ?? data.stateSchemaFields ?? [];
-    const stateSchema =
-      stateSchemaFieldsToUse.length > 0
-        ? buildStateSchemaFromFields(stateSchemaFieldsToUse)
-        : undefined;
-
-    // Get execution timeout for export
-    const exportExecutionTimeoutSeconds =
-      stagedWorkflowChanges.executionTimeoutSeconds ??
-      data.executionTimeoutSeconds;
-    const exportRateLimitBudgetMs =
-      stagedWorkflowChanges.rateLimitBudgetMs ?? data.rateLimitBudgetMs;
-    const exportDurable = hasOwn(stagedWorkflowChanges, 'durable')
-      ? stagedWorkflowChanges.durable
-      : data.durable;
-    const exportEntryPoint = hasOwn(stagedWorkflowChanges, 'entryPoint')
-      ? stagedWorkflowChanges.entryPoint
-      : data.entryPoint;
-    const exportName = stagedWorkflowChanges.name ?? data.name ?? '';
-    const exportDescription =
-      stagedWorkflowChanges.description ?? data.description ?? '';
-    const exportMemoryMb = hasOwn(stagedWorkflowChanges, 'memoryMb')
-      ? stagedWorkflowChanges.memoryMb
-      : data.memoryMb;
-    const exportTrackEvents = hasOwn(stagedWorkflowChanges, 'trackEvents')
-      ? stagedWorkflowChanges.trackEvents
-      : data.trackEvents;
+    // The saved settings with the staged ones over them, as a save has them.
+    const settings = mergeWorkflowSettings(data, stagedWorkflowChanges);
+    const exportName = settings.name;
+    const exportDescription = settings.description;
+    const exportDurable = settings.durable;
+    const exportMemoryMb = settings.memoryMb;
+    const exportTrackEvents = settings.trackEvents;
 
     const executionGraph = composeExecutionGraph(nodes, edges, {
       name: exportName,
-      description: exportDescription,
-      variables,
-      inputSchema,
-      outputSchema,
-      stateSchema,
-      executionTimeoutSeconds: exportExecutionTimeoutSeconds,
-      rateLimitBudgetMs: exportRateLimitBudgetMs,
-      durable: exportDurable,
-      entryPoint: exportEntryPoint,
+      ...graphOptions(settings),
     });
 
     if (executionGraph) {

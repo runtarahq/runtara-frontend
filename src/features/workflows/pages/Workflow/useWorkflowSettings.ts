@@ -2,18 +2,12 @@ import { useMemo } from 'react';
 import type { Node } from '@xyflow/react';
 import { NODE_TYPES } from '@/features/workflows/config/workflow';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
-import type { WorkflowData } from '@/features/workflows/components/WorkflowEditor/EditorSidebar';
-import type { UIVariable } from '@/features/workflows/components/WorkflowEditor/EditorSidebar/VariablesEditor';
+import {
+  mergeWorkflowSettings,
+  type WorkflowChanges,
+} from './workflow-settings';
 
-export type WorkflowVariable = UIVariable;
-
-function hasOwn(object: object, key: string) {
-  return Object.prototype.hasOwnProperty.call(object, key);
-}
-
-export type WorkflowChanges = Partial<
-  Omit<WorkflowData, 'id' | 'entryPointOptions'>
->;
+export type { WorkflowChanges, WorkflowVariable } from './workflow-settings';
 
 type WorkflowSettingsData = WorkflowChanges & { nodes?: Node[] };
 
@@ -46,35 +40,8 @@ export function useWorkflowSettings(
   return useMemo(
     () => ({
       id: workflowId || '',
-      name: stagedWorkflowChanges.name ?? data.name ?? '',
-      description: stagedWorkflowChanges.description ?? data.description ?? '',
-      variables: stagedWorkflowChanges.variables ?? data.variables ?? [],
-      inputSchemaFields:
-        stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [],
-      outputSchemaFields:
-        stagedWorkflowChanges.outputSchemaFields ??
-        data.outputSchemaFields ??
-        [],
-      stateSchemaFields:
-        stagedWorkflowChanges.stateSchemaFields ?? data.stateSchemaFields ?? [],
-      executionTimeoutSeconds:
-        stagedWorkflowChanges.executionTimeoutSeconds ??
-        data.executionTimeoutSeconds,
-      rateLimitBudgetMs:
-        stagedWorkflowChanges.rateLimitBudgetMs ?? data.rateLimitBudgetMs,
-      durable: hasOwn(stagedWorkflowChanges, 'durable')
-        ? stagedWorkflowChanges.durable
-        : data.durable,
-      entryPoint: hasOwn(stagedWorkflowChanges, 'entryPoint')
-        ? stagedWorkflowChanges.entryPoint
-        : data.entryPoint,
+      ...mergeWorkflowSettings(data, stagedWorkflowChanges),
       entryPointOptions,
-      memoryMb: hasOwn(stagedWorkflowChanges, 'memoryMb')
-        ? stagedWorkflowChanges.memoryMb
-        : data.memoryMb,
-      trackEvents: hasOwn(stagedWorkflowChanges, 'trackEvents')
-        ? stagedWorkflowChanges.trackEvents
-        : data.trackEvents,
     }),
     [workflowId, stagedWorkflowChanges, data, entryPointOptions]
   );
