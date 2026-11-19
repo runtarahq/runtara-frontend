@@ -168,7 +168,7 @@ test.describe('Connection-required Rust validation (mocked)', () => {
         )
         .getByText(/requires connection_id/)
     ).toBeVisible();
-    await expect(page.getByText('Step: query_records').first()).toBeVisible();
+    await expect(page.getByText('Step: Query Records').first()).toBeVisible();
     expect(updateReached).toBe(false);
   });
 });

@@ -166,7 +166,7 @@ test.describe('Template reference Rust validation (mocked)', () => {
         page.getByTestId('validation-message').getByText(/missing_archive/)
       ).toBeVisible();
       await expect(page.getByText(/does not exist/)).toBeVisible();
-      await expect(page.getByText('Step: finish')).toBeVisible();
+      await expect(page.getByText('Step: Summary Output')).toBeVisible();
     } finally {
       releaseUpdate?.();
     }
