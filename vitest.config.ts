@@ -1,9 +1,14 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { editionAlias, editionDir, editionPlugins } from './edition.config';
+
+// The example edition's contract tests need the example to be the edition, so
+// they run only when it is (npm run test:edition).
+const exampleEdition = path.resolve(__dirname, 'examples/edition');
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ...editionPlugins],
   define: {
     'import.meta.env.VITE_RUNTARA_API_BASE_URL': JSON.stringify(
       'http://localhost:8080'
@@ -37,17 +42,10 @@ export default defineConfig({
       '**/e2e/**',
       '**/*.e2e.ts',
       '**/*.e2e.tsx',
+      ...(editionDir === exampleEdition ? [] : ['examples/**']),
     ],
   },
   resolve: {
-    alias: {
-      // The console's edition (src/shared/edition/types.ts): this repository's
-      // by default, a distribution's module when RUNTARA_EDITION_DIR names one.
-      '@edition': path.resolve(
-        __dirname,
-        process.env.RUNTARA_EDITION_DIR ?? './src/edition'
-      ),
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: editionAlias,
   },
 });

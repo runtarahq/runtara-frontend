@@ -1,0 +1,13 @@
+{
+  // The console with the example edition in place of src/edition: what
+  // `tsc -b` never sees, since it resolves `@edition` to this repository's
+  // empty one. `npm run test:edition` type-checks it.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@edition": ["./examples/edition"]
+    }
+  },
+  "include": ["src", "examples/edition"]
+}

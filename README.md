@@ -138,6 +138,7 @@ to the console's `oauth-complete.html`.
 - `npm run preview` — serve the production bundle locally
 - `npm run lint` — ESLint
 - `npm test` — Vitest
+- `npm run test:edition` — type-check and test the console built with the example edition (`examples/edition`)
 - `npm run test:e2e` — Playwright (see `e2e/README.md`)
 - `npm run generate-api-runtime-release` — regenerate the runtime API client from the pinned runtara release's `openapi.json`
 - `npm run check-api-runtime-release` — fail when the checked-in runtime API client is not that release's

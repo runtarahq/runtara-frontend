@@ -65,6 +65,32 @@ jobs:
 
       - run: npm run check-api-runtime-release
 
+  # The console with an edition in place of src/edition, which the checks
+  # above never build: type-checked, tested and bundled with the example one
+  # (examples/edition), which fills in every part of `Edition`.
+  edition:
+    name: Builds with an edition
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run test:edition
+
+      - name: Bundle with the example edition
+        env:
+          RUNTARA_EDITION_DIR: examples/edition
+        run: npx vite build
+
+      - name: The bundle carries the edition's pages
+        run: grep -rlF 'Accept the invitation' dist/assets
+
   e2e-mocked:
     name: E2E (mocked)
     # Playwright 1.59.1 supports Ubuntu 24.04; ubuntu-latest has moved to
