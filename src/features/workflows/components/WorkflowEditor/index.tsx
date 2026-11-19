@@ -18,7 +18,6 @@ import {
   OnConnectEnd,
 } from '@xyflow/react';
 import {
-  generateStepId,
   dirtied,
   useWorkflowStore,
 } from '@/features/workflows/stores/workflowStore.ts';
@@ -54,12 +53,10 @@ import {
   NoteNode,
   StartIndicatorNode,
 } from './CustomNodes';
-import {
-  canvasNodeStepId,
-  getNodePositionInsideParent,
-} from './CustomNodes/utils.tsx';
+import { canvasNodeStepId } from './CustomNodes/utils.tsx';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { useEditingNode } from './use-editing-node';
+import { planPendingStep, type CreateStepContext } from './pending-step';
 import { editorLostItsStep } from './editor-lost-step';
 import { DiscardStepChangesDialog } from './NodeConfigPanel/DiscardStepChangesDialog';
 import { NodeFormProvider } from './NodeForm/NodeFormProvider';
@@ -87,31 +84,6 @@ import {
   type PendingNodeCandidate,
 } from './node-edit-rust-validation';
 
-// Re-export CreateStepContext type for external use
-export interface CreateStepContext {
-  position: { x: number; y: number };
-  parentId?: string;
-  insertionEdge?: {
-    source: string;
-    target: string;
-    sourceHandle: string;
-  };
-  connection?: {
-    source: string;
-    sourceHandle: string;
-  };
-  /**
-   * Parallel fan-out over an existing source->target edge: the new step N is
-   * wired source->N and N->target while the original edge is kept, so the
-   * unconditional branches re-converge at the target (validator E073).
-   */
-  parallelBranch?: {
-    source: string;
-    target: string;
-    sourceHandle: string;
-  };
-}
-
 const nodeTypes: NodeTypes = {
   [NODE_TYPES.BasicNode]: BasicNode,
   [NODE_TYPES.CreateNode]: CreateNode,
@@ -127,33 +99,6 @@ const edgeTypes: EdgeTypes = {
   default: ImprovedEdge,
   animated: AnimatedSVGEdge,
 };
-
-/**
- * Generates a unique step name by appending a number if the base name already exists.
- * E.g., "Random Double" -> "Random Double 2" -> "Random Double 3"
- */
-function generateUniqueStepName(
-  baseName: string,
-  existingNodes: Node[]
-): string {
-  const existingNames = new Set(
-    existingNodes
-      .filter((node) => node.data?.name)
-      .map((node) => node.data.name as string)
-  );
-
-  if (!existingNames.has(baseName)) {
-    return baseName;
-  }
-
-  // Find the next available number
-  let counter = 2;
-  while (existingNames.has(`${baseName} ${counter}`)) {
-    counter++;
-  }
-
-  return `${baseName} ${counter}`;
-}
 
 type WorkflowEditorProps = {
   nodes: Node[];
@@ -885,227 +830,16 @@ function WorkflowEditorContent({
     (result: StepPickerResult) => {
       if (!createStepContext) return;
 
-      const uniqueName = generateUniqueStepName(result.name, nodes);
-      const newNodeId = generateStepId(
-        uniqueName,
-        nodes.map((node) => node.id)
+      // Its id, its place and what it will be wired to (./pending-step.ts).
+      setPendingNewNode(
+        planPendingStep({
+          picked: result,
+          context: createStepContext,
+          nodes,
+          initialData: form.initialValues,
+          intersecting: getIntersectingNodes,
+        })
       );
-      const data = {
-        ...form.initialValues,
-        stepType: result.stepType,
-        name: uniqueName,
-        agentId: result.agentId || '',
-        capabilityId: result.capabilityId || '',
-      } as form.SchemaType;
-
-      // Parallel branch over an existing edge: defer creation like the other
-      // flows; the diamond edges are wired in handlePendingNodeSave.
-      if (createStepContext.parallelBranch) {
-        const sourceNode = nodes.find(
-          (n) => n.id === createStepContext.parallelBranch!.source
-        );
-
-        let finalPosition = createStepContext.position;
-        let parentId: string | undefined;
-
-        if (sourceNode?.parentId) {
-          parentId = sourceNode.parentId;
-
-          const getAbsolutePosition = (
-            node: Node
-          ): { x: number; y: number } => {
-            if (!node.parentId) return node.position;
-            const parent = nodes.find((n) => n.id === node.parentId);
-            if (!parent) return node.position;
-            const parentAbsolute = getAbsolutePosition(parent);
-            return {
-              x: parentAbsolute.x + node.position.x,
-              y: parentAbsolute.y + node.position.y,
-            };
-          };
-
-          const parentNode = nodes.find((n) => n.id === parentId);
-          if (parentNode) {
-            const parentAbsolute = getAbsolutePosition(parentNode);
-            finalPosition = {
-              x: createStepContext.position.x - parentAbsolute.x,
-              y: createStepContext.position.y - parentAbsolute.y,
-            };
-          }
-        }
-
-        setPendingNewNode({
-          id: newNodeId,
-          data: data as any,
-          position: finalPosition,
-          parentId,
-          sourceNodeId: createStepContext.parallelBranch.source,
-          sourceHandle: createStepContext.parallelBranch.sourceHandle,
-          targetNodeId: createStepContext.parallelBranch.target,
-        });
-
-        setCreateStepContext(null);
-        setSelectedEdgeId(null);
-        setShowStepPicker(false);
-        return;
-      }
-
-      // Check if we're inserting between nodes via edge click
-      if (createStepContext.insertionEdge) {
-        if (createStepContext.insertionEdge.source === '__start_indicator__') {
-          const targetNode = nodes.find(
-            (n) => n.id === createStepContext.insertionEdge!.target
-          );
-          if (targetNode) {
-            const nodeType = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-            const newNodeSize = NODE_TYPE_SIZES[nodeType] || {
-              width: 180,
-              height: 48,
-            };
-            const horizontalSpacing = 108;
-
-            const newPosition = snapPositionToGrid({
-              x: targetNode.position.x - newNodeSize.width - horizontalSpacing,
-              y:
-                targetNode.position.y +
-                (targetNode.height || 48) / 2 -
-                newNodeSize.height / 2,
-            });
-
-            // Store as pending node instead of creating immediately
-            setPendingNewNode({
-              id: newNodeId,
-              data: data as any,
-              position: newPosition,
-              targetNodeId: createStepContext.insertionEdge.target,
-              becomesEntryPoint: true,
-            });
-
-            setCreateStepContext(null);
-            setSelectedEdgeId(null);
-            setShowStepPicker(false);
-            return;
-          }
-        }
-
-        // Regular insertion between nodes
-        setPendingNewNode({
-          id: newNodeId,
-          data: data as any,
-          position: createStepContext.position,
-          insertionEdge: createStepContext.insertionEdge,
-        });
-        setCreateStepContext(null);
-        setSelectedEdgeId(null);
-        setShowStepPicker(false);
-        return;
-      }
-
-      // Check if we're creating a node from a dragged connection
-      if (createStepContext.connection) {
-        const sourceNode = nodes.find(
-          (n) => n.id === createStepContext.connection!.source
-        );
-        const type = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-        const newNodeSize = NODE_TYPE_SIZES[type];
-
-        let finalPosition = createStepContext.position;
-        let parentId: string | undefined;
-
-        if (sourceNode) {
-          const getAbsolutePosition = (
-            node: Node
-          ): { x: number; y: number } => {
-            if (!node.parentId) return node.position;
-            const parent = nodes.find((n) => n.id === node.parentId);
-            if (!parent) return node.position;
-            const parentAbsolute = getAbsolutePosition(parent);
-            return {
-              x: parentAbsolute.x + node.position.x,
-              y: parentAbsolute.y + node.position.y,
-            };
-          };
-
-          const sourceAbsolute = getAbsolutePosition(sourceNode);
-          const sourceHandleY =
-            sourceAbsolute.y + (sourceNode.height || 48) / 2;
-          const newNodeHandleOffset = newNodeSize.height / 2;
-
-          const absolutePosition = {
-            x: createStepContext.position.x,
-            y: sourceHandleY - newNodeHandleOffset,
-          };
-
-          if (sourceNode.parentId) {
-            parentId = sourceNode.parentId;
-            const parentNode = nodes.find((n) => n.id === parentId);
-            if (parentNode) {
-              const parentAbsolute = getAbsolutePosition(parentNode);
-              finalPosition = {
-                x: absolutePosition.x - parentAbsolute.x,
-                y: absolutePosition.y - parentAbsolute.y,
-              };
-            }
-          } else {
-            finalPosition = absolutePosition;
-          }
-        }
-
-        // Store as pending node instead of creating immediately
-        setPendingNewNode({
-          id: newNodeId,
-          data: data as any,
-          position: finalPosition,
-          parentId,
-          sourceNodeId: createStepContext.connection.source,
-          sourceHandle: createStepContext.connection.sourceHandle,
-        });
-
-        setCreateStepContext(null);
-        setSelectedEdgeId(null);
-        setShowStepPicker(false);
-        return;
-      }
-
-      // Regular node creation flow
-      const type = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-      const style = NODE_TYPE_SIZES[type];
-
-      let parentId: string | undefined = createStepContext.parentId;
-      let finalPosition = createStepContext.position;
-
-      const tempNode: Node = {
-        id: 'temp',
-        type,
-        position: createStepContext.position,
-        data: {},
-        style,
-        width: style.width,
-        height: style.height,
-      };
-
-      const intersections = getIntersectingNodes(tempNode).filter(
-        (n) => n.type === NODE_TYPES.ContainerNode
-      );
-
-      const groupNode = intersections[intersections.length - 1];
-
-      if (!parentId && groupNode) {
-        finalPosition = getNodePositionInsideParent(tempNode, groupNode) ?? {
-          x: 0,
-          y: 0,
-        };
-        parentId = groupNode?.id;
-      }
-
-      // Store as pending node instead of creating immediately
-      setPendingNewNode({
-        id: newNodeId,
-        data: data as any,
-        position: finalPosition,
-        parentId,
-      });
-
       setCreateStepContext(null);
       setSelectedEdgeId(null);
       setShowStepPicker(false);
