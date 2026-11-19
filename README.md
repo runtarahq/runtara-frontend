@@ -37,6 +37,11 @@ releases are independent, so a console fix ships without a server release.
   `.sha256`, and the image `ghcr.io/runtarahq/runtara-frontend:X.Y.Z` (and
   `:latest`, unless the tag is a prerelease) for `linux/amd64` and
   `linux/arm64`. runtara's evaluation `docker-compose.yml` runs `:latest`.
+  The tarball and the image are one build: the workflow bundles the console
+  once and the image wraps that bundle (`--build-arg BUNDLE=prebuilt`, see the
+  `Dockerfile`). Both carry a provenance attestation
+  (`gh attestation verify`), and the release is created only once the image
+  is pushed.
 
 ## Dev loops
 
