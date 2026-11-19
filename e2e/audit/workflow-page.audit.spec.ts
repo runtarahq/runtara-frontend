@@ -207,6 +207,46 @@ test.describe('Workflow page audit: saving', () => {
     await expect(unsavedDialog(page)).toHaveCount(0);
   });
 
+  test('WF-9 A canvas edit can be undone and redone, from the toolbar and the keyboard', async ({
+    page,
+    mockApi,
+  }) => {
+    const wf = logWorkflow('wf_wf9');
+    await openWorkflow(page, mockApi, wf);
+    const undo = page.getByRole('button', { name: 'Undo' });
+    const redo = page.getByRole('button', { name: 'Redo' });
+    const note = page.locator('.react-flow__node').getByText('to undo');
+
+    // Nothing to undo on a workflow just opened.
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+
+    await addNote(page, 'to undo');
+    await expect(undo).toBeEnabled();
+
+    // Placing the note and writing it, one after the other, are one step.
+    await undo.click();
+    await expect(undo).toBeDisabled();
+    await expect(note).toHaveCount(0);
+    await expect(redo).toBeEnabled();
+
+    await redo.click();
+    await expect(note).toBeVisible();
+    await expect(redo).toBeDisabled();
+
+    // The keyboard, with the focus on the page and not in a field.
+    await page.locator('h1').first().click();
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+z`);
+    await expect(note).toHaveCount(0);
+    await page.keyboard.press(`${modifier}+Shift+z`);
+    await expect(note).toBeVisible();
+
+    // An undo is a change to save.
+    await page.keyboard.press(`${modifier}+z`);
+    await expect(saveEnabled(page)).toBeVisible();
+  });
+
   test('WF-2 A settings edit made during a save is still counted as unsaved after the save succeeds', async ({
     page,
     mockApi,

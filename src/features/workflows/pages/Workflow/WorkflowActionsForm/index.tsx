@@ -7,6 +7,7 @@ import { Can } from '@/shared/components/Can';
 import * as form from './WorkflowActionsItem';
 import { useRef } from 'react';
 import { Spinner } from '@/shared/components/ui/spinner';
+import { UndoRedoButtons } from './UndoRedoButtons';
 import {
   Save,
   Play,
@@ -418,6 +419,10 @@ export function WorkflowActionsForm(props: Props) {
         >
           <Download className="size-4" />
         </Button>
+
+        <div className="mx-1 h-4 w-px bg-border" />
+
+        <UndoRedoButtons disabled={Boolean(isLoading || isExecuting)} />
 
         <div className="mx-1 h-4 w-px bg-border" />
 

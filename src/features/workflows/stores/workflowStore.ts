@@ -16,7 +16,7 @@ import { createStore } from 'zustand';
 import { editorStore } from './editor-scope';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { enableMapSet } from 'immer';
+import { enableMapSet, original } from 'immer';
 import { applyEdgeChanges, applyNodeChanges, Edge, Node } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -40,15 +40,66 @@ import {
   insertStepBetween,
 } from './canvas-geometry';
 
+// Undo. Every edit goes through `markDirty` or `dirtied`, so that is where
+// the canvas as it was before the edit is remembered: its nodes and edges.
+// A drag or a resize is a stream of edits; ones that follow each other
+// within HISTORY_GESTURE_MS are one step, which keeps the canvas from before
+// the first of them.
+const HISTORY_LIMIT = 50;
+const HISTORY_GESTURE_MS = 300;
+
+type Remembered = Pick<WorkflowState, 'nodes' | 'edges' | 'past' | 'historyAt'>;
+
+/** The history after an edit to `before`, or only its time within a gesture. */
+function remembered(before: Remembered) {
+  const now = Date.now();
+  if (now - before.historyAt < HISTORY_GESTURE_MS) return { historyAt: now };
+  return {
+    historyAt: now,
+    past: [
+      ...before.past.slice(-(HISTORY_LIMIT - 1)),
+      { nodes: before.nodes, edges: before.edges },
+    ],
+    // A new edit is a new line of history: there is nothing to redo.
+    future: [],
+  };
+}
+
 /** Marks the workflow edited. Every edit goes through here or `dirtied`. */
-function markDirty(state: { isDirty: boolean; dirtyRevision: number }) {
+function markDirty(state: WorkflowState) {
+  // Inside a store update `state` is a draft; what it was is the original.
+  Object.assign(state, remembered(original(state) ?? state));
   state.isDirty = true;
   state.dirtyRevision += 1;
 }
 
 /** The dirty fields for a plain `setState` that edits the workflow. */
-export function dirtied(state: { dirtyRevision: number }) {
-  return { isDirty: true, dirtyRevision: state.dirtyRevision + 1 } as const;
+export function dirtied(state: Remembered & { dirtyRevision: number }) {
+  return {
+    isDirty: true,
+    dirtyRevision: state.dirtyRevision + 1,
+    ...remembered(state),
+  } as const;
+}
+
+/** Puts a remembered canvas back. A change to the workflow like any other. */
+function restoreCanvas(
+  state: WorkflowState,
+  canvas: { nodes: Node[]; edges: Edge[] }
+) {
+  state.nodes = canvas.nodes;
+  state.edges = canvas.edges;
+  state.isDirty = true;
+  state.isStructurallyDirty = true;
+  state.dirtyRevision += 1;
+  // The next edit starts a step of its own, however soon it comes.
+  state.historyAt = 0;
+  if (
+    state.selectedNodeId &&
+    !canvas.nodes.some((node) => node.id === state.selectedNodeId)
+  ) {
+    state.selectedNodeId = null;
+  }
 }
 
 // State holds a Set (stagedNodeIds); renameStep reads it
@@ -68,6 +119,9 @@ const initialState = {
   requestEditNodeId: null,
   resizeTracking: {},
   lastStepRename: null,
+  past: [],
+  future: [],
+  historyAt: 0,
 };
 
 export const useWorkflowStore = editorStore('workflow', () =>
@@ -84,9 +138,36 @@ export const useWorkflowStore = editorStore('workflow', () =>
             state.edges = edges;
             state.isDirty = false;
             state.isStructurallyDirty = false;
+            state.past = [];
+            state.future = [];
+            state.historyAt = 0;
           }),
 
         resetState: () => set(() => initialState),
+
+        undo: () =>
+          set((state) => {
+            const previous = state.past[state.past.length - 1];
+            if (!previous) return;
+            state.past = state.past.slice(0, -1);
+            state.future = [
+              ...state.future,
+              { nodes: state.nodes, edges: state.edges },
+            ];
+            restoreCanvas(state, previous);
+          }),
+
+        redo: () =>
+          set((state) => {
+            const next = state.future[state.future.length - 1];
+            if (!next) return;
+            state.future = state.future.slice(0, -1);
+            state.past = [
+              ...state.past,
+              { nodes: state.nodes, edges: state.edges },
+            ];
+            restoreCanvas(state, next);
+          }),
 
         editNodes: (update, options) => {
           const nodes = update(get().nodes);

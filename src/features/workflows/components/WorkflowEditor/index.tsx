@@ -1,3 +1,4 @@
+import { useUndoKeys } from './use-undo-keys';
 import { useCanvasLayout } from './useCanvasLayout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -342,6 +343,9 @@ function WorkflowEditorContent({
     setSelectedEdgeId(null);
     setShowStepPicker(false);
   }, []);
+
+  // Undo and redo of canvas edits, where the canvas can be edited.
+  useUndoKeys(!readOnly && !!workflow);
 
   // Handle backspace/delete key to remove selected node
   useEffect(() => {

@@ -64,6 +64,12 @@ export interface WorkflowState {
   // set on every successful rename.
   lastStepRename: { oldId: string; newId: string } | null;
 
+  // Undo: the canvases before each of the last edits, oldest first, and the
+  // ones undone since, for redo. `historyAt` is when the last edit was made.
+  past: { nodes: Node[]; edges: Edge[] }[];
+  future: { nodes: Node[]; edges: Edge[] }[];
+  historyAt: number;
+
   // Actions - State Management
   /**
    * Loads a graph into the editor: draws it as the canvas's nodes and edges
@@ -87,6 +93,10 @@ export interface WorkflowState {
     dirtyBefore?: { isDirty: boolean; isStructurallyDirty: boolean }
   ) => void;
   resetState: () => void;
+  /** Puts the canvas back as it was before the last edit. */
+  undo: () => void;
+  /** Makes the last undone edit again. */
+  redo: () => void;
   /** With `savedRevision`, clears only if nothing was edited since then. */
   clearDirtyFlag: (savedRevision?: number) => void;
   /** Marks a step as holding form edits not yet applied, for its card. */
