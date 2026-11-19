@@ -5,9 +5,6 @@ import type {
 } from '@/features/workflows/types/execution-graph';
 
 export interface WorkflowState {
-  // Core workflow data (backend format)
-  executionGraph: ExecutionGraphDto | null;
-
   // React Flow visual representation
   nodes: Node[];
   edges: Edge[];
@@ -18,8 +15,6 @@ export interface WorkflowState {
   isStructurallyDirty: boolean;
   // Goes up on every edit, so a save can tell whether more came after it.
   dirtyRevision: number;
-  selectedNodes: string[];
-  selectedEdges: string[];
 
   // Staged node IDs (nodes with unsaved changes in sidebar)
   stagedNodeIds: Set<string>;
@@ -155,12 +150,9 @@ export interface WorkflowState {
   onEdgesChange: (changes: EdgeChange[]) => void;
 
   // Actions - Selection
-  setSelectedNodes: (nodeIds: string[]) => void;
-  setSelectedEdges: (edgeIds: string[]) => void;
 
   // Actions - Synchronization
   syncFromReactFlow: (nodes: Node[], edges: Edge[]) => void;
-  getReactFlowElements: () => { nodes: Node[]; edges: Edge[] };
 
   // Actions - Layout
   applyAutoLayout: () => void;

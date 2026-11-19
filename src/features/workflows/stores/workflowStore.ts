@@ -20,7 +20,6 @@ import { applyEdgeChanges, applyNodeChanges, Edge, Node } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   canvasNodeStepId,
-  composeExecutionGraph,
   executionGraphToReactFlow,
   getLayoutedElements,
 } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
@@ -56,14 +55,11 @@ export function dirtied(state: { dirtyRevision: number }) {
 enableMapSet();
 
 const initialState = {
-  executionGraph: null,
   nodes: [],
   edges: [],
   isDirty: false,
   isStructurallyDirty: false,
   dirtyRevision: 0,
-  selectedNodes: [],
-  selectedEdges: [],
   stagedNodeIds: new Set<string>(),
   selectedNodeId: null,
   pendingCenterNodeId: null,
@@ -82,7 +78,6 @@ export const useWorkflowStore = create<WorkflowState>()(
       setExecutionGraph: (graph) =>
         set((state) => {
           const { nodes, edges } = executionGraphToReactFlow(graph);
-          state.executionGraph = graph;
           state.nodes = nodes;
           state.edges = edges;
           state.isDirty = false;
@@ -363,7 +358,6 @@ export const useWorkflowStore = create<WorkflowState>()(
               .map((e) => e.id)
           );
           const assignedEdgeIds = new Set<string>();
-          const edgeIdRemap = new Map<string, string>();
           for (const e of state.edges) {
             const endpointsTouched = e.source === oldId || e.target === oldId;
             const inScope =
@@ -391,16 +385,11 @@ export const useWorkflowStore = create<WorkflowState>()(
                 counter += 1;
               }
               assignedEdgeIds.add(candidate);
-              edgeIdRemap.set(e.id, candidate);
               e.id = candidate;
             }
           }
 
           // Remap auxiliary state that holds step or edge ids.
-          state.selectedNodes = state.selectedNodes.map(remapId);
-          state.selectedEdges = state.selectedEdges.map(
-            (id) => edgeIdRemap.get(id) ?? id
-          );
           if (state.selectedNodeId === oldId) {
             state.selectedNodeId = newId;
           }
@@ -764,31 +753,15 @@ export const useWorkflowStore = create<WorkflowState>()(
         }),
 
       // Selection
-      setSelectedNodes: (nodeIds) =>
-        set((state) => {
-          state.selectedNodes = nodeIds;
-        }),
-
-      setSelectedEdges: (edgeIds) =>
-        set((state) => {
-          state.selectedEdges = edgeIds;
-        }),
-
       // Synchronization
       syncFromReactFlow: (nodes, edges) =>
         set((state) => {
           state.nodes = nodes;
           state.edges = edges;
-          state.executionGraph = composeExecutionGraph(nodes, edges);
           // Don't mark as dirty when syncing from external data (e.g., initial load)
           state.isDirty = false;
           state.isStructurallyDirty = false;
         }),
-
-      getReactFlowElements: () => {
-        const state = get();
-        return { nodes: state.nodes, edges: state.edges };
-      },
 
       // Layout
       applyAutoLayout: () =>
