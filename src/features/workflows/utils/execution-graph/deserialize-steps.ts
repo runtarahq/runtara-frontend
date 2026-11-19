@@ -270,11 +270,9 @@ export function normalizeNodesAndEdges(
   for (let i = 0; i < executionPlan.length; i++) {
     const edge = executionPlan[i];
     const sourceStep = steps[edge.fromStep ?? ''];
-    const isSwitchSource = sourceStep?.stepType === 'Switch';
-
     let sourceHandle: string;
 
-    if (isSwitchSource) {
+    if (sourceStep?.stepType === 'Switch') {
       // Switch nodes: map edge labels to the correct sourceHandle
       const label = edge.label || 'next';
       if (label === 'default') {
@@ -287,9 +285,8 @@ export function normalizeNodesAndEdges(
         sourceHandle = label;
       } else {
         // Route label: find matching case index by route name
-        const config = (sourceStep as any).config;
-        const cases = config?.cases || [];
-        const caseIndex = cases.findIndex((c: any) => c.route === label);
+        const cases = sourceStep.config?.cases || [];
+        const caseIndex = cases.findIndex((c) => c.route === label);
         sourceHandle = caseIndex >= 0 ? `case-${caseIndex}` : label;
       }
     } else {

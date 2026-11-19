@@ -38,6 +38,11 @@ import { getStepNodeSize } from './node-size';
 // Note: Node editing is now handled by the sidebar (EditorSidebar) via double-click on ReactFlow.
 // The dialogs below are only for creating new nodes via the + button handles.
 
+import {
+  stepTakesAgent,
+  stepEndsPath,
+} from '@/features/workflows/step-types/catalog';
+import { isLegacyStartStep } from '@/features/workflows/types/execution-graph';
 type BasicNodeProps = Node<form.SchemaType>;
 
 function BasicNodeComponent({
@@ -112,7 +117,7 @@ function BasicNodeComponent({
 
   // Lookup agent name for Agent steps
   const agent = useMemo(() => {
-    if (data.stepType !== 'Agent' || !data.agentId) return undefined;
+    if (!stepTakesAgent(data.stepType) || !data.agentId) return undefined;
     const agents =
       (agentsQuery.data as { agents: ExtendedAgent[] })?.agents || [];
     return findAgentById(agents, data.agentId);
@@ -131,7 +136,7 @@ function BasicNodeComponent({
   // management-plane gate. Restoring the entitlement clears it without any
   // workflow mutation.
   const hasStaleAgent =
-    data.stepType === 'Agent' &&
+    stepTakesAgent(data.stepType) &&
     !!data.agentId &&
     !agentEnabled(entitlements, data.agentId);
 
@@ -396,8 +401,8 @@ function BasicNodeComponent({
     setShowStepPicker(true);
   };
 
-  const isFinishStep = data.stepType === 'Finish';
-  const isStartStep = data.stepType === 'Start';
+  const isFinishStep = stepEndsPath(data.stepType);
+  const isStartStep = isLegacyStartStep({ stepType: data.stepType });
 
   // Determine if this step can have error handlers based on its step type:
   // only the compiler-supported onError set (Agent, AiAgent, EmbedWorkflow,

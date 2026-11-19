@@ -21,6 +21,7 @@ import { serializeSteps } from './serialize-steps';
   |steps   -->   steps[id].subgraph   -->   |steps -->   ...
   |entryPoint                               |entryPoint
 */
+import { isContainerStepType } from '@/features/workflows/step-types/catalog';
 export function composeExecutionGraph(
   nodes: Node[],
   edges: Edge[],
@@ -170,7 +171,7 @@ export function composeExecutionGraph(
 
   nds.forEach((node) => {
     const stepType = node.data?.stepType;
-    if (stepType === 'Split' || stepType === 'While') {
+    if (isContainerStepType(stepType)) {
       const containerStep = nodesMap.get(node.id);
       if (containerStep && !containerStep.subgraph) {
         // Seed the rebuilt subgraph with the graph-level fields captured at

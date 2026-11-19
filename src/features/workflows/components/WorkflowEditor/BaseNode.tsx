@@ -34,6 +34,7 @@ import { ExecutionStatus } from '@/generated/RuntaraRuntimeApi';
 import { parseStructuredError } from '@/shared/utils/structured-error';
 import { Spinner } from '@/shared/components/ui/spinner';
 
+import { stepCallsWorkflow } from '@/features/workflows/step-types/catalog';
 export const BaseNode = forwardRef<
   HTMLDivElement,
   HTMLAttributes<HTMLDivElement> & {
@@ -240,7 +241,7 @@ export const BaseNode = forwardRef<
 
     const handleClick = (e: MouseEvent<HTMLDivElement>) => {
       // Check if Ctrl (Windows) or Command (Mac) key is pressed
-      if ((e.ctrlKey || e.metaKey) && stepType === 'EmbedWorkflow') {
+      if ((e.ctrlKey || e.metaKey) && stepCallsWorkflow(stepType)) {
         // Navigate to the workflow editing page
         // The workflow ID is stored as "workflowId" in input mapping
         if (inputMapping && inputMapping.length > 0) {

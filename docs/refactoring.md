@@ -135,12 +135,21 @@ node form's choice of field and its validation, its durable and retry sets
 and the card summary read the tables. A step type's form no longer checks
 that it is shown for its own type.
 
-47 comparisons of a step type's name remain, from 141. They are not places a
-new step type has to be added to: each narrows one step type to read its own
-fields (`step.stepType === 'Agent' && step.agentId`, which is how a
-discriminated union is read) or is behaviour only that type has (an Agent's
-capability picker, a Conditional's two branches). `WF/queries/chat.ts` has 8
-more that compare runtime event kinds, not DSL step types.
+No code decides what to do for a step by comparing its type's name any more.
+Of the 141 comparisons, 9 are left, and none is dispatch:
+
+- 8 narrow a typed DSL step to read the fields only that variant has
+  (`step.stepType === 'Agent' && step.agentId`): `types/execution-graph.ts`,
+  `canvas-ids.ts`, `deserialize-steps.ts` (2) and `NodeForm/shared.ts` (4).
+  That is how a discriminated union is read; without them the field access
+  does not type-check.
+- 1 is the body of `isLegacyStartStep()`, which every other check of the
+  legacy `Start` step goes through.
+
+What used to be asked by name is asked of the catalog: whether a step takes
+an agent, calls a workflow, ends its path, nests a graph, and what its body
+sees of the data around it. `WF/queries/chat.ts` compares runtime event
+kinds, which are not DSL step types.
 
 ### H2. The DSL is typed by hand, and the hand-written types are wrong
 

@@ -13,6 +13,7 @@ import { TabProvider, useTabContext } from './NodeFormItem.tsx';
 import { getTestHandler } from './TestAgentButton/TestAgentInline';
 import { Spinner } from '@/shared/components/ui/spinner';
 
+import { isLegacyStartStep } from '@/features/workflows/types/execution-graph';
 type Props = {
   isEdit?: boolean;
   values: form.SchemaType;
@@ -125,30 +126,29 @@ export function NodeForm({
   const stepType = entireForm.watch('stepType');
 
   // Filter out fields that should be hidden for Start steps
-  const filteredFieldsConfig =
-    stepType === 'Start'
-      ? form.fieldsConfig.filter((field: any) => {
-          // Keep these fields for Start steps
-          if (field.name === 'stepType') return true;
-          if (field.name === 'name') return true;
-          if (field.name === 'inputMapping') return true;
-          if (field.name === 'childWorkflowId') return true;
-          if (field.name === 'childVersion') return true;
-          if (field.name === 'inputSchema') return true;
-          if (field.name === 'inputSchemaFields') return true;
-          if (field.name === 'startMode') return true;
-          if (field.name === 'selectedTriggerId') return true;
+  const filteredFieldsConfig = isLegacyStartStep({ stepType: stepType })
+    ? form.fieldsConfig.filter((field: any) => {
+        // Keep these fields for Start steps
+        if (field.name === 'stepType') return true;
+        if (field.name === 'name') return true;
+        if (field.name === 'inputMapping') return true;
+        if (field.name === 'childWorkflowId') return true;
+        if (field.name === 'childVersion') return true;
+        if (field.name === 'inputSchema') return true;
+        if (field.name === 'inputSchemaFields') return true;
+        if (field.name === 'startMode') return true;
+        if (field.name === 'selectedTriggerId') return true;
 
-          // Hide these fields for Start steps
-          if (field.name === 'agentId') return false;
-          if (field.name === 'capabilityId') return false;
-          if (field.name === 'connectionId') return false;
-          if (field.name === 'embedWorkflowConfig') return false;
-          if (field.name === 'formTabs') return false;
+        // Hide these fields for Start steps
+        if (field.name === 'agentId') return false;
+        if (field.name === 'capabilityId') return false;
+        if (field.name === 'connectionId') return false;
+        if (field.name === 'embedWorkflowConfig') return false;
+        if (field.name === 'formTabs') return false;
 
-          return true;
-        })
-      : form.fieldsConfig;
+        return true;
+      })
+    : form.fieldsConfig;
 
   const renderContent = () => (
     <FormContentWrapper

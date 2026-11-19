@@ -850,9 +850,7 @@ function WorkflowEditorContent({
 
       let addedId: string | null = nodeId;
       const nodeType = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-      const isConditional =
-        nodeType === NODE_TYPES.ConditionalNode ||
-        data.stepType === 'Conditional';
+      const isConditional = nodeType === NODE_TYPES.ConditionalNode;
 
       // Handle edge connections based on creation context
       if (pendingNewNode.insertionEdge) {

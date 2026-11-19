@@ -31,6 +31,7 @@ import {
 } from '@/features/workflows/utils/capability-flags';
 
 // Stable empty object to avoid creating new references on each render
+import { stepTakesAgent } from '@/features/workflows/step-types/catalog';
 const EMPTY_NODE_DATA: Record<string, InputMappingEntry> = {};
 
 // Global ref to expose test functionality to parent components
@@ -209,7 +210,7 @@ export function TestAgentInline() {
   // CONTROL_REQUIRES_INSTANCE, so don't offer a Test that always fails.
   const requiresRun = capabilityRequiresRun(capability);
   const isAvailable =
-    stepType === 'Agent' &&
+    stepTakesAgent(stepType) &&
     !!agentId &&
     !!capabilityId &&
     agentAllowed &&
@@ -241,7 +242,7 @@ export function TestAgentInline() {
     }
     // Differentiate "agent disabled" from "nothing selected yet" so the user
     // understands why the panel is inert.
-    if (stepType === 'Agent' && agentId && !agentAllowed) {
+    if (stepTakesAgent(stepType) && agentId && !agentAllowed) {
       return (
         <div className="py-8 text-center text-muted-foreground">
           Agent <span className="font-medium">{agentId}</span> is not enabled

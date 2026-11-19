@@ -1,4 +1,7 @@
-import { stepTypeTraits } from '@/features/workflows/step-types/catalog';
+import {
+  stepTypeTraits,
+  stepTakesAgent,
+} from '@/features/workflows/step-types/catalog';
 import { humanizeKey } from './step-details';
 
 /** One-line step summaries for the canvas cards. */
@@ -20,19 +23,16 @@ export function stepDescription(
   capabilityName?: string
 ): string | undefined {
   if (data.description) return data.description;
-  switch (data.stepType) {
-    case 'Agent': {
-      const agent =
-        agentName || (data.agentId ? humanizeKey(data.agentId) : 'Agent');
-      const capability =
-        capabilityName ||
-        (data.capabilityId ? humanizeKey(data.capabilityId) : '');
-      return capability ? `${agent} · ${capability}` : agent;
-    }
-    default:
-      // What the step type does, when the catalog says (step-types/catalog.ts).
-      return stepTypeTraits(data.stepType)?.summary;
+  if (stepTakesAgent(data.stepType)) {
+    const agent =
+      agentName || (data.agentId ? humanizeKey(data.agentId) : 'Agent');
+    const capability =
+      capabilityName ||
+      (data.capabilityId ? humanizeKey(data.capabilityId) : '');
+    return capability ? `${agent} · ${capability}` : agent;
   }
+  // What the step type does, when the catalog says (step-types/catalog.ts).
+  return stepTypeTraits(data.stepType)?.summary;
 }
 
 /** `WaitForSignal` → "Wait for signal", `AiAgent` → "AI agent". */

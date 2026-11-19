@@ -17,6 +17,7 @@ import { parseSchema } from './schema';
 import type { SchemaField } from '../components/WorkflowEditor/EditorSidebar/SchemaFieldsEditor';
 
 /** Minimal structural shape of a workflow-store node. */
+import { exactStepTypeTraits } from '@/features/workflows/step-types/catalog';
 export interface ScopeNode {
   id: string;
   parentId?: string;
@@ -80,12 +81,12 @@ export function resolveContainerScope(
 
   let dataScope: DataScope = { kind: 'workflow' };
   for (const node of chain) {
-    const stepType = node.data?.stepType;
-    if (stepType === 'While') {
+    const bodyScope = exactStepTypeTraits(node.data?.stepType)?.bodyScope;
+    if (bodyScope === 'inherits') {
       // While bodies inherit the enclosing data scope — keep walking.
       continue;
     }
-    if (stepType === 'Split') {
+    if (bodyScope === 'iteration') {
       dataScope = { kind: 'split', splitNode: node };
       break;
     }
@@ -98,9 +99,11 @@ export function resolveContainerScope(
   return {
     chain,
     dataScope,
-    isInsideWhileLoop: chain[0]?.data?.stepType === 'While',
+    isInsideWhileLoop:
+      exactStepTypeTraits(chain[0]?.data?.stepType)?.bodyScope === 'inherits',
     isInsideSplit: dataScope.kind === 'split',
-    isInsideWaitScope: chain[0]?.data?.stepType === 'WaitForSignal',
+    isInsideWaitScope:
+      exactStepTypeTraits(chain[0]?.data?.stepType)?.bodyScope === 'undeclared',
   };
 }
 

@@ -166,8 +166,7 @@ function buildPendingEdges(
   data: form.SchemaType
 ): Edge[] {
   const nodeType = stepNodeType(data as unknown as StepNodeData);
-  const isConditional =
-    nodeType === NODE_TYPES.ConditionalNode || data.stepType === 'Conditional';
+  const isConditional = nodeType === NODE_TYPES.ConditionalNode;
   let candidateEdges = [...edges];
 
   if (pendingNode.insertionEdge) {

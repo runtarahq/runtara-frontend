@@ -38,6 +38,16 @@ export interface StepTypeTraits {
    * every step type shares (`serializeSteps`). All absent for a step saved
    * as its input mapping and nothing more.
    */
+  /**
+   * What its body sees of the data around it: `inherits` the enclosing
+   * scope (a While), has an `iteration` of its own (a Split), or is
+   * `undeclared` (a WaitForSignal's on-wait flow, whose schema is its own).
+   */
+  bodyScope?: 'inherits' | 'iteration' | 'undeclared';
+  /** Calls another workflow, named by `childWorkflowId`. */
+  callsWorkflow?: boolean;
+  /** Ends its path: nothing follows it and it has no outputs to offer. */
+  endsPath?: boolean;
   /** Takes `agentId` and `capabilityId`. */
   takesAgent?: boolean;
   /** Takes `connectionId`. */
@@ -67,6 +77,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: false,
+    endsPath: true,
     keepsUnfinishedRows: true,
   },
   Agent: {
@@ -93,6 +104,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: true,
     retries: false,
     container: true,
+    bodyScope: 'iteration',
     takesInputSchema: true,
   },
   Switch: {
@@ -111,6 +123,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: true,
     retries: true,
     container: false,
+    callsWorkflow: true,
   },
   While: {
     nodeType: NODE_TYPES.ContainerNode,
@@ -119,6 +132,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: true,
+    bodyScope: 'inherits',
   },
   Log: {
     nodeType: NODE_TYPES.BasicNode,
@@ -164,6 +178,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: false,
+    bodyScope: 'undeclared',
     timeoutIsMapping: true,
   },
   WaitForInstances: {
@@ -229,6 +244,26 @@ export function exactStepTypeTraits(name: unknown): StepTypeTraits | undefined {
     Object.prototype.hasOwnProperty.call(STEP_TYPE_CATALOG, name)
     ? STEP_TYPE_CATALOG[name as StepType]
     : undefined;
+}
+
+/** Whether a step of this type runs an agent's capability. */
+export function stepTakesAgent(name: unknown): boolean {
+  return exactStepTypeTraits(name)?.takesAgent === true;
+}
+
+/** Whether a step of this type calls another workflow. */
+export function stepCallsWorkflow(name: unknown): boolean {
+  return exactStepTypeTraits(name)?.callsWorkflow === true;
+}
+
+/** Whether a step of this type ends its path. */
+export function stepEndsPath(name: unknown): boolean {
+  return exactStepTypeTraits(name)?.endsPath === true;
+}
+
+/** Whether a step of this type nests a graph of its own steps. */
+export function isContainerStepType(name: unknown): boolean {
+  return exactStepTypeTraits(name)?.container === true;
 }
 
 /** The traits of the step type a name stands for, if it is one. */

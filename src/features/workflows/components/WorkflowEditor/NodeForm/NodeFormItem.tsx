@@ -20,6 +20,7 @@ import { SuspendingStepHint } from './SuspendingStepHint';
 import {
   resolveStepType,
   stepTypeTraits,
+  stepCallsWorkflow,
 } from '@/features/workflows/step-types/catalog';
 import { checkStepForm } from '@/features/workflows/step-types/form-rules';
 import { STEP_TYPE_UI } from '@/features/workflows/step-types/ui';
@@ -35,6 +36,7 @@ import { Switch as ToggleSwitch } from '@/shared/components/ui/switch';
 import { jsonTextError } from '@/features/workflows/utils/mapping-serialization';
 
 // Wrapper component for EmbedWorkflowConfigField that uses react-hook-form
+import { isLegacyStartStep } from '@/features/workflows/types/execution-graph';
 function EmbedWorkflowFieldRenderer() {
   const form = useFormContext();
   const stepType = useWatch({ name: 'stepType', control: form.control });
@@ -75,7 +77,7 @@ function EmbedWorkflowFieldRenderer() {
   );
 
   // Only show for EmbedWorkflow steps
-  if (!stepType || stepType !== 'EmbedWorkflow') {
+  if (!stepCallsWorkflow(stepType)) {
     return null;
   }
 
@@ -174,7 +176,11 @@ function StepAdvancedFields() {
   const retryDelay = useWatch({ name: 'retryDelay', control: form.control });
   const timeout = useWatch({ name: 'timeout', control: form.control });
 
-  if (activeTab !== 'main' || !stepType || stepType === 'Start') {
+  if (
+    activeTab !== 'main' ||
+    !stepType ||
+    isLegacyStartStep({ stepType: stepType })
+  ) {
     return null;
   }
 
