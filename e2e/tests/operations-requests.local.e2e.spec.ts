@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { appPath } from '../utils/app-path';
 
+// The request list shows a page of 25; a server other runs have left requests
+// on can hold more than that.
+const pageSize = 25;
+
 for (const width of [1440, 390]) {
   test(`Overview request metrics open matching lists at ${width}px`, async ({
     page,
@@ -40,9 +44,10 @@ for (const width of [1440, 390]) {
       page
         .getByRole('list', { name: 'Requests requiring input' })
         .getByRole('listitem')
-    ).toHaveCount(waitingCount);
+    ).toHaveCount(Math.min(waitingCount, pageSize));
     await page.goBack();
-    await overdue.getByRole('link', { name: 'Review', exact: true }).click();
+    // The tile itself is the link to the overdue list.
+    await overdue.click();
     await expect(page).toHaveURL(/\/operations\/requests\?filter=overdue$/);
     await expect(
       page.getByRole('heading', {
@@ -54,7 +59,7 @@ for (const width of [1440, 390]) {
       page
         .getByRole('list', { name: 'Requests requiring input' })
         .getByRole('listitem')
-    ).toHaveCount(overdueCount);
+    ).toHaveCount(Math.min(overdueCount, pageSize));
     await page.reload();
     await expect(
       page.getByRole('heading', {

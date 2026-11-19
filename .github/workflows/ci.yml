@@ -249,16 +249,17 @@ jobs:
           CI: 'true'
         run: npx playwright test --project=smoke
 
-      # The local-auth project: connections created, edited and deleted, and
-      # workflows built on the canvas, through the console alone. Its
-      # operations specs skip themselves: they need a prepared fixture
-      # (E2E_OPERATIONS_FIXTURE).
+      # The local-auth project: connections, workflows built on the canvas,
+      # and the operations pages, through the console. The operations specs
+      # read data the suite seeds first (e2e/operations.seed.setup.ts), and
+      # change it, so the project runs one spec at a time.
       - name: Run local-ui Playwright project
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8081
           E2E_RUNTIME_URL: http://127.0.0.1:7101
+          E2E_SEED_OPERATIONS: 'true'
           CI: 'true'
-        run: npx playwright test --project=local-ui --workers=2
+        run: npx playwright test --project=local-ui --workers=1
 
       # The flows that go through the console and the server's API together:
       # building, validating, running and inspecting workflows.

@@ -86,6 +86,17 @@ By default it **fails on `critical` violations only**. Set `E2E_A11Y_STRICT=true
 
 **Do not add to this list without tracking the violation in the backlog.**
 
+## Operations specs
+
+`tests/operations*.local.e2e.spec.ts` read seeded data and skip themselves
+without it. With `E2E_SEED_OPERATIONS=true` the `local-ui` project seeds it
+first, through the API (`operations.seed.setup.ts`). It creates workflows,
+runs and a queue and deletes nothing, so use it against a disposable server:
+
+```bash
+E2E_SEED_OPERATIONS=true E2E_RUNTIME_URL=http://127.0.0.1:7001 npx playwright test --project=local-ui
+```
+
 ## Visual regression
 
 `view.expectMatchesSnapshot('name')` compares the page with its baseline image

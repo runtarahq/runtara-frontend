@@ -713,10 +713,13 @@ are fixed:
 - The Problems tab named a step by its id for the in-browser validator's
   errors.
 
+The operations specs of `local-ui` read seeded data: a workflow waiting for
+approvals, its runs, a saved queue, a failed run. The suite seeds it itself
+with `E2E_SEED_OPERATIONS=true` (`e2e/operations.seed.setup.ts`, which does
+through the API what runtara's own acceptance script does), and CI does.
+
 Not done: the `chromium` project tests signing in through an identity
-provider, and is left for runs with a developer's credentials. The
-`local-ui` operations specs skip themselves without a prepared fixture
-(`E2E_OPERATIONS_FIXTURE`).
+provider, and is left for runs with a developer's credentials.
 
 ## Low priority
 
