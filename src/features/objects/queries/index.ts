@@ -360,17 +360,15 @@ export async function bulkCreateInstances(
   opts: BulkCreateOptions,
   connectionId?: string | null
 ): Promise<BulkCreateResult> {
-  const result = await RuntimeREST.instance.post(
-    appendConnectionId(
-      `/api/runtime/object-model/instances/${schemaId}/bulk`,
-      connectionId
-    ),
+  const result = await RuntimeREST.api.bulkCreateInstances(
+    schemaId,
     {
       instances,
       onConflict: opts.onConflict,
       onError: opts.onError,
       conflictColumns: opts.conflictColumns,
-    }
+    },
+    connectionId ? { connectionId } : undefined
   );
   return {
     success: !!result.data?.success,
@@ -393,16 +391,14 @@ export async function bulkUpdateInstancesByIds(
   properties: Record<string, unknown>,
   connectionId?: string | null
 ): Promise<number> {
-  const result = await RuntimeREST.instance.patch(
-    appendConnectionId(
-      `/api/runtime/object-model/instances/${schemaId}/bulk`,
-      connectionId
-    ),
+  const result = await RuntimeREST.api.bulkUpdateInstances(
+    schemaId,
     {
       mode: 'byCondition',
       condition: { op: 'IN', arguments: ['id', instanceIds] },
       properties,
-    }
+    },
+    connectionId ? { connectionId } : undefined
   );
   return result.data?.updatedCount ?? 0;
 }
@@ -414,15 +410,14 @@ export async function exportCsv(
   data: CsvExportRequest,
   connectionId?: string | null
 ): Promise<Blob> {
-  const result = await RuntimeREST.instance.post(
-    appendConnectionId(
-      `/api/runtime/object-model/instances/schema/${schemaName}/export-csv`,
-      connectionId
-    ),
+  // The client declares no response body for the export; it is the file.
+  const result = await RuntimeREST.api.exportCsv(
+    schemaName,
     data,
-    { responseType: 'blob' }
+    connectionId ? { connectionId } : undefined,
+    { format: 'blob' }
   );
-  return result.data;
+  return result.data as unknown as Blob;
 }
 
 export async function importCsvPreview(
@@ -430,7 +425,9 @@ export async function importCsvPreview(
   data: CsvPreviewJsonRequest,
   connectionId?: string | null
 ): Promise<ImportPreviewResponse> {
-  const result = await RuntimeREST.instance.post(
+  // Through the client's HTTP instance: the schema declares the two import
+  // routes with no JSON body, so their generated methods take none.
+  const result = await RuntimeREST.instance.post<ImportPreviewResponse>(
     appendConnectionId(
       `/api/runtime/object-model/instances/schema/${schemaName}/import-csv/preview`,
       connectionId
@@ -446,7 +443,7 @@ export async function importCsv(
   data: CsvImportJsonRequest,
   connectionId?: string | null
 ): Promise<CsvImportResponse> {
-  const result = await RuntimeREST.instance.post(
+  const result = await RuntimeREST.instance.post<CsvImportResponse>(
     appendConnectionId(
       `/api/runtime/object-model/instances/schema/${schemaName}/import-csv`,
       connectionId

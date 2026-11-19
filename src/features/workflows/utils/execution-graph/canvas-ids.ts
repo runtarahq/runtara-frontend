@@ -1,6 +1,7 @@
 import {
   type ExecutionGraphDto,
   type ExecutionGraphStepDto,
+  isStepOf,
   stepSubgraph,
 } from '@/features/workflows/types/execution-graph';
 
@@ -33,7 +34,7 @@ export function canvasScopeKey(
 export function canvasOnWaitGraph(
   step: ExecutionGraphStepDto
 ): (ExecutionGraphDto & Record<string, unknown>) | undefined {
-  if (step.stepType !== 'WaitForSignal') {
+  if (!isStepOf(step, 'WaitForSignal')) {
     return undefined;
   }
   const rawOnWait = step.onWait as

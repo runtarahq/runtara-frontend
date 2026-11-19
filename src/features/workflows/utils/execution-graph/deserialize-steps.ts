@@ -4,6 +4,7 @@ import {
   type ExecutionGraphDto,
   type ExecutionGraphStepDto,
   type ExecutionGraphTransitionDto,
+  isStepOf,
   stepSubgraph,
 } from '@/features/workflows/types/execution-graph';
 import {
@@ -59,11 +60,10 @@ export function normalizeNodesAndEdges(
     // A SetState step's `values` edit like an input mapping: one row per
     // state field it writes. The raw key leaves node.data so a save rebuilds
     // it from the rows.
-    const setStateValues =
-      step.stepType === 'SetState'
-        ? ((data as Record<string, unknown>).values as
-            Record<string, unknown> | undefined)
-        : undefined;
+    const setStateValues = isStepOf(step, 'SetState')
+      ? ((data as Record<string, unknown>).values as
+          Record<string, unknown> | undefined)
+      : undefined;
     if (setStateValues !== undefined) {
       delete (data as Record<string, unknown>).values;
     }
@@ -272,7 +272,7 @@ export function normalizeNodesAndEdges(
     const sourceStep = steps[edge.fromStep ?? ''];
     let sourceHandle: string;
 
-    if (sourceStep?.stepType === 'Switch') {
+    if (isStepOf(sourceStep, 'Switch')) {
       // Switch nodes: map edge labels to the correct sourceHandle
       const label = edge.label || 'next';
       if (label === 'default') {

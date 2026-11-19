@@ -108,6 +108,20 @@ export function workflowExecutionGraph(workflow: {
     : {};
 }
 
+/**
+ * Whether a step is of one DSL step type, narrowing it to that type so the
+ * fields only it has can be read. The one place a step's type is compared
+ * with a name: code that needs one step type's own fields asks here, and
+ * code that needs to know what a step type is like asks the catalog
+ * (step-types/catalog.ts).
+ */
+export function isStepOf<T extends StepType>(
+  step: { stepType?: string } | null | undefined,
+  stepType: T
+): step is DslStepOf<T> {
+  return step?.stepType === stepType;
+}
+
 /** The graph a step nests (a Split's or While's body), if it has one. */
 export function stepSubgraph(
   step: ExecutionGraphStepDto
@@ -121,7 +135,7 @@ export function stepSubgraph(
 export function stepOnWait(
   step: ExecutionGraphStepDto
 ): ExecutionGraphDto | undefined {
-  return step.stepType === 'WaitForSignal'
+  return isStepOf(step, 'WaitForSignal')
     ? ((step.onWait ?? undefined) as ExecutionGraphDto | undefined)
     : undefined;
 }

@@ -138,10 +138,9 @@ export async function getOAuthAuthorizeUrl(
   // With credentials: the answer sets the flow's cookie, which binds it to
   // this browser and must come back with the provider's redirect to the API's
   // host, wherever the console is served from.
-  const result = await RuntimeREST.instance.get(
-    `/api/runtime/connections/${connectionId}/oauth/authorize`,
-    { withCredentials: true }
-  );
+  const result = await RuntimeREST.api.authorizeHandler(connectionId, {
+    withCredentials: true,
+  });
   return result.data.authorizationUrl;
 }
 
@@ -158,10 +157,12 @@ export interface PendingConfirmation {
 export async function getPendingConfirmation(
   connectionId: string
 ): Promise<PendingConfirmation | null> {
-  const result = await RuntimeREST.instance.get(
-    `/api/runtime/connections/${connectionId}/oauth/pending`
-  );
-  return (result.data?.pending as PendingConfirmation | null) ?? null;
+  // Through the client's HTTP instance, as the two calls below: the pinned
+  // release's schema does not have the pending-confirmation routes yet.
+  const result = await RuntimeREST.instance.get<{
+    pending?: PendingConfirmation | null;
+  }>(`/api/runtime/connections/${connectionId}/oauth/pending`);
+  return result.data?.pending ?? null;
 }
 
 /** Confirm (or reject) the pending authorization `pendingId`: the one the
@@ -171,7 +172,7 @@ export async function decidePendingConfirmation(
   pendingId: string,
   decision: 'confirm' | 'reject'
 ): Promise<void> {
-  await RuntimeREST.instance.post(
+  await RuntimeREST.instance.post<void>(
     `/api/runtime/connections/${connectionId}/oauth/${decision}`,
     { pendingId }
   );

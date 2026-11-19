@@ -7,6 +7,7 @@ import {
 import { appendPathSegment } from '@/features/workflows/utils/reference-path';
 import {
   type ExecutionGraphDto,
+  isStepOf,
   stepInputMapping,
   stepOnWait,
   stepSubgraph,
@@ -165,7 +166,7 @@ function buildStepInfoList(
       const parameterSchema: any = null;
 
       // Calculate parameter type if step type is 'Agent'
-      if (step.stepType === 'Agent' && step.agentId && step.capabilityId) {
+      if (isStepOf(step, 'Agent') && step.agentId && step.capabilityId) {
         const agent = findAgentById(agents, step.agentId);
 
         if (agent && agent.supportedCapabilities && step.capabilityId) {
@@ -190,7 +191,7 @@ function buildStepInfoList(
     }
 
     // Process output to create output StepParameters
-    if (step.stepType === 'Agent' && step.agentId && step.capabilityId) {
+    if (isStepOf(step, 'Agent') && step.agentId && step.capabilityId) {
       const agent = findAgentById(agents, step.agentId);
 
       if (agent && agent.supportedCapabilities && step.capabilityId) {
@@ -226,7 +227,7 @@ function buildStepInfoList(
           }
         }
       }
-    } else if (step.stepType === 'EmbedWorkflow') {
+    } else if (isStepOf(step, 'EmbedWorkflow')) {
       // For EmbedWorkflow steps, the outputs come from the child workflow
 
       // Try to find the child workflow and get its output schema
@@ -294,7 +295,7 @@ function buildStepInfoList(
           children: undefined,
         });
       }
-    } else if (step.stepType === 'WaitForSignal') {
+    } else if (isStepOf(step, 'WaitForSignal')) {
       // WaitForSignal steps output the signal response defined by responseSchema
       const waitStep = step as any;
       if (

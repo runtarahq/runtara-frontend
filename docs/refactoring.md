@@ -135,21 +135,14 @@ node form's choice of field and its validation, its durable and retry sets
 and the card summary read the tables. A step type's form no longer checks
 that it is shown for its own type.
 
-No code decides what to do for a step by comparing its type's name any more.
-Of the 141 comparisons, 9 are left, and none is dispatch:
-
-- 8 narrow a typed DSL step to read the fields only that variant has
-  (`step.stepType === 'Agent' && step.agentId`): `types/execution-graph.ts`,
-  `canvas-ids.ts`, `deserialize-steps.ts` (2) and `NodeForm/shared.ts` (4).
-  That is how a discriminated union is read; without them the field access
-  does not type-check.
-- 1 is the body of `isLegacyStartStep()`, which every other check of the
-  legacy `Start` step goes through.
-
-What used to be asked by name is asked of the catalog: whether a step takes
-an agent, calls a workflow, ends its path, nests a graph, and what its body
-sees of the data around it. `WF/queries/chat.ts` compares runtime event
-kinds, which are not DSL step types.
+No code decides what to do for a step by comparing its type's name. Of the
+141 comparisons at the audit, the workflow code has two, both definitions:
+`isStepOf(step, 'Agent')`, the typed guard that narrows a DSL step so the
+fields only that type has can be read, and `isLegacyStartStep()`. What used
+to be asked by name is asked of the catalog: whether a step takes an agent,
+calls a workflow, ends its path, nests a graph, and what its body sees of the
+data around it. `WF/queries/chat.ts` compares runtime event kinds, which are
+not DSL step types.
 
 ### H2. The DSL is typed by hand, and the hand-written types are wrong
 
@@ -208,11 +201,10 @@ alternatives were weighed and not taken:
   not know.
 
 On step 1, the generated client types `executionGraph` as the DSL's
-`ExecutionGraph` on the workflow DTOs. The server's schema still describes
-the field as free-form; the generator
-(`scripts/generate-api-runtime-release.mjs`) points it at the `ExecutionGraph`
-definition the same schema has, before the client is made from it. When the
-server's schema says so itself, the override finds nothing to change.
+`ExecutionGraph` on the workflow DTOs. The generator
+(`scripts/generate-api-runtime-release.mjs`) points the field at the
+`ExecutionGraph` definition the release's schema has, where that schema
+leaves it free-form, before the client is made from it.
 
 ### H3. Three contracts are unenforced
 
@@ -315,9 +307,16 @@ exist today.
   `useCustomQuery`, `useTableQuery` and `useCustomMutation` no longer pass
   one, and `createAuthHeaders` is gone.
 
-Remaining: the 9 untyped `RuntimeREST.instance.*` calls are unchanged. A
-component that gates on having a session (the run buttons, the OAuth flow)
-still reads the token from `useToken()`.
+- Four of the nine calls that went around the generated methods use them
+  (bulk create and update, CSV export, the OAuth authorize URL). The other
+  five go through the client's HTTP instance with their response typed,
+  because the pinned release's schema has no method that fits: the two CSV
+  imports are declared without a JSON body, the pending-confirmation routes
+  are not in it yet, and `operationsRequest` is the operations feature's one
+  typed entry to its routes.
+
+A component that gates on having a session (the run buttons, the OAuth flow)
+reads the token from `useToken()` to know there is one; it does not send it.
 
 ### H5. God modules in the editor
 
@@ -359,9 +358,9 @@ pipeline before moving it.
 The hooks taken out of the page run where the code they replace ran, so its
 effects fire in the order they did.
 
-What the three modules still hold is orchestration of the pieces above. The
-page's two run handlers are one (`startRun`, with `run-failure.ts` for what a
-refusal says), and writing a step edit is `apply-step-edit.ts`.
+What the three modules hold now is the orchestration of the pieces above.
+The page's two run handlers are one (`startRun`, with `run-failure.ts` for
+what a refusal says), and writing a step edit is `apply-step-edit.ts`.
 
 ## Medium priority
 
