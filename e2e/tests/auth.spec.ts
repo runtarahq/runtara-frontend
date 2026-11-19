@@ -28,6 +28,7 @@ test.describe('Authentication Flow', () => {
 
     test('should display login content or redirect to Auth0', async ({
       page,
+      baseURL,
     }) => {
       await page.goto('/login');
       await page.waitForLoadState('domcontentloaded');
@@ -38,7 +39,7 @@ test.describe('Authentication Flow', () => {
         ? new URL(process.env.VITE_OIDC_AUTHORITY).host
         : '';
       const isOnAuth0 = authorityHost !== '' && url.includes(authorityHost);
-      const isOnApp = url.includes('localhost:8081');
+      const isOnApp = url.startsWith(new URL(baseURL!).origin);
 
       expect(isOnAuth0 || isOnApp).toBe(true);
     });

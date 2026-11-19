@@ -261,6 +261,17 @@ jobs:
           CI: 'true'
         run: npx playwright test --project=local-ui --workers=1
 
+      # The pages every deployment has: the login address, unknown and
+      # protected routes, the layout and the theme. The server here needs no
+      # sign-in, so these run without one; the redirect to an identity
+      # provider is not exercised.
+      - name: Run chromium Playwright project
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8081
+          E2E_SMOKE_AUTH_MODE: local
+          CI: 'true'
+        run: npx playwright test --project=chromium --workers=2
+
       # The flows that go through the console and the server's API together:
       # building, validating, running and inspecting workflows.
       - name: Run e2e Playwright project

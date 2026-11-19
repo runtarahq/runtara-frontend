@@ -88,9 +88,10 @@ export default defineConfig({
       testMatch: /tests\/[^/]+\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
-        storageState: authFile,
+        // No signed-in state where the server needs no sign-in.
+        ...(smokeUsesNonOidcAuth ? {} : { storageState: authFile }),
       },
-      dependencies: ['setup'],
+      ...(smokeUsesNonOidcAuth ? {} : { dependencies: ['setup'] }),
       testIgnore: [/.*\.local\.e2e\.spec\.ts/],
     },
 

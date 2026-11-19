@@ -16,7 +16,10 @@ test.describe('Login Page (Unauthenticated)', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
-  test('should show login page or redirect to Auth0', async ({ page }) => {
+  test('should show login page or redirect to Auth0', async ({
+    page,
+    baseURL,
+  }) => {
     await page.goto('/login');
     await page.waitForLoadState('domcontentloaded');
 
@@ -26,7 +29,7 @@ test.describe('Login Page (Unauthenticated)', () => {
       ? new URL(process.env.VITE_OIDC_AUTHORITY).host
       : '';
     const isOnAuth0 = authorityHost !== '' && url.includes(authorityHost);
-    const isOnApp = url.includes('localhost:8081');
+    const isOnApp = url.startsWith(new URL(baseURL!).origin);
 
     expect(isOnAuth0 || isOnApp).toBe(true);
   });

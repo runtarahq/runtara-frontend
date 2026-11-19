@@ -677,7 +677,7 @@ test keeps complete; two that did nothing were removed.
 - Real-backend Playwright projects run in no workflow.
 - Unit tests and Playwright share no mock layer.
 
-**Status: done, but for one project that needs an identity provider.**
+**Status: done.**
 
 - `e2e/**` and `playwright.config.ts` are type-checked (`tsconfig.e2e.json`);
   the 51 errors that surfaced are fixed. `vitest.config.ts` was already
@@ -692,8 +692,8 @@ test keeps complete; two that did nothing were removed.
   eighteen it rendered are committed and the mocked job compares with them.
 - The real-backend projects run in CI (`E2E (real backend)`), against
   runtara's evaluation stack at the release this repository builds against,
-  with the commit's console pointed at its API: `smoke`, `local-ui` and
-  `e2e`. The `e2e` project and the workflow-builder spec had been written
+  with the commit's console pointed at its API: `smoke`, `local-ui`, `e2e`
+  and `chromium`. The `e2e` project and the workflow-builder spec had been written
   for the console before its redesign and were brought up to date; they
   need no identity provider where the server needs no sign-in
   (`e2e/utils/api-auth.ts`).
@@ -718,8 +718,11 @@ approvals, its runs, a saved queue, a failed run. The suite seeds it itself
 with `E2E_SEED_OPERATIONS=true` (`e2e/operations.seed.setup.ts`, which does
 through the API what runtara's own acceptance script does), and CI does.
 
-Not done: the `chromium` project tests signing in through an identity
-provider, and is left for runs with a developer's credentials.
+The `chromium` project (the login address, unknown and protected routes, the
+layout, the theme) runs there too. Its specs accept the console's own page or
+a redirect to an identity provider, so they pass against a server that needs
+no sign-in; that redirect itself is exercised only when the project is run
+against a deployment that has one.
 
 ## Low priority
 
