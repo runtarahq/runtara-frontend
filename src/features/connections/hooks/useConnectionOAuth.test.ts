@@ -13,7 +13,7 @@ vi.mock('@/shared/config/runtimeConfig', () => ({ isOidcAuth: true }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
-vi.mock('@/bootstrap.tsx', () => ({
+vi.mock('@/shared/queries/query-client', () => ({
   queryClient: { invalidateQueries: vi.fn() },
 }));
 vi.mock('@/features/connections/queries', () => ({

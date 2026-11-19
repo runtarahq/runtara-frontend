@@ -25,7 +25,7 @@ import { usePageTitle } from '@/shared/hooks/usePageTitle';
 import { useConnectionRateLimitStatus } from '@/features/connections/hooks/useRateLimits';
 import { useConnectionOAuth } from '@/features/connections/hooks/useConnectionOAuth';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import type { FormDefinition } from '@/shared/forms';
 import {
   patchStripsAuthorization,

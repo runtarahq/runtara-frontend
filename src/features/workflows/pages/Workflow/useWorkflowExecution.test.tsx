@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   stopInstance: vi.fn(),
   toast: { info: vi.fn(), error: vi.fn() },
 }));
-vi.mock('@/bootstrap', async () => {
+vi.mock('@/shared/queries/query-client', async () => {
   const { QueryClient } = await import('@tanstack/react-query');
   return {
     queryClient: new QueryClient({
@@ -42,7 +42,7 @@ vi.mock('@/features/workflows/queries', () => ({
   }),
 }));
 
-import { queryClient } from '@/bootstrap';
+import { queryClient } from '@/shared/queries/query-client';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useWorkflowExecution } from './useWorkflowExecution';

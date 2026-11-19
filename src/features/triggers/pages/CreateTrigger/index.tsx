@@ -16,7 +16,7 @@ import { createInvocationTrigger } from '@/features/triggers/queries';
 import { getWorkflows } from '@/features/workflows/queries';
 import { getConnections } from '@/features/connections/queries';
 import { usePageTitle } from '@/shared/hooks/usePageTitle';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 
 export function CreateTrigger() {
   const navigate = useNavigate();

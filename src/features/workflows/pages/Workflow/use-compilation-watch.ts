@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { getCompilationProgress } from '@/features/workflows/queries';

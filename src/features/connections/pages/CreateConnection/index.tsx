@@ -20,7 +20,7 @@ import {
 import { useAuth } from 'react-oidc-context';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { useCreateOnce } from './use-create-once';
 
 export function CreateConnection() {

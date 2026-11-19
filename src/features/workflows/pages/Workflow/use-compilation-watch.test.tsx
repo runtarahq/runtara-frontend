@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getCompilationProgress: vi.fn(),
   toast: { error: vi.fn(), warning: vi.fn() },
 }));
-vi.mock('@/bootstrap.tsx', async () => {
+vi.mock('@/shared/queries/query-client', async () => {
   const { QueryClient } = await import('@tanstack/react-query');
   return {
     queryClient: new QueryClient({
@@ -23,7 +23,7 @@ vi.mock('@/features/workflows/queries', () => ({
   getCompilationProgress: mocks.getCompilationProgress,
 }));
 
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { useCompilationWatch } from './use-compilation-watch';
 

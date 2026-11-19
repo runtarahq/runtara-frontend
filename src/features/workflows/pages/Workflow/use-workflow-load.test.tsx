@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getWorkflowWorkflow: vi.fn(),
   getWorkflowVersions: vi.fn(),
 }));
-vi.mock('@/bootstrap.tsx', async () => {
+vi.mock('@/shared/queries/query-client', async () => {
   const { QueryClient } = await import('@tanstack/react-query');
   return {
     queryClient: new QueryClient({
@@ -20,7 +20,7 @@ vi.mock('react-oidc-context', () => ({
 }));
 vi.mock('@/features/workflows/queries', () => mocks);
 
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useVersionSelection, useWorkflowLoad } from './use-workflow-load';

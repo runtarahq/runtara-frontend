@@ -13,7 +13,7 @@ import {
 import { EnrichedTrigger, TriggerType } from '@/features/triggers/types';
 import { useCustomMutation } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys.ts';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { removeInvocationTrigger } from '@/features/triggers/queries';
 import {
   getHttpTriggerUrl,

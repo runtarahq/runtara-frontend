@@ -3,7 +3,7 @@ import { useAuth } from 'react-oidc-context';
 import { toast } from 'sonner';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { getOAuthAuthorizeUrl } from '@/features/connections/queries';
 import { OAuthPopupClosedError, useOAuthPopup } from './useOAuthPopup';
 

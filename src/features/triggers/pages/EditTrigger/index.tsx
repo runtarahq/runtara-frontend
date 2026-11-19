@@ -8,7 +8,7 @@ import { Loader } from '@/shared/components/loader.tsx';
 import { PageContainer } from '@/shared/components/page-container';
 import { SectionLabel } from '@/shared/components/section-label';
 import { TriggerForm } from '@/features/triggers/components/TriggerForm';
-import { queryClient } from '@/bootstrap';
+import { queryClient } from '@/shared/queries/query-client';
 import { scheduleToCron, cronToSchedule } from '@/features/triggers/utils/cron';
 import {
   buildCronConfiguration,

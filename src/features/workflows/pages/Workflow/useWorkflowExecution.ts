@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { useCustomMutation, useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { queryClient } from '@/bootstrap';
+import { queryClient } from '@/shared/queries/query-client';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import {

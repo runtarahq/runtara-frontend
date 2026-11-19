@@ -12,7 +12,7 @@ import { WorkflowActionsForm } from '@/features/workflows/pages/Workflow/Workflo
 import { Loader } from '@/shared/components/loader.tsx';
 import { composeExecutionGraph } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
 import '@xyflow/react/dist/base.css';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { slugify } from '@/shared/utils/string-utils';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
