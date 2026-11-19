@@ -43,16 +43,13 @@ jobs:
         run: ${{ matrix.check.cmd }}
 
   # The checked-in runtime client against the pinned runtara release's
-  # openapi.json (scripts/generate-api-runtime-release.mjs --check).
-  #
-  # It reports and does not gate yet: the client checked in is ahead of
-  # v10.0.0 (API key scopes, revoking a user's keys), generated from a server
-  # that has not been released. Drop `continue-on-error` with the bump to the
-  # runtara release that carries them.
+  # openapi.json (scripts/generate-api-runtime-release.mjs --check). What the
+  # client has beyond that release, generated from a server not yet released,
+  # is recorded in scripts/api-runtime.pending.patch and passes; any other
+  # difference fails.
   api-client:
     name: API client matches the pinned release
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 

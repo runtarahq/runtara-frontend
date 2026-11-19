@@ -36,6 +36,7 @@
     "generate-api-runtime-local": "swagger-typescript-api generate --axios --generate-union-enums -p http://localhost:7001/api/runtime/openapi/docs.json -o src/generated -n RuntaraRuntimeApi.ts",
     "generate-api-runtime-release": "node scripts/generate-api-runtime-release.mjs",
     "check-api-runtime-release": "node scripts/generate-api-runtime-release.mjs --check",
+    "record-api-runtime-pending": "node scripts/generate-api-runtime-release.mjs --write-pending",
     "knip": "knip",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -27,7 +27,10 @@ releases are independent, so a console fix ships without a server release.
   `src/generated/RuntaraRuntimeApi.ts` from the same release's `openapi.json`.
   Moving to a new runtara minor means bumping that URL and regenerating.
   `npm run check-api-runtime-release` tells whether the client checked in is
-  that release's, and CI runs it on every pull request.
+  that release's, and CI runs it on every pull request. A client generated
+  ahead of a release records what it has beyond it with
+  `npm run record-api-runtime-pending` (`scripts/api-runtime.pending.patch`);
+  delete that file with the bump to the release that carries it.
 - **Releasing.** Set `version` in `package.json`, merge, and push the tag
   `vX.Y.Z`. The release workflow builds with `VITE_RUNTARA_VERSION` set and
   publishes `runtara-frontend-X.Y.Z.tar.gz` (the contents of `dist/`) with its
