@@ -22,12 +22,13 @@ import { OverviewAttention } from '../components/OverviewAttention';
 import { RefreshControls, RunRows } from './shared';
 import type { OperationRequestPage } from '@/generated/RuntaraRuntimeApi';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function OverviewPage() {
   const { queues, views } = useOperations({ includeProcesses: false });
   const tenant = useAuthStore((s) => s.orgId);
   const client = useQueryClient();
   const failures = useCustomQuery({
-    queryKey: ['operations', tenant, 'overview-failures'],
+    queryKey: queryKeys.operations.overviewFailures(tenant),
     queryFn: () =>
       queryRuns({
         status: 'failed,timeout',
@@ -38,13 +39,13 @@ export function OverviewPage() {
     placeholderData: undefined,
   });
   const running = useCustomQuery({
-    queryKey: ['operations', tenant, 'running-count'],
+    queryKey: queryKeys.operations.runningCount(tenant),
     queryFn: () => queryRunSummary({}),
     refetchInterval: 30_000,
     placeholderData: undefined,
   });
   const recent = useCustomQuery({
-    queryKey: ['operations', tenant, 'invocations-24h'],
+    queryKey: queryKeys.operations.invocations24h(tenant),
     queryFn: () =>
       queryRunSummary({
         createdFrom: new Date(Date.now() - 86_400_000).toISOString(),
@@ -53,7 +54,7 @@ export function OverviewPage() {
     placeholderData: undefined,
   });
   const latest = useCustomQuery({
-    queryKey: ['operations', tenant, 'recent-runs'],
+    queryKey: queryKeys.operations.recentRuns(tenant),
     queryFn: () =>
       queryRuns({ size: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
     refetchInterval: 30_000,
@@ -61,7 +62,7 @@ export function OverviewPage() {
   });
   const queueViews = attentionQueues(queues.data ?? [], views.data ?? []);
   const attention = useCustomQuery({
-    queryKey: ['operations', tenant, 'attention', queueViews],
+    queryKey: queryKeys.operations.attention(tenant, queueViews),
     queryFn: async () =>
       Promise.all(
         queueViews.map(async ({ queue, view }) => {
@@ -148,7 +149,7 @@ export function OverviewPage() {
               busy={queues.isFetching || attention.isFetching}
               onRefresh={() =>
                 void client.invalidateQueries({
-                  queryKey: ['operations', tenant],
+                  queryKey: queryKeys.operations.tenant(tenant),
                 })
               }
             />

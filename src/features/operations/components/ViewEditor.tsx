@@ -19,6 +19,7 @@ import {
 import { type StateField } from './StateValue';
 import { RUN_STATUS_OPTIONS } from '@/features/invocation-history/status-options';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function ViewEditor({
   initial,
   saved,
@@ -59,7 +60,7 @@ export function ViewEditor({
         saved ? 'PUT' : 'POST',
         { configuration: view, revision }
       );
-      await client.invalidateQueries({ queryKey: ['operations'] });
+      await client.invalidateQueries({ queryKey: queryKeys.operations.all });
       onSaved(result);
     } catch (e) {
       if (saved && isRevisionConflict(e)) {

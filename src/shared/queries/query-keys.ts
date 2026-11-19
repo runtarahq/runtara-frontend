@@ -281,4 +281,84 @@ export const queryKeys = {
         dateRange,
       ] as const,
   },
+
+  // Operations domain. Every key carries the tenant, so a tenant's queues
+  // and runs are never read from another's cache.
+  operations: {
+    all: ['operations'] as const,
+    tenant: (tenant: string) => [...queryKeys.operations.all, tenant] as const,
+    queues: (tenant: string) =>
+      [...queryKeys.operations.tenant(tenant), 'queues'] as const,
+    views: (tenant: string) =>
+      [...queryKeys.operations.tenant(tenant), 'views'] as const,
+    processes: (tenant: string) =>
+      [...queryKeys.operations.tenant(tenant), 'processes'] as const,
+    overviewFailures: (tenant: string) =>
+      [...queryKeys.operations.tenant(tenant), 'overview-failures'] as const,
+    runningCount: (tenant: string) =>
+      [...queryKeys.operations.tenant(tenant), 'running-count'] as const,
+    invocations24h: (tenant: string) =>
+      [...queryKeys.operations.tenant(tenant), 'invocations-24h'] as const,
+    recentRuns: (tenant: string) =>
+      [...queryKeys.operations.tenant(tenant), 'recent-runs'] as const,
+    attention: (tenant: string, queueViews: unknown) =>
+      [
+        ...queryKeys.operations.tenant(tenant),
+        'attention',
+        queueViews,
+      ] as const,
+    /** A queue's rows: its view, then the page, search and tab shown. */
+    items: (
+      tenant: string,
+      view: unknown,
+      page: number,
+      search: string,
+      overdueTab: boolean
+    ) =>
+      [
+        ...queryKeys.operations.tenant(tenant),
+        'items',
+        view,
+        page,
+        search,
+        overdueTab,
+      ] as const,
+    queueCounts: (tenant: string, view: unknown) =>
+      [...queryKeys.operations.tenant(tenant), 'queue-counts', view] as const,
+    /** The requests of every queue: their scopes, then the filter and page. */
+    requestList: (
+      tenant: string,
+      scopes: unknown,
+      overdue: boolean,
+      page: number
+    ) =>
+      [
+        ...queryKeys.operations.tenant(tenant),
+        'request-list',
+        scopes,
+        overdue,
+        page,
+      ] as const,
+    run: (tenant: string, workflowId: string, instanceId: string) =>
+      [
+        ...queryKeys.operations.tenant(tenant),
+        'run',
+        workflowId,
+        instanceId,
+      ] as const,
+    runPendingInput: (tenant: string, workflowId: string, instanceId: string) =>
+      [
+        ...queryKeys.operations.tenant(tenant),
+        'pending',
+        workflowId,
+        instanceId,
+      ] as const,
+    runActivity: (tenant: string, workflowId: string, instanceId: string) =>
+      [
+        ...queryKeys.operations.tenant(tenant),
+        'activity',
+        workflowId,
+        instanceId,
+      ] as const,
+  },
 } as const;

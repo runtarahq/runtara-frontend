@@ -47,6 +47,7 @@ import { overdueFilters } from '../attention-requests';
 import { OperationHeader, RunRows, RefreshControls } from './shared';
 import { failedWithNothingToShow, refreshFailed } from '../poll-errors';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 const requestKey = (r: OperationRequest) =>
   JSON.stringify([r.instanceId, r.requestId]);
 const isNumeric = (field?: StateField) =>
@@ -144,7 +145,13 @@ function QueueContent({
   const due = view.roles?.due;
   const overdueTab = isQueue && Boolean(due) && tab === 'overdue';
   const query = useCustomQuery({
-    queryKey: ['operations', tenant, 'items', view, page, search, overdueTab],
+    queryKey: queryKeys.operations.items(
+      tenant,
+      view,
+      page,
+      search,
+      overdueTab
+    ),
     queryFn: async () =>
       isQueue
         ? {
@@ -169,7 +176,7 @@ function QueueContent({
   });
   // Tab counts, the same way the Overview counts overdue requests.
   const counts = useCustomQuery({
-    queryKey: ['operations', tenant, 'queue-counts', view],
+    queryKey: queryKeys.operations.queueCounts(tenant, view),
     queryFn: async () => {
       const [open, overdue] = await Promise.all([
         queryRequests(view, 0, '', 1),

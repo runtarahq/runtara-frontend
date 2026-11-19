@@ -7,6 +7,7 @@ import { WithTooltip } from '@/shared/components/ui/tooltip';
 import { useOperations } from '../queries';
 import { DeleteQueue } from '../components/DeleteQueue';
 import { OperationHeader, OperationSection, RefreshControls } from './shared';
+import { queryKeys } from '@/shared/queries/query-keys';
 export function QueuesPage() {
   const { views, processes } = useOperations();
   const client = useQueryClient();
@@ -21,7 +22,9 @@ export function QueuesPage() {
               updatedAt={views.dataUpdatedAt}
               busy={views.isFetching}
               onRefresh={() =>
-                void client.invalidateQueries({ queryKey: ['operations'] })
+                void client.invalidateQueries({
+                  queryKey: queryKeys.operations.all,
+                })
               }
             />
             <Can permission="workflow:update">

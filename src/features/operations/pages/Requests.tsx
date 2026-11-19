@@ -9,6 +9,7 @@ import { RequestRows } from '../components/RequestRows';
 import { OperationHeader, OperationSection, RefreshControls } from './shared';
 import { failedWithNothingToShow } from '../poll-errors';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function RequestsPage() {
   const [params, setParams] = useSearchParams();
   const overdue = params.get('filter') === 'overdue';
@@ -19,7 +20,7 @@ export function RequestsPage() {
   const client = useQueryClient();
   const scopes = attentionQueues(queues.data ?? [], views.data ?? []);
   const query = useCustomQuery({
-    queryKey: ['operations', tenant, 'request-list', scopes, overdue, page],
+    queryKey: queryKeys.operations.requestList(tenant, scopes, overdue, page),
     queryFn: () => queryAttentionRequests(scopes, overdue, page),
     enabled: Boolean(queues.data && views.data),
     // The scopes carry each queue's count, so every count change is a new key.
@@ -50,7 +51,7 @@ export function RequestsPage() {
             updatedAt={query.dataUpdatedAt}
             onRefresh={() =>
               void client.invalidateQueries({
-                queryKey: ['operations', tenant],
+                queryKey: queryKeys.operations.tenant(tenant),
               })
             }
           />

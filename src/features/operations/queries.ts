@@ -11,6 +11,7 @@ import type {
   PageWorkflowInstanceHistoryDto,
 } from '@/generated/RuntaraRuntimeApi';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export async function operationsRequest<T>(
   path: string,
   method = 'GET',
@@ -26,18 +27,18 @@ export async function operationsRequest<T>(
 export function useOperations({ includeProcesses = true } = {}) {
   const tenant = useAuthStore((s) => s.orgId);
   const queues = useCustomQuery({
-    queryKey: ['operations', tenant, 'queues'],
+    queryKey: queryKeys.operations.queues(tenant),
     queryFn: () => operationsRequest<OperationQueue[]>('operations/queues'),
     refetchInterval: 10_000,
     placeholderData: undefined,
   });
   const views = useCustomQuery({
-    queryKey: ['operations', tenant, 'views'],
+    queryKey: queryKeys.operations.views(tenant),
     queryFn: () => operationsRequest<SavedOperationView[]>('operations/views'),
     placeholderData: undefined,
   });
   const processes = useCustomQuery({
-    queryKey: ['operations', tenant, 'processes'],
+    queryKey: queryKeys.operations.processes(tenant),
     enabled: includeProcesses,
     queryFn: () =>
       operationsRequest<OperationProcess[]>('operations/processes'),

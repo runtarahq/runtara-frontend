@@ -35,6 +35,7 @@ import { useOperations } from '../queries';
 import { isActiveStatus } from '@/shared/utils/status-display';
 import { failedWithNothingToShow, refreshFailed } from '../poll-errors';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function RunPage() {
   const { workflowId = '', instanceId = '' } = useParams();
   const tenant = useAuthStore((s) => s.orgId);
@@ -42,7 +43,7 @@ export function RunPage() {
   const [replaying, setReplaying] = useState(false);
   const { views, processes } = useOperations();
   const run = useCustomQuery({
-    queryKey: ['operations', tenant, 'run', workflowId, instanceId],
+    queryKey: queryKeys.operations.run(tenant, workflowId, instanceId),
     queryFn: () => getWorkflowInstance(workflowId, instanceId),
     // A finished run does not change, so stop polling it (OP-9).
     refetchInterval: (query) =>
@@ -53,7 +54,11 @@ export function RunPage() {
   });
   const finished = Boolean(run.data) && !isActiveStatus(run.data?.status);
   const pending = useCustomQuery({
-    queryKey: ['operations', tenant, 'pending', workflowId, instanceId],
+    queryKey: queryKeys.operations.runPendingInput(
+      tenant,
+      workflowId,
+      instanceId
+    ),
     queryFn: () => getPendingInput(workflowId, instanceId),
     refetchInterval: finished ? false : 10_000,
     placeholderData: undefined,
@@ -77,7 +82,7 @@ export function RunPage() {
     placeholderData: undefined,
   });
   const steps = useCustomQuery({
-    queryKey: ['operations', tenant, 'activity', workflowId, instanceId],
+    queryKey: queryKeys.operations.runActivity(tenant, workflowId, instanceId),
     queryFn: () =>
       getStepSummaries(workflowId, instanceId, {
         limit: 20,

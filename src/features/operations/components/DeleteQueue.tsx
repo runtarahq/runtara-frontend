@@ -18,6 +18,7 @@ import {
   operationsRequest,
 } from '../queries';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function DeleteQueue({
   queue,
   icon = false,
@@ -45,7 +46,7 @@ export function DeleteQueue({
       // first showed "Queue not found" there until the slowest list answered
       // (OP-8).
       onDeleted?.();
-      await client.invalidateQueries({ queryKey: ['operations'] });
+      await client.invalidateQueries({ queryKey: queryKeys.operations.all });
     } catch (e) {
       setError(message(e));
       // The user has now seen the conflict; a second confirm deletes the

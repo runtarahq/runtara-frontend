@@ -188,7 +188,7 @@ export function ReplayButton({
         {}
       );
       await Promise.all([
-        client.invalidateQueries({ queryKey: ['operations'] }),
+        client.invalidateQueries({ queryKey: queryKeys.operations.all }),
         client.invalidateQueries({ queryKey: queryKeys.executions.lists() }),
       ]);
       toast.success(`Replay queued for ${run.runLabel ?? 'run'}`);
