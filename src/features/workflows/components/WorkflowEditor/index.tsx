@@ -759,6 +759,7 @@ function WorkflowEditorContent({
       if (!validation.canApply) {
         toast.error('Step validation failed', {
           description:
+            validation.blockingError ||
             validation.rustValidation.errors[0] ||
             validation.rustValidation.message,
         });

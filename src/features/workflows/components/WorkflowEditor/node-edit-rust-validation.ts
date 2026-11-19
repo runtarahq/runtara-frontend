@@ -68,8 +68,26 @@ type ValidateNodeEditParams = {
   pendingNode?: PendingNodeCandidate | null;
 };
 
+/**
+ * Errors about the shape of the canvas, which no step's dialog can put
+ * right: a container with nothing in it yet, a Conditional without both its
+ * branches, a routing Switch without its default route. A step is added
+ * before its body and its routes can be, so these do not refuse a step edit.
+ * They are still listed as problems, and saving the workflow still refuses
+ * them.
+ */
+const CANVAS_SHAPE_ERROR_CODES = new Set(['E004', 'E140', 'E141']);
+
+function isCanvasShapeError(error: ValidationMessage): boolean {
+  const code = /^\[(E\d+)\]/.exec(error.message)?.[1];
+  return code !== undefined && CANVAS_SHAPE_ERROR_CODES.has(code);
+}
+
 export type NodeEditRustValidationResult = {
+  /** Whether the edit may be applied: nothing wrong that its dialog can fix. */
   canApply: boolean;
+  /** The first error that refuses the edit, when one does. */
+  blockingError?: string;
   messages: ValidationMessage[];
   rustValidation: RustWorkflowValidationResult;
 };
@@ -334,8 +352,12 @@ export async function validateNodeEditWithRust({
     rustValidation.warningGraphPaths
   );
 
+  const blockingErrors = errors.filter((error) => !isCanvasShapeError(error));
+
   return {
-    canApply: rustValidation.status !== 'invalid',
+    canApply:
+      rustValidation.status !== 'invalid' || blockingErrors.length === 0,
+    blockingError: blockingErrors[0]?.message,
     messages: applyTargetFallback(
       [...errors, ...warnings],
       candidateNodes,

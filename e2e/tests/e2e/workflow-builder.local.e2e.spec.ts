@@ -12,7 +12,7 @@ const stepType = (stepTypeName: string) =>
     stepType: stepTypeName,
   }) as const;
 
-test.describe.serial('Workflow builder local UI', () => {
+test.describe('Workflow builder local UI', () => {
   let createdWorkflowNames: string[] = [];
   let createdConnectionNames: string[] = [];
 
@@ -233,10 +233,11 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.addFirstCanvasStep(randomDoubleStep, {
       name: 'Prepare items',
     });
-    await builder.addCanvasStepAfter('Prepare items', stepType('Split'), {
-      name: 'For each item',
-    });
-    await builder.configureSplitSource('For each item');
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginCanvasStepAfter('Prepare items', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource();
+    await builder.saveOpenCanvasDialog({ name: 'For each item' });
     await builder.addNestedCanvasStep('For each item', randomDoubleStep, {
       name: 'Process item',
     });
@@ -276,10 +277,11 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.beginFirstCanvasStep(stepType('While'));
     await builder.configureOpenCondition();
     await builder.saveOpenCanvasDialog({ name: 'Retry loop' });
-    await builder.addNestedCanvasStep('Retry loop', stepType('Split'), {
-      name: 'Loop items',
-    });
-    await builder.configureSplitSource('Loop items');
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginNestedCanvasStep('Retry loop', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource();
+    await builder.saveOpenCanvasDialog({ name: 'Loop items' });
     await builder.addNestedCanvasStep('Loop items', randomDoubleStep, {
       name: 'Loop item work',
     });
@@ -335,14 +337,16 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.beginFirstCanvasStep(stepType('While'));
     await builder.configureOpenCondition();
     await builder.saveOpenCanvasDialog({ name: 'Outer while' });
-    await builder.addNestedCanvasStep('Outer while', stepType('Split'), {
-      name: 'Outer split',
-    });
-    await builder.configureSplitSource('Outer split', 'data.outerItems');
-    await builder.addNestedCanvasStep('Outer split', stepType('Split'), {
-      name: 'Inner split',
-    });
-    await builder.configureSplitSource('Inner split', 'data.innerItems');
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginNestedCanvasStep('Outer while', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource('data.outerItems');
+    await builder.saveOpenCanvasDialog({ name: 'Outer split' });
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginNestedCanvasStep('Outer split', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource('data.innerItems');
+    await builder.saveOpenCanvasDialog({ name: 'Inner split' });
     await builder.addNestedCanvasStep('Inner split', randomDoubleStep, {
       name: 'Deep child',
     });
@@ -375,9 +379,11 @@ test.describe.serial('Workflow builder local UI', () => {
     const builder = new WorkflowBuilderPage(page);
     await rememberWorkflow(builder, workflowName('invalid-containers'));
 
-    await builder.addFirstCanvasStep(stepType('Split'), {
-      name: 'Empty split',
-    });
+    // A Split with nothing in it can be added, and the workflow cannot be
+    // saved until it has a body.
+    await builder.beginFirstCanvasStep(stepType('Split'));
+    await builder.configureOpenCanvasSplitSource();
+    await builder.saveOpenCanvasDialog({ name: 'Empty split' });
     await builder.expectSaveValidationFailure();
     await builder.deleteCanvasStep('Empty split');
     await builder.clearValidationMessages();

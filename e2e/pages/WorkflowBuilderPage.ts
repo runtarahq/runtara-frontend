@@ -337,10 +337,23 @@ export class WorkflowBuilderPage {
   }
 
   async configureOpenCanvasSplitSource(source = 'data.items') {
-    const dialog = this.page.getByTestId('node-config-dialog');
-    await dialog
-      .getByPlaceholder("e.g., steps['fetch'].outputs.items")
-      .fill(source);
+    await this.fillSplitSource(source);
+  }
+
+  /**
+   * Types a Split's array source. The field opens as a variable picker; its
+   * mode button cycles on to the mode with a plain input.
+   */
+  private async fillSplitSource(source: string): Promise<void> {
+    const panel = this.page.getByTestId('node-config-dialog');
+    const input = panel.getByPlaceholder("e.g., steps['fetch'].outputs.items");
+    for (let i = 0; i < 4 && !(await input.isVisible()); i++) {
+      await panel
+        .getByRole('button', { name: /^Switch to \w+ mode$/ })
+        .first()
+        .click();
+    }
+    await input.fill(source);
   }
 
   async configureOpenCanvasCondition(left = 'ready', right = 'ready') {
@@ -352,9 +365,7 @@ export class WorkflowBuilderPage {
   async configureSplitSource(stepName: string, source = 'data.items') {
     await this.editCanvasStep(stepName);
     const panel = this.page.getByTestId('node-config-dialog');
-    await panel
-      .getByPlaceholder("e.g., steps['fetch'].outputs.items")
-      .fill(source);
+    await this.fillSplitSource(source);
     await panel.getByTestId('node-config-save').click();
     await expect(panel).toHaveCount(0);
   }
