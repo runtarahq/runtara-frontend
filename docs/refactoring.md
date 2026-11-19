@@ -662,8 +662,9 @@ attestation, and the image an SBOM. CI audits the shipped dependencies.
 
 The prerelease `v10.0.1-rc.1` ran the workflow end to end: its three jobs
 passed, the tarball matches its checksum, and `gh attestation verify` accepts
-both the tarball and the image. The `overrides` in `package.json` are still
-undocumented.
+both the tarball and the image. The `overrides` in `package.json` are
+explained in [`dependency-overrides.md`](dependency-overrides.md), which a
+test keeps complete; two that did nothing were removed.
 
 ### M14. Test and tooling gaps
 

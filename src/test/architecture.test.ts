@@ -146,6 +146,35 @@ describe('the source tree', () => {
     }
   });
 
+  it('explains every dependency override, and has none that does nothing', () => {
+    const root = path.resolve(SRC, '..');
+    const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
+    const overrides = JSON.parse(read('package.json')).overrides as Record<
+      string,
+      string | Record<string, string>
+    >;
+    const installed = Object.keys(
+      JSON.parse(read('package-lock.json')).packages as Record<string, unknown>
+    );
+    const explained = read('docs/dependency-overrides.md');
+
+    // An override names a package, or a package inside one that asks for it.
+    const names = Object.entries(overrides).flatMap(([name, value]) =>
+      typeof value === 'string' ? [name] : Object.keys(value)
+    );
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(
+        explained,
+        `${name} is not in docs/dependency-overrides.md`
+      ).toContain(`\`${name}\``);
+      expect(
+        installed.some((entry) => entry.endsWith(`node_modules/${name}`)),
+        `the override of ${name} applies to nothing installed`
+      ).toBe(true);
+    }
+  });
+
   it('does not import the app entry from anywhere but main', () => {
     const offenders = sourceFiles(SRC)
       .filter((file) => path.relative(SRC, file) !== 'main.tsx')
