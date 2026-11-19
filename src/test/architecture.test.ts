@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -22,6 +22,43 @@ function imports(file: string): string[] {
   return [
     ...source.matchAll(/(?:from\s+|import\(\s*)['"]@\/([^'"]+)['"]/g),
   ].map((match) => match[1]);
+}
+
+/** The source file an import of the app's own code names, if it is one. */
+function resolveSource(from: string, specifier: string): string | undefined {
+  const base = specifier.startsWith('@/')
+    ? path.join(SRC, specifier.slice(2))
+    : specifier.startsWith('.')
+      ? path.resolve(path.dirname(from), specifier)
+      : undefined;
+  if (!base) return undefined;
+  return [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    path.join(base, 'index.ts'),
+    path.join(base, 'index.tsx'),
+  ].find((file) => /\.tsx?$/.test(file) && existsSync(file));
+}
+
+/**
+ * Every source file loaded when `entry` is: what it imports at top level,
+ * and what those import. Types and `import()` calls load nothing then.
+ */
+function loadedWith(entry: string, seen = new Set<string>()): Set<string> {
+  if (seen.has(entry)) return seen;
+  seen.add(entry);
+  const source = readFileSync(entry, 'utf8');
+  const specifiers = [
+    ...source.matchAll(
+      /^(?:import|export)\s+(?!type\b)(?:[^'"]*?\sfrom\s+)?['"]([^'"]+)['"]/gm
+    ),
+  ].map((match) => match[1]);
+  for (const specifier of specifiers) {
+    const file = resolveSource(entry, specifier);
+    if (file) loadedWith(file, seen);
+  }
+  return seen;
 }
 
 const featureOf = (modulePath: string) =>
@@ -86,6 +123,27 @@ describe('the source tree', () => {
       )
       .map((file) => path.relative(SRC, file));
     expect(offenders).toEqual([]);
+  });
+
+  it('keeps an edition clear of the modules that read it while they load', () => {
+    // The console reads the edition while it works out its own root
+    // (shared/config/appBase), so an edition that imports appBase, or the
+    // OIDC settings built on it, at top level would be read before it is
+    // set (shared/edition/types.ts). Followed through what it imports.
+    const editions = [
+      path.join(SRC, 'edition/index.ts'),
+      path.resolve(SRC, '../examples/edition/index.tsx'),
+    ];
+    const forbidden = ['shared/config/appBase', 'shared/config/oidcConfig'];
+
+    for (const edition of editions) {
+      const reached = loadedWith(edition);
+      const offenders = [...reached]
+        .map((file) => path.relative(SRC, file).replace(/\.tsx?$/, ''))
+        .filter((file) => forbidden.includes(file));
+      expect(offenders, path.relative(SRC, edition)).toEqual([]);
+      expect(reached.size).toBeGreaterThan(0);
+    }
   });
 
   it('does not import the app entry from anywhere but main', () => {

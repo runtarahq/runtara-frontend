@@ -8,7 +8,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/shared/components/ui/dropdown-menu';
-import { mountReturnPath, tenantIdFromUrl } from '@/shared/config/oidcConfig';
+import { mountReturnPath, tenantIdFromUrl } from '@/shared/config/appBase';
 import { tenantHome, useMyTenants } from './myTenants';
 
 /** Switch between the workspaces the user belongs to; hidden with fewer than two. */

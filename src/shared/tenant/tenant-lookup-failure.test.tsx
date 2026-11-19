@@ -21,7 +21,7 @@ vi.mock('@/shared/config/runtimeConfig', () => ({ isOidcAuth: true }));
 vi.mock('@/shared/queries', () => ({
   RuntimeREST: { instance: { get: (...args: unknown[]) => get(...args) } },
 }));
-vi.mock('@/shared/config/oidcConfig', () => ({ mountReturnPath: '/ui/' }));
+vi.mock('@/shared/config/appBase', () => ({ mountReturnPath: '/ui/' }));
 vi.mock('@edition', () => ({ edition: {} }));
 
 import { TenantGate } from './TenantGate';

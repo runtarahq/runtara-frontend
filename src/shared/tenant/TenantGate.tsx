@@ -4,7 +4,7 @@ import logoIcon from '@/assets/logo/runtara-logo-icon.svg';
 import { Button } from '@/shared/components/ui/button';
 import { Loader } from '@/shared/components/loader.tsx';
 import { edition } from '@edition';
-import { mountReturnPath } from '@/shared/config/oidcConfig';
+import { mountReturnPath } from '@/shared/config/appBase';
 import {
   chooseTenant,
   tenantHome,

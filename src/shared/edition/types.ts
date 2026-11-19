@@ -24,6 +24,8 @@ export type EditionRoute = {
  * `@/shared/config/appBase` or `@/shared/config/oidcConfig` at top level:
  * the cycle would read them before they are set. Import them where they are
  * used (in a component or hook), not when the module loads.
+ * `src/test/architecture.test.ts` holds this repository's editions to it,
+ * through everything they import.
  */
 export type Edition = {
   /** Pages, after the built-in ones. */
