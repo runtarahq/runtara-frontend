@@ -6,8 +6,10 @@ import {
 } from '@/features/workflows/config/workflow';
 import {
   generateUniqueStepName,
+  pendingStepEdges,
   planPendingStep,
   type CreateStepContext,
+  type PendingStep,
 } from './pending-step';
 
 const node = (id: string, over: Partial<Node> = {}): Node => ({
@@ -230,5 +232,92 @@ describe('planPendingStep', () => {
       expect(pending.parentId).toBe('inner');
       expect(pending.position).toEqual({ x: 400 - 150, y: 400 - 160 });
     });
+  });
+});
+
+describe('pendingStepEdges', () => {
+  const pending = (over: Partial<PendingStep>): PendingStep => ({
+    id: 'new',
+    data: { name: 'New', stepType: 'Agent' },
+    position: { x: 0, y: 0 },
+    ...over,
+  });
+
+  it('wires nothing for a step that replaces an edge: the insert rewires it', () => {
+    expect(
+      pendingStepEdges(
+        pending({
+          insertionEdge: { source: 'a', target: 'b', sourceHandle: 'source' },
+        }),
+        'new',
+        false
+      )
+    ).toEqual([]);
+  });
+
+  it('wires nothing for a step dropped on empty canvas', () => {
+    expect(pendingStepEdges(pending({}), 'new', false)).toEqual([]);
+  });
+
+  it('wires a dragged connection from the handle it left', () => {
+    expect(
+      pendingStepEdges(
+        pending({ sourceNodeId: 'a', sourceHandle: 'true' }),
+        'new',
+        false
+      )
+    ).toEqual([{ from: 'a', to: 'new', label: 'true' }]);
+    expect(
+      pendingStepEdges(pending({ sourceNodeId: 'a' }), 'new', false)
+    ).toEqual([{ from: 'a', to: 'new', label: 'source' }]);
+  });
+
+  it('wires a step before the first one on to it', () => {
+    expect(
+      pendingStepEdges(pending({ targetNodeId: 'first' }), 'new', false)
+    ).toEqual([{ from: 'new', to: 'first', label: 'source' }]);
+  });
+
+  it('wires both legs of a parallel branch, the leg from the source first', () => {
+    expect(
+      pendingStepEdges(
+        pending({
+          sourceNodeId: 'a',
+          targetNodeId: 'b',
+          sourceHandle: 'case-1',
+        }),
+        'new',
+        false
+      )
+    ).toEqual([
+      { from: 'a', to: 'new', label: 'case-1' },
+      { from: 'new', to: 'b', label: 'source' },
+    ]);
+  });
+
+  it('leads both branches of a Conditional on to the target', () => {
+    expect(
+      pendingStepEdges(pending({ targetNodeId: 'first' }), 'new', true)
+    ).toEqual([
+      { from: 'new', to: 'first', label: 'true' },
+      { from: 'new', to: 'first', label: 'false' },
+    ]);
+    expect(
+      pendingStepEdges(
+        pending({ sourceNodeId: 'a', targetNodeId: 'b' }),
+        'new',
+        true
+      )
+    ).toEqual([
+      { from: 'a', to: 'new', label: 'source' },
+      { from: 'new', to: 'b', label: 'true' },
+      { from: 'new', to: 'b', label: 'false' },
+    ]);
+  });
+
+  it('uses the id the canvas gave the step, not the one it was planned with', () => {
+    expect(
+      pendingStepEdges(pending({ sourceNodeId: 'a' }), 'new_2', false)
+    ).toEqual([{ from: 'a', to: 'new_2', label: 'source' }]);
   });
 });

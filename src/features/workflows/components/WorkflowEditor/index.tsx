@@ -11,8 +11,6 @@ import {
   NodeTypes,
   ReactFlow,
   ReactFlowProvider,
-  getViewportForBounds,
-  useNodesInitialized,
   useReactFlow,
   useStoreApi,
   OnConnectEnd,
@@ -56,7 +54,16 @@ import {
 import { canvasNodeStepId } from './CustomNodes/utils.tsx';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { useEditingNode } from './use-editing-node';
-import { planPendingStep, type CreateStepContext } from './pending-step';
+import {
+  CANVAS_FIT_VIEW_OPTIONS,
+  CANVAS_MIN_ZOOM,
+  useCanvasFit,
+} from './use-canvas-fit';
+import {
+  pendingStepEdges,
+  planPendingStep,
+  type CreateStepContext,
+} from './pending-step';
 import { editorLostItsStep } from './editor-lost-step';
 import { DiscardStepChangesDialog } from './NodeConfigPanel/DiscardStepChangesDialog';
 import { NodeFormProvider } from './NodeForm/NodeFormProvider';
@@ -150,17 +157,6 @@ type WorkflowEditorProps = {
   /** How much each step card shows; the switch lives in the page header. */
   canvasDetail?: CanvasDetailLevel;
 };
-
-// Long workflows are several thousand pixels wide; React Flow's default
-// minimum zoom (0.5) cannot fit them, so fit-to-view silently clipped both
-// ends. Fitting never zooms past 100%: a two-step workflow blown up to 2x
-// reads as broken, not as "fitted".
-const CANVAS_MIN_ZOOM = 0.1;
-const CANVAS_FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
-// Below this zoom card text is unreadable. A workflow too long to fit above it
-// opens at this zoom, anchored on its start, and the Fit button shows it all.
-const CANVAS_READABLE_ZOOM = 0.8;
-const CANVAS_VIEW_MARGIN = 48;
 
 export function WorkflowEditor(props: WorkflowEditorProps) {
   return (
@@ -292,15 +288,8 @@ function WorkflowEditorContent({
   const placeNote = useWorkflowStore((state) => state.placeNote);
   const updateNode = useWorkflowStore((state) => state.updateNode);
 
-  const {
-    getIntersectingNodes,
-    getNodesBounds,
-    screenToFlowPosition,
-    fitView,
-    setCenter,
-    setViewport,
-    getZoom,
-  } = useReactFlow();
+  const { getIntersectingNodes, screenToFlowPosition, setCenter, getZoom } =
+    useReactFlow();
   const reactFlowStore = useStoreApi();
 
   // Let the toolbar (outside this ReactFlowProvider) map screen points onto
@@ -474,7 +463,6 @@ function WorkflowEditorContent({
 
   // Initialize store with provided nodes and edges
   const lastSyncedDataRef = useRef<string>('');
-  const lastFittedCanvasLayoutRef = useRef<string | null>(null);
 
   useEffect(() => {
     const dataHash = JSON.stringify({
@@ -515,95 +503,14 @@ function WorkflowEditorContent({
     [edgesWithStartIndicator, nodesWithStartIndicator]
   );
 
-  // What the viewport is fitted to: which steps and edges exist, and the
-  // detail level. Deliberately not sizes or positions — editing a step can
-  // grow its card, and re-fitting on that would yank the view mid-edit. Not
-  // notes either: adding one would move the camera away from the new note.
-  const canvasFitKey = useMemo(
-    () =>
-      JSON.stringify({
-        detail: canvasDetail,
-        nodes: nodesWithStartIndicator
-          .filter((node) => node.type !== NODE_TYPES.NoteNode)
-          .map((node) => node.id),
-        edges: edgesWithStartIndicator.map((edge) => edge.id),
-      }),
-    [canvasDetail, edgesWithStartIndicator, nodesWithStartIndicator]
-  );
-
-  const fitCanvasReadable = useCallback(() => {
-    const { width, height } = reactFlowStore.getState();
-    const bounds = getNodesBounds(nodesWithStartIndicator);
-    if (!width || !height || bounds.width === 0 || bounds.height === 0) {
-      fitView({ duration: 200, ...CANVAS_FIT_VIEW_OPTIONS });
-      return;
-    }
-    const fitted = getViewportForBounds(
-      bounds,
-      width,
-      height,
-      CANVAS_MIN_ZOOM,
-      CANVAS_FIT_VIEW_OPTIONS.maxZoom,
-      CANVAS_FIT_VIEW_OPTIONS.padding
-    );
-    if (fitted.zoom >= CANVAS_READABLE_ZOOM) {
-      setViewport(fitted, { duration: 200 });
-      return;
-    }
-    const zoom = CANVAS_READABLE_ZOOM;
-    const contentHeight = bounds.height * zoom;
-    setViewport(
-      {
-        zoom,
-        x: CANVAS_VIEW_MARGIN - bounds.x * zoom,
-        y:
-          contentHeight + CANVAS_VIEW_MARGIN * 2 <= height
-            ? (height - contentHeight) / 2 - bounds.y * zoom
-            : CANVAS_VIEW_MARGIN - bounds.y * zoom,
-      },
-      { duration: 200 }
-    );
-  }, [
-    fitView,
-    getNodesBounds,
-    nodesWithStartIndicator,
-    reactFlowStore,
-    setViewport,
-  ]);
-
-  // Fit only once React Flow has measured every node: fitting earlier uses
-  // partial bounds and leaves part of the workflow off-screen.
-  const nodesInitialized = useNodesInitialized();
-  useEffect(() => {
-    if (
-      lastFittedCanvasLayoutRef.current === canvasFitKey ||
-      (visibleCanvasNodes.length > 0 && !nodesInitialized)
-    ) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      if (visibleCanvasNodes.length > 0) {
-        fitCanvasReadable();
-      } else {
-        const startIndicatorSize =
-          NODE_TYPE_SIZES[NODE_TYPES.StartIndicatorNode];
-        const startCenterX = startIndicatorSize.width / 2;
-        const startCenterY = startIndicatorSize.height / 2;
-        setCenter(startCenterX, startCenterY, { zoom: 1, duration: 200 });
-      }
-
-      lastFittedCanvasLayoutRef.current = canvasFitKey;
-    }, 100);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    canvasFitKey,
-    fitCanvasReadable,
-    nodesInitialized,
-    setCenter,
-    visibleCanvasNodes.length,
-  ]);
+  // Fits the view to the workflow when its steps or the detail level change
+  // (./use-canvas-fit.ts).
+  useCanvasFit({
+    nodes: nodesWithStartIndicator,
+    edges: edgesWithStartIndicator,
+    canvasDetail,
+    visibleNodeCount: visibleCanvasNodes.length,
+  });
 
   useEffect(() => {
     // React Flow needs handle bounds before it can draw edges. In the locked
@@ -995,73 +902,26 @@ function WorkflowEditorContent({
 
         addedId = createdNodeId ?? null;
         if (createdNodeId) {
-          if (pendingNewNode.sourceNodeId && pendingNewNode.targetNodeId) {
-            // Parallel branch: the existing source->target edge is kept; the
-            // new step gets the diamond legs source->new and new->target so
-            // the unconditional fan-out re-converges (validator E073).
-            const continuationEdges = isConditional
-              ? [
-                  {
-                    from: createdNodeId,
-                    to: pendingNewNode.targetNodeId,
-                    label: 'true',
-                  },
-                  {
-                    from: createdNodeId,
-                    to: pendingNewNode.targetNodeId,
-                    label: 'false',
-                  },
-                ]
-              : [
-                  {
-                    from: createdNodeId,
-                    to: pendingNewNode.targetNodeId,
-                    label: 'source',
-                  },
-                ];
-
-            addStoreEdges([
-              {
-                from: pendingNewNode.sourceNodeId,
-                to: createdNodeId,
-                label: pendingNewNode.sourceHandle || 'source',
-              },
-              ...continuationEdges,
-            ]);
-          } else if (pendingNewNode.targetNodeId) {
-            // Connecting to a target node (e.g., inserting before first node from start indicator)
-            if (isConditional) {
-              addStoreEdges([
-                {
-                  from: createdNodeId,
-                  to: pendingNewNode.targetNodeId,
-                  label: 'true',
-                },
-                {
-                  from: createdNodeId,
-                  to: pendingNewNode.targetNodeId,
-                  label: 'false',
-                },
-              ]);
-            } else {
-              addStoreEdge(
-                createdNodeId,
-                pendingNewNode.targetNodeId,
-                'source'
-              );
-            }
-            // A pinned entry point would leave the new first step unreachable
-            // (E002). In auto mode the entry is re-derived from the edges.
-            if (pendingNewNode.becomesEntryPoint && workflow?.entryPoint) {
-              onWorkflowChange?.({ entryPoint: createdNodeId });
-            }
-          } else if (pendingNewNode.sourceNodeId) {
-            // Connecting from a source node (dragged connection)
-            addStoreEdge(
-              pendingNewNode.sourceNodeId,
-              createdNodeId,
-              pendingNewNode.sourceHandle || 'source'
-            );
+          // The edges its place on the canvas calls for (./pending-step.ts).
+          const newEdges = pendingStepEdges(
+            pendingNewNode,
+            createdNodeId,
+            isConditional
+          );
+          if (newEdges.length === 1) {
+            addStoreEdge(newEdges[0].from, newEdges[0].to, newEdges[0].label);
+          } else if (newEdges.length > 1) {
+            addStoreEdges(newEdges);
+          }
+          // A pinned entry point would leave the new first step unreachable
+          // (E002). In auto mode the entry is re-derived from the edges.
+          if (
+            pendingNewNode.targetNodeId &&
+            !pendingNewNode.sourceNodeId &&
+            pendingNewNode.becomesEntryPoint &&
+            workflow?.entryPoint
+          ) {
+            onWorkflowChange?.({ entryPoint: createdNodeId });
           }
 
           setPendingCenterNodeId(createdNodeId);

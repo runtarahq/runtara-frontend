@@ -264,3 +264,48 @@ export function planPendingStep({
   }
   return { id, data, position, parentId };
 }
+
+/** An edge to add: from a node, to a node, out of the handle `label` names. */
+export interface PendingStepEdge {
+  from: string;
+  to: string;
+  label: string;
+}
+
+/**
+ * The edges a confirmed step is wired with, once it is on the canvas as
+ * `nodeId`. A step that replaces an edge has none here: inserting it rewires
+ * that edge.
+ *
+ * - A parallel branch (a source and a target): the leg from the source and
+ *   the leg to the target; the edge it branches over is kept, so the fan-out
+ *   re-converges (validator E073).
+ * - Before a target only (the edge from Start): the leg to the target.
+ * - From a source only (a dragged connection): the leg from the source.
+ *
+ * A Conditional leads both its branches on to a target.
+ */
+export function pendingStepEdges(
+  pending: PendingStep,
+  nodeId: string,
+  isConditional: boolean
+): PendingStepEdge[] {
+  if (pending.insertionEdge) return [];
+  const fromSource: PendingStepEdge[] = pending.sourceNodeId
+    ? [
+        {
+          from: pending.sourceNodeId,
+          to: nodeId,
+          label: pending.sourceHandle || 'source',
+        },
+      ]
+    : [];
+  const toTarget: PendingStepEdge[] = pending.targetNodeId
+    ? (isConditional ? ['true', 'false'] : ['source']).map((label) => ({
+        from: nodeId,
+        to: pending.targetNodeId!,
+        label,
+      }))
+    : [];
+  return [...fromSource, ...toTarget];
+}
