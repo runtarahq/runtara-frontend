@@ -1,8 +1,8 @@
-import { formatRunDuration } from '../utils/run-duration';
+import { formatRunDuration } from '@/features/runs/utils/run-duration';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { ExecutionHistoryItem } from '../types';
+import type { ExecutionHistoryItem } from '@/features/runs/types';
 import { isActiveStatus } from '@/shared/utils/status-display';
-import { ParentRunLink } from './RunLinks';
+import { ParentRunLink } from '@/features/runs/components/RunLinks';
 import { RunIdentity, RunContext, RunActions, RunTime } from './RunRow';
 
 export type RunExtraColumn = 'completedAt' | 'parentInstanceId' | 'version';

@@ -27,6 +27,7 @@ vi.mock('@/shared/forms/rust-form-validation', () => ({
 
 vi.mock('@/shared/lib/rust-validation-wasm', () => ({
   ensureRustValidationInitialized: vi.fn().mockResolvedValue(undefined),
+  preloadRustValidation: vi.fn(),
   normalizeSchemaFieldsFormJson: vi.fn((schemaJson: string) => {
     const fields = JSON.parse(schemaJson) as Record<string, any>;
     return JSON.stringify({

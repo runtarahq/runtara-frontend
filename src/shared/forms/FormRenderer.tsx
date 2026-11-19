@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { preloadRustValidation } from '@/shared/lib/rust-validation-wasm';
 import { AlertCircle } from 'lucide-react';
 
 import {
@@ -94,6 +95,9 @@ export function FormRenderer({
     frame?.resolveOptions
   );
 
+  // A form validates as it is filled in: fetch the validator as it opens.
+  useEffect(() => preloadRustValidation(), []);
+
   useEffect(() => {
     analysisCallback.current = onAnalysisChange;
   }, [onAnalysisChange]);
@@ -171,7 +175,9 @@ export function FormRenderer({
         return (
           <FormSection
             key={section?.id ?? '__default'}
-            section={section}
+            title={section?.label}
+            description={section?.description}
+            collapsible={section?.advanced}
             fieldsClassName={fieldsClassName}
           >
             {visibleFields.map(([name, field]) => {

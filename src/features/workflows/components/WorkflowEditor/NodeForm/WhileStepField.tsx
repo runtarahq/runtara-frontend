@@ -3,7 +3,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { NodeFormContext } from './NodeFormContext';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
-import { ConditionEditor } from '@/shared/components/ui/condition-editor';
+import { ConditionEditor } from '@/shared/conditions';
 import { composeConditionSuggestions } from './InputMappingValueField/VariableSuggestions';
 import { IterationVariablesField } from './IterationVariablesField';
 
@@ -75,7 +75,6 @@ export function WhileStepField({ name }: WhileStepFieldProps) {
   // Initialize missing defaults for While steps.
   // A step being created already has a node id, so missing-field checks are safer than nodeId.
   useEffect(() => {
-    if (stepType !== 'While') return;
     if (hasInitializedRef.current) return;
 
     hasInitializedRef.current = true;
@@ -87,10 +86,6 @@ export function WhileStepField({ name }: WhileStepFieldProps) {
       form.setValue('whileMaxIterations', 10);
     }
   }, [stepType, whileCondition, whileMaxIterations, form, defaultCondition]);
-
-  if (stepType !== 'While') {
-    return null;
-  }
 
   const handleConditionChange = (value: string) => {
     try {

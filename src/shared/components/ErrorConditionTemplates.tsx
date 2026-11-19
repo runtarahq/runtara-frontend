@@ -10,7 +10,7 @@ import {
 } from '@/shared/components/ui/dropdown-menu';
 import { AlertTriangle, ChevronDown } from 'lucide-react';
 import { ERROR_CONDITION_TEMPLATES } from '@/shared/constants/error-condition-templates';
-import type { Condition } from '@/shared/components/ui/condition-editor';
+import type { Condition } from '@/shared/conditions';
 
 interface ErrorConditionTemplatesProps {
   onSelect: (condition: Condition) => void;

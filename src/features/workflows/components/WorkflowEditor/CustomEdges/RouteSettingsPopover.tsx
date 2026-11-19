@@ -11,8 +11,8 @@ import {
   PopoverTrigger,
 } from '@/shared/components/ui/popover';
 import { Textarea } from '@/shared/components/ui/textarea';
-import { ConditionEditor } from '@/shared/components/ui/condition-editor';
-import type { ConditionSuggestion } from '@/shared/components/ui/condition-editor';
+import { ConditionEditor } from '@/shared/conditions';
+import type { ConditionSuggestion } from '@/shared/conditions';
 import { cn } from '@/lib/utils.ts';
 
 export function getRouteCondition(edge: Edge): unknown {

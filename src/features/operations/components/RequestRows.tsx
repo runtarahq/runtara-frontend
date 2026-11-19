@@ -2,8 +2,8 @@ import { Link } from 'react-router';
 import { AlertTriangle, Eye } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
-import { StateValue } from './StateValue';
-import type { AttentionRequest } from '../attention-requests';
+import { StateValue } from '@/features/runs/components/StateValue';
+import type { AttentionRequest } from '@/features/operations/queries/attention-requests';
 
 const rowClass =
   'grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem]';

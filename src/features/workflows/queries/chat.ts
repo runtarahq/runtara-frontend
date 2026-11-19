@@ -1,5 +1,5 @@
 import { ChatMessage, ChatSSEEvent } from '@/features/workflows/types/chat';
-import { getRuntimeBaseUrl } from '@/shared/queries/utils';
+import { runtimeFetch } from '@/shared/queries/runtime-fetch';
 import { InputSubmissionError } from '../utils/input-submission';
 
 // ---------------------------------------------------------------------------
@@ -29,8 +29,8 @@ export interface SentMessage {
   duplicate: boolean;
 }
 
-function conversationUrl(workflowId: string, key: string): string {
-  return `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/conversations/${encodeURIComponent(key)}`;
+function conversationPath(workflowId: string, key: string): string {
+  return `/workflows/${encodeURIComponent(workflowId)}/conversations/${encodeURIComponent(key)}`;
 }
 
 /**
@@ -40,21 +40,20 @@ function conversationUrl(workflowId: string, key: string): string {
  * `InputSubmissionError` with its status.
  */
 export async function sendConversationMessage(
-  token: string,
   workflowId: string,
   key: string,
   message: ConversationMessage,
   signal?: AbortSignal
 ): Promise<SentMessage> {
-  const response = await fetch(`${conversationUrl(workflowId, key)}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(message),
-    signal,
-  });
+  const response = await runtimeFetch(
+    `${conversationPath(workflowId, key)}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(message),
+      signal,
+    }
+  );
   const body = (await response.json().catch(() => ({}))) as {
     success?: boolean;
     data?: SentMessage;
@@ -79,22 +78,14 @@ export async function sendConversationMessage(
  * stream after a while; the caller reads on from the last event it saw.
  */
 export async function streamConversationEvents(
-  token: string,
   workflowId: string,
   key: string,
   after: number,
   signal?: AbortSignal
 ): Promise<Response> {
-  const response = await fetch(
-    `${conversationUrl(workflowId, key)}/events?after=${String(after)}`,
-    {
-      method: 'GET',
-      headers: {
-        Accept: 'text/event-stream',
-        Authorization: `Bearer ${token}`,
-      },
-      signal,
-    }
+  const response = await runtimeFetch(
+    `${conversationPath(workflowId, key)}/events?after=${String(after)}`,
+    { headers: { Accept: 'text/event-stream' }, signal }
   );
   if (!response.ok) {
     const errorText = await response.text().catch(() => response.statusText);
@@ -108,19 +99,13 @@ export async function streamConversationEvents(
  * Parses SSE-like events from the step events API and builds ChatMessage[].
  */
 export async function fetchChatHistory(
-  token: string,
   workflowId: string,
   instanceId: string
 ): Promise<ChatMessage[]> {
-  const url = `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/instances/${encodeURIComponent(instanceId)}/step-events?sortOrder=asc&limit=1000`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await runtimeFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/instances/${encodeURIComponent(instanceId)}/step-events?sortOrder=asc&limit=1000`,
+    { headers: { 'Content-Type': 'application/json' } }
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch chat history: ${response.statusText}`);

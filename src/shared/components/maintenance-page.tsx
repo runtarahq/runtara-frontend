@@ -1,4 +1,4 @@
-import { ManagementAPIClient } from '@/shared/queries';
+import { getServerHealth } from '@/shared/queries';
 import { useMaintenanceStore } from '@/shared/stores/maintenanceStore';
 import { useState } from 'react';
 import logoIcon from '@/assets/logo/runtara-logo-icon.svg';
@@ -10,7 +10,7 @@ export function MaintenancePage() {
   const handleRetry = async () => {
     setChecking(true);
     try {
-      await ManagementAPIClient.instance.get('/health');
+      await getServerHealth();
       setMaintenanceMode(false);
     } catch {
       // still in maintenance

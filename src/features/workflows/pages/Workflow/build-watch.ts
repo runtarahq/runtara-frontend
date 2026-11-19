@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { getCompilationProgress } from '@/features/workflows/queries';
@@ -69,8 +69,7 @@ export function BackgroundBuildWatch({
 }) {
   const { data } = useCustomQuery<Progress>({
     queryKey: queryKeys.workflows.compilationProgress(workflowId, version),
-    queryFn: (token: string) =>
-      getCompilationProgress(token, workflowId, version),
+    queryFn: () => getCompilationProgress(workflowId, version),
     placeholderData: undefined,
     refetchInterval: (q) =>
       isTerminal((q.state.data as Progress | undefined)?.status) ? false : 1000,

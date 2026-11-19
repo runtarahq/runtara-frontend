@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,10 +14,12 @@ import {
   FormRenderer,
   type FormAnalysisResult,
 } from '@/shared/forms';
+import { useWorkflowFormDefinition } from '@/features/workflows/utils/form-schema-adapter';
 import {
-  initialWorkflowFormValues,
-  useWorkflowFormDefinition,
-} from '@/features/workflows/utils/form-schema-adapter';
+  changedInputs,
+  initialStartInputs,
+  startBlockingIssues,
+} from '@/features/workflows/utils/start-inputs';
 
 type WorkflowExecuteDialogProps = {
   open: boolean;
@@ -46,8 +48,10 @@ export function WorkflowExecuteDialog({
   const fieldNames = Object.keys(definition.fields);
 
   const [inputData, setInputData] = useState<Record<string, any>>(() =>
-    initialWorkflowFormValues(definition)
+    initialStartInputs(definition)
   );
+  // The inputs the user has changed: one emptied is given empty, not missing.
+  const editedInputs = useRef(new Set<string>());
   const [formAnalysis, setFormAnalysis] = useState<FormAnalysisResult | null>(
     null
   );
@@ -59,7 +63,8 @@ export function WorkflowExecuteDialog({
 
   // Reset input data and validation errors when input schema changes
   useEffect(() => {
-    setInputData(initialWorkflowFormValues(definition));
+    editedInputs.current = new Set();
+    setInputData(initialStartInputs(definition));
     setFormAnalysis(null);
     setRustValidationError(null);
   }, [definition]);
@@ -67,7 +72,8 @@ export function WorkflowExecuteDialog({
   // Reset input data and validation errors when dialog opens
   useEffect(() => {
     if (open) {
-      setInputData(initialWorkflowFormValues(definition));
+      editedInputs.current = new Set();
+      setInputData(initialStartInputs(definition));
       setFormAnalysis(null);
       setRustValidationError(null);
     }
@@ -81,11 +87,13 @@ export function WorkflowExecuteDialog({
     if (submissionAnalysis) setFormAnalysis(submissionAnalysis);
     setSubmitAttempt((attempt) => attempt + 1);
     setRustValidationError(null);
-    if (
-      formLoading ||
-      formError ||
-      (fieldNames.length > 0 && !submissionAnalysis?.valid)
-    ) {
+    const refused =
+      fieldNames.length > 0 &&
+      (!submissionAnalysis ||
+        !submissionAnalysis.success ||
+        startBlockingIssues(submissionAnalysis, inputData, editedInputs.current)
+          .length > 0);
+    if (formLoading || formError || refused) {
       return;
     }
     // Only include fields that are set and defined
@@ -155,6 +163,9 @@ export function WorkflowExecuteDialog({
               definition={definition}
               value={inputData}
               onChange={(next) => {
+                for (const name of changedInputs(inputData, next)) {
+                  editedInputs.current.add(name);
+                }
                 setInputData(next);
                 setRustValidationError(null);
               }}

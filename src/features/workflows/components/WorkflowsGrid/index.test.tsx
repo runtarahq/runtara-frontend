@@ -6,6 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
+import { buildWorkflow as sharedWorkflow } from '@/test/builders';
 import { WorkflowsGrid } from './index';
 
 /**
@@ -32,7 +33,7 @@ vi.mock('react-oidc-context', () => ({
   useAuth: () => ({ user: { access_token: 'test-token' } }),
 }));
 
-vi.mock('@/bootstrap.tsx', () => ({
+vi.mock('@/shared/queries/query-client', () => ({
   queryClient: { invalidateQueries: vi.fn() },
 }));
 
@@ -52,19 +53,12 @@ function buildWorkflow(index: number): WorkflowDto {
     Date.UTC(2026, 0, 1) - index * 3_600_000
   ).toISOString();
 
-  return {
+  return sharedWorkflow({
     id: `wf-${index}`,
     name: `Workflow ${String(index).padStart(2, '0')}`,
-    description: '',
     created: updated,
     updated,
-    currentVersionNumber: 1,
-    lastVersionNumber: 1,
-    executionGraph: {},
-    inputSchema: {},
-    outputSchema: {},
-    path: '/',
-  } as unknown as WorkflowDto;
+  });
 }
 
 const allWorkflows = Array.from({ length: WORKFLOW_COUNT }, (_, i) =>
@@ -80,7 +74,7 @@ const allFolders = Array.from({ length: FOLDER_COUNT }, (_, i) => {
  * Stands in for GET /api/runtime/workflows, honouring its page/pageSize contract
  * and its `search` parameter (case-insensitive substring on the name).
  */
-function serveWorkflowPage(_token: string, params: Record<string, any>) {
+function serveWorkflowPage(params: Record<string, any>) {
   const pageSize = params.pageSize ?? 20;
   const page = params.page ?? 0;
   const start = page * pageSize;
@@ -205,8 +199,8 @@ describe('WorkflowsGrid pagination', () => {
 
     // Workflows 9–18 live across server pages 0 and 1 of a 10-row page size.
     const requestedPages = mocks.getWorkflowsInFolder.mock.calls
-      .filter(([, params]) => params.pageSize === PAGE_SIZE)
-      .map(([, params]) => params.page);
+      .filter(([params]) => params.pageSize === PAGE_SIZE)
+      .map(([params]) => params.page);
     expect(requestedPages).toContain(0);
     expect(requestedPages).toContain(1);
   });

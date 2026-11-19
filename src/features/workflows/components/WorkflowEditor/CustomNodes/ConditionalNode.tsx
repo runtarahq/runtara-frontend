@@ -78,11 +78,8 @@ function ConditionalNodeComponent({
     state.stagedNodeIds.has(id)
   );
 
-  // Check if this node has validation errors
-  const hasValidationError = useWorkflowStore((state) =>
-    state.stepsWithErrors.has(id)
-  );
-  const hasValidationErrorFromPanel = useValidationStore((state) =>
+  // Whether a problem in the panel names this step.
+  const showValidationError = useValidationStore((state) =>
     state.stepsWithErrors.has(id)
   );
   const hasValidationWarning = useValidationStore((state) =>
@@ -91,7 +88,6 @@ function ConditionalNodeComponent({
   const validationMessage = useValidationStore((state) =>
     getFirstValidationMessage(state, id)
   );
-  const showValidationError = hasValidationError || hasValidationErrorFromPanel;
 
   // The condition as a sentence ("Input · stage is \"intake\""). A loaded
   // step keeps the DSL condition in `condition`; an edited one carries it as

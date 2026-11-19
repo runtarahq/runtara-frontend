@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
+import { WorkflowBuilderPage } from '../../pages/WorkflowBuilderPage';
 
 /**
  * Error Step Validation E2E Test (SYN-204)
@@ -15,39 +14,10 @@ import { fileURLToPath } from 'url';
  * Requires: full local stack running (gateway, runtime, management, frontend)
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const WORKFLOW_NAME = `E2E Step Validation ${Date.now()}`;
 
-/** Read the access token from the Playwright auth state file. */
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-
-  throw new Error('No access token found in auth state file');
-}
-
-/** Build common headers for authenticated API calls. */
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
+const errorStep = { type: 'step' as const, stepType: 'Error' };
 
 test.describe.serial('Error Step Validation (SYN-204)', () => {
   let workflowId: string;
@@ -71,53 +41,28 @@ test.describe.serial('Error Step Validation (SYN-204)', () => {
   });
 
   test('create workflow', async ({ page }) => {
-    await page.goto('/workflows/create');
-    await page.waitForLoadState('networkidle');
-
-    await page.getByLabel('Name').fill(WORKFLOW_NAME);
-    await page.getByRole('button', { name: 'Save' }).click();
-
-    await page.waitForURL(
-      (url) => /\/workflows\/(?!create\b)[a-zA-Z0-9_-]+$/.test(url.pathname),
-      { timeout: 15000 }
+    workflowId = await new WorkflowBuilderPage(page).createWorkflow(
+      WORKFLOW_NAME
     );
-
-    workflowId = page.url().split('/workflows/').pop()!;
     expect(workflowId).toBeTruthy();
   });
 
   test('Error step Save is blocked when required fields are empty', async ({
     page,
   }) => {
-    await page.goto(`/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('.react-flow')).toBeVisible({ timeout: 15000 });
+    const builder = new WorkflowBuilderPage(page);
+    await builder.gotoWorkflow(workflowId);
 
-    // Click "+" on the Start node to open step picker
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
+    // Add an Error step from the canvas
+    await builder.beginFirstCanvasStep(errorStep);
 
-    // Search for Error step type
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Error');
-
-    // Click the Error step type (use description to avoid matching workflow title)
-    const errorResult = page.getByText('Emit a structured error');
-    await expect(errorResult).toBeVisible({ timeout: 10000 });
-    await errorResult.click();
-
-    // NodeConfigDialog should open — Error Code and Error Message should be visible
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible({ timeout: 5000 });
+    // The step's config dialog is open — Error Code and Error Message should be visible
+    const dialog = page.getByTestId('node-config-dialog');
     await expect(dialog.getByText('Error Code *')).toBeVisible();
     await expect(dialog.getByText('Error Message *')).toBeVisible();
 
     // Try to save without filling required fields
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    await dialog.getByTestId('node-config-save').click();
 
     // Wait a beat for any async submission to complete
     await page.waitForTimeout(1000);
@@ -145,29 +90,14 @@ test.describe.serial('Error Step Validation (SYN-204)', () => {
   test('Error step saves successfully with required fields filled', async ({
     page,
   }) => {
-    await page.goto(`/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('.react-flow')).toBeVisible({ timeout: 15000 });
+    const builder = new WorkflowBuilderPage(page);
+    await builder.gotoWorkflow(workflowId);
 
     // Add Error step
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
-
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Error');
-
-    // Click the Error step type (use description to avoid matching workflow title)
-    const errorResult = page.getByText('Emit a structured error');
-    await expect(errorResult).toBeVisible({ timeout: 10000 });
-    await errorResult.click();
+    await builder.beginFirstCanvasStep(errorStep);
 
     // Fill required fields
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible({ timeout: 5000 });
+    const dialog = page.getByTestId('node-config-dialog');
 
     // Fill Error Code
     await dialog
@@ -180,7 +110,7 @@ test.describe.serial('Error Step Validation (SYN-204)', () => {
       .fill('Credit limit has been exceeded');
 
     // Save — should succeed and close the dialog
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    await dialog.getByTestId('node-config-save').click();
 
     // Verify dialog closed (save succeeded)
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
@@ -192,16 +122,7 @@ test.describe.serial('Error Step Validation (SYN-204)', () => {
   });
 
   test('delete workflow', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    const card = page.locator('article').filter({ hasText: WORKFLOW_NAME });
-    await expect(card).toBeVisible({ timeout: 10000 });
-
-    await card.getByTitle('Delete').first().click();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(WORKFLOW_NAME);
     workflowId = '';
   });
 });

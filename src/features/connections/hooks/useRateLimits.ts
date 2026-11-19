@@ -1,4 +1,4 @@
-import { useCustomQuery } from '@/shared/hooks/api';
+import { useCustomQuery, keepPreviousData } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import {
   getRateLimits,
@@ -12,7 +12,9 @@ import {
 export function useRateLimits(interval?: string) {
   return useCustomQuery({
     queryKey: ['analytics', 'rateLimits', interval],
-    queryFn: (token: string) => getRateLimits(token, interval),
+    // The table stays up while another interval loads.
+    placeholderData: keepPreviousData,
+    queryFn: () => getRateLimits(interval),
     refetchInterval: 30 * 1000,
     refetchIntervalInBackground: false,
   });
@@ -24,8 +26,7 @@ export function useConnectionRateLimitStatus(
 ) {
   return useCustomQuery({
     queryKey: ['analytics', 'rateLimitStatus', connectionId],
-    queryFn: (token: string) =>
-      getConnectionRateLimitStatus(token, connectionId!),
+    queryFn: () => getConnectionRateLimitStatus(connectionId!),
     enabled: !!connectionId,
     refetchInterval: 30 * 1000,
     refetchIntervalInBackground: false,
@@ -51,9 +52,9 @@ export function useConnectionRateLimitTimeline(
       connectionId ?? '',
       dateRange
     ),
-    queryFn: async (token: string) => {
+    queryFn: async () => {
       const window = currentWindow(rangeMs);
-      const response = await getConnectionRateLimitTimeline(token, {
+      const response = await getConnectionRateLimitTimeline({
         connectionId: connectionId!,
         startTime: window.start.toISOString(),
         endTime: window.end.toISOString(),
@@ -77,8 +78,8 @@ export function useConnectionRateLimitHistory(
   const { connectionId, rangeMs, limit } = params;
   return useCustomQuery({
     queryKey: ['analytics', 'rateLimitHistory', connectionId, rangeMs, limit],
-    queryFn: (token: string) =>
-      getConnectionRateLimitHistory(token, {
+    queryFn: () =>
+      getConnectionRateLimitHistory({
         connectionId: connectionId!,
         from: currentWindow(rangeMs).start.toISOString(),
         limit,

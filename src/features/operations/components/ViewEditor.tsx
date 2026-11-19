@@ -1,4 +1,4 @@
-import { stateLabel } from '../state-label';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -8,18 +8,17 @@ import type {
   SavedOperationView,
   StateFilterDto,
 } from '@/generated/RuntaraRuntimeApi';
-import { useToken } from '@/shared/hooks';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import {
   currentRevision,
   isRevisionConflict,
-  operationsRequest,
-  message,
-} from '../queries';
-import { type StateField } from './StateValue';
-import { RUN_STATUS_OPTIONS } from '@/features/invocation-history/status-options';
+} from '@/features/operations/queries';
+import { operationsRequest, message } from '@/features/runs/queries';
+import { type StateField } from '@/features/runs/components/StateValue';
+import { RUN_STATUS_OPTIONS } from '@/features/runs/utils/status-options';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function ViewEditor({
   initial,
   saved,
@@ -45,7 +44,6 @@ export function ViewEditor({
     .split(',')
     .map((status) => status.trim())
     .filter(Boolean);
-  const token = useToken();
   const client = useQueryClient();
   const fields = [
     ...new Set([...Object.keys(schema), ...(view.columns ?? [])]),
@@ -57,18 +55,15 @@ export function ViewEditor({
     setError('');
     try {
       const result = await operationsRequest<SavedOperationView>(
-        token,
         `operations/views${saved ? `/${saved.id}` : ''}`,
         saved ? 'PUT' : 'POST',
         { configuration: view, revision }
       );
-      await client.invalidateQueries({ queryKey: ['operations'] });
+      await client.invalidateQueries({ queryKey: queryKeys.operations.all });
       onSaved(result);
     } catch (e) {
       if (saved && isRevisionConflict(e)) {
-        const latest = await currentRevision(token, saved.id).catch(
-          () => undefined
-        );
+        const latest = await currentRevision(saved.id).catch(() => undefined);
         if (latest !== undefined) setRevision(latest);
         setError(
           `${message(e)}. Someone else changed this queue; saving again replaces their changes.`

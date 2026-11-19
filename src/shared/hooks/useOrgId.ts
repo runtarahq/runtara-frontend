@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { tenantIdFromUrl } from '@/shared/config/oidcConfig';
+import { tenantIdFromUrl } from '@/shared/config/appBase';
 import { config, isOidcAuth } from '@/shared/config/runtimeConfig';
 import { useAuthStore } from '@/shared/stores/authStore.ts';
 

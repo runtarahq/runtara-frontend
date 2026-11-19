@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { stateLabel } from '../state-label';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import { Link, useParams } from 'react-router';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
 import {
@@ -20,22 +19,31 @@ import {
   getPendingInput,
   getStepSummaries,
 } from '@/features/workflows/queries';
-import { RunStatusPill } from '@/features/invocation-history/components/RunLinks';
+import { RunStatusPill } from '@/features/runs/components/RunLinks';
 import { ActionForm } from '@/features/workflows/components/ActionForm';
 import { InputRetryPanel } from '@/features/workflows/components/ManagedInputSubmissions';
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
 import { StatePanel } from '../components/RunStateCard';
-import { StateValue, type StateField } from '../components/StateValue';
+import {
+  StateValue,
+  type StateField,
+} from '@/features/runs/components/StateValue';
 import {
   OperationHeader,
   OperationSection,
+} from '@/features/operations/components/shared';
+import {
   RefreshControls,
   ReplayButton,
-} from './shared';
-import { useOperations } from '../queries';
+} from '@/features/runs/components/RunActions';
+import { useOperations } from '@/features/operations/queries';
 import { isActiveStatus } from '@/shared/utils/status-display';
-import { failedWithNothingToShow, refreshFailed } from '../poll-errors';
+import {
+  failedWithNothingToShow,
+  refreshFailed,
+} from '@/features/operations/utils/poll-errors';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function RunPage() {
   const { workflowId = '', instanceId = '' } = useParams();
   const tenant = useAuthStore((s) => s.orgId);
@@ -43,9 +51,8 @@ export function RunPage() {
   const [replaying, setReplaying] = useState(false);
   const { views, processes } = useOperations();
   const run = useCustomQuery({
-    queryKey: ['operations', tenant, 'run', workflowId, instanceId],
-    queryFn: (token: string) =>
-      getWorkflowInstance(token, workflowId, instanceId),
+    queryKey: queryKeys.operations.run(tenant, workflowId, instanceId),
+    queryFn: () => getWorkflowInstance(workflowId, instanceId),
     // A finished run does not change, so stop polling it (OP-9).
     refetchInterval: (query) =>
       query.state.data && !isActiveStatus(query.state.data.status)
@@ -55,8 +62,12 @@ export function RunPage() {
   });
   const finished = Boolean(run.data) && !isActiveStatus(run.data?.status);
   const pending = useCustomQuery({
-    queryKey: ['operations', tenant, 'pending', workflowId, instanceId],
-    queryFn: (token: string) => getPendingInput(token, workflowId, instanceId),
+    queryKey: queryKeys.operations.runPendingInput(
+      tenant,
+      workflowId,
+      instanceId
+    ),
+    queryFn: () => getPendingInput(workflowId, instanceId),
     refetchInterval: finished ? false : 10_000,
     placeholderData: undefined,
   });
@@ -68,21 +79,20 @@ export function RunPage() {
       workflowId,
       run.data?.usedVersion,
     ],
-    queryFn: async (token: string) =>
+    queryFn: async () =>
       (
         await RuntimeREST.api.getVersionSchemasHandler(
           workflowId,
-          run.data!.usedVersion,
-          createAuthHeaders(token)
+          run.data!.usedVersion
         )
       ).data,
     enabled: Boolean(run.data?.usedVersion),
     placeholderData: undefined,
   });
   const steps = useCustomQuery({
-    queryKey: ['operations', tenant, 'activity', workflowId, instanceId],
-    queryFn: (token: string) =>
-      getStepSummaries(token, workflowId, instanceId, {
+    queryKey: queryKeys.operations.runActivity(tenant, workflowId, instanceId),
+    queryFn: () =>
+      getStepSummaries(workflowId, instanceId, {
         limit: 20,
         sortOrder: 'desc',
       }),

@@ -154,6 +154,6 @@ describe('timeline inputs without debug telemetry', () => {
     const calls = vi.mocked(deliverSignal).mock.calls;
     expect(calls).toHaveLength(2);
     expect(calls[1]).toEqual(calls[0]);
-    expect(calls[1][1]).toBe('first');
+    expect(calls[1][0]).toBe('first');
   });
 });

@@ -8,10 +8,11 @@ import { useToken } from '@/shared/hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { refreshRunViews } from '../refreshRunViews';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
-import { ModalDialog } from '@/shared/components/next-dialog';
 import { Spinner } from '@/shared/components/ui/spinner';
 import {
+  Dialog,
   DialogClose,
+  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -52,7 +53,7 @@ export function PauseButton(props: Props) {
     setConfirmOpen(false);
     setIsLoading(true);
     try {
-      await pauseInstance(token, instanceId);
+      await pauseInstance(instanceId);
       await refreshRunViews(queryClient);
       toast.success('Workflow instance has been paused');
     } catch (error) {
@@ -87,25 +88,33 @@ export function PauseButton(props: Props) {
         </Button>
       </WithTooltip>
 
-      <ModalDialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-        <DialogHeader>
-          <DialogTitle>Pause Execution</DialogTitle>
-          <DialogDescription>
-            Pause this running workflow instance? It will suspend at the next
-            checkpoint and can be resumed later.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <DialogClose asChild>
-            <Button type="button" variant="secondary" bordered>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button type="button" onClick={handleConfirm} disabled={isLoading}>
-            {isLoading ? 'Pausing...' : 'Pause Instance'}
-          </Button>
-        </DialogFooter>
-      </ModalDialog>
+      {confirmOpen && (
+        <Dialog open onOpenChange={() => setConfirmOpen(false)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Pause Execution</DialogTitle>
+              <DialogDescription>
+                Pause this running workflow instance? It will suspend at the
+                next checkpoint and can be resumed later.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" bordered>
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="button"
+                onClick={handleConfirm}
+                disabled={isLoading}
+              >
+                {isLoading ? 'Pausing...' : 'Pause Instance'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

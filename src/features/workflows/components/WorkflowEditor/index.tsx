@@ -1,5 +1,5 @@
+import { useUndoKeys } from './use-undo-keys';
 import { useCanvasLayout } from './useCanvasLayout';
-import { withMemoryConversation } from './NodeForm/memory-conversation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
@@ -11,17 +11,11 @@ import {
   NodeTypes,
   ReactFlow,
   ReactFlowProvider,
-  getViewportForBounds,
-  useNodesInitialized,
   useReactFlow,
   useStoreApi,
   OnConnectEnd,
 } from '@xyflow/react';
-import {
-  generateStepId,
-  dirtied,
-  useWorkflowStore,
-} from '@/features/workflows/stores/workflowStore.ts';
+import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { toast } from 'sonner';
@@ -36,7 +30,6 @@ import {
   snapPositionToGrid,
 } from '@/features/workflows/config/workflow-editor.ts';
 import { validateConnection } from '@/features/workflows/utils/graph-validation';
-import { ExecutionGraphStepDto } from '@/features/workflows/types/execution-graph';
 
 import * as form from './NodeForm/NodeFormItem.tsx';
 import {
@@ -54,12 +47,20 @@ import {
   NoteNode,
   StartIndicatorNode,
 } from './CustomNodes';
-import {
-  canvasNodeStepId,
-  getNodePositionInsideParent,
-} from './CustomNodes/utils.tsx';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { useEditingNode } from './use-editing-node';
+import { preloadRustValidation } from '@/shared/lib/rust-validation-wasm';
+import { applyStepEdit, stepEditOf } from './apply-step-edit';
+import {
+  CANVAS_FIT_VIEW_OPTIONS,
+  CANVAS_MIN_ZOOM,
+  useCanvasFit,
+} from './use-canvas-fit';
+import {
+  pendingStepEdges,
+  planPendingStep,
+  type CreateStepContext,
+} from './pending-step';
 import { editorLostItsStep } from './editor-lost-step';
 import { DiscardStepChangesDialog } from './NodeConfigPanel/DiscardStepChangesDialog';
 import { NodeFormProvider } from './NodeForm/NodeFormProvider';
@@ -87,31 +88,6 @@ import {
   type PendingNodeCandidate,
 } from './node-edit-rust-validation';
 
-// Re-export CreateStepContext type for external use
-export interface CreateStepContext {
-  position: { x: number; y: number };
-  parentId?: string;
-  insertionEdge?: {
-    source: string;
-    target: string;
-    sourceHandle: string;
-  };
-  connection?: {
-    source: string;
-    sourceHandle: string;
-  };
-  /**
-   * Parallel fan-out over an existing source->target edge: the new step N is
-   * wired source->N and N->target while the original edge is kept, so the
-   * unconditional branches re-converge at the target (validator E073).
-   */
-  parallelBranch?: {
-    source: string;
-    target: string;
-    sourceHandle: string;
-  };
-}
-
 const nodeTypes: NodeTypes = {
   [NODE_TYPES.BasicNode]: BasicNode,
   [NODE_TYPES.CreateNode]: CreateNode,
@@ -128,36 +104,7 @@ const edgeTypes: EdgeTypes = {
   animated: AnimatedSVGEdge,
 };
 
-/**
- * Generates a unique step name by appending a number if the base name already exists.
- * E.g., "Random Double" -> "Random Double 2" -> "Random Double 3"
- */
-function generateUniqueStepName(
-  baseName: string,
-  existingNodes: Node[]
-): string {
-  const existingNames = new Set(
-    existingNodes
-      .filter((node) => node.data?.name)
-      .map((node) => node.data.name as string)
-  );
-
-  if (!existingNames.has(baseName)) {
-    return baseName;
-  }
-
-  // Find the next available number
-  let counter = 2;
-  while (existingNames.has(`${baseName} ${counter}`)) {
-    counter++;
-  }
-
-  return `${baseName} ${counter}`;
-}
-
 type WorkflowEditorProps = {
-  nodes: Node[];
-  edges: Edge[];
   readOnly?: boolean;
   /** When true, allows selecting executed nodes for inspection (but not editing) */
   debugInspectMode?: boolean;
@@ -206,18 +153,9 @@ type WorkflowEditorProps = {
   canvasDetail?: CanvasDetailLevel;
 };
 
-// Long workflows are several thousand pixels wide; React Flow's default
-// minimum zoom (0.5) cannot fit them, so fit-to-view silently clipped both
-// ends. Fitting never zooms past 100%: a two-step workflow blown up to 2x
-// reads as broken, not as "fitted".
-const CANVAS_MIN_ZOOM = 0.1;
-const CANVAS_FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
-// Below this zoom card text is unreadable. A workflow too long to fit above it
-// opens at this zoom, anchored on its start, and the Fit button shows it all.
-const CANVAS_READABLE_ZOOM = 0.8;
-const CANVAS_VIEW_MARGIN = 48;
-
 export function WorkflowEditor(props: WorkflowEditorProps) {
+  // The editor validates on every step save: fetch the validator as it opens.
+  useEffect(() => preloadRustValidation(), []);
   return (
     <ReactFlowProvider>
       <WorkflowEditorContent {...props} />
@@ -226,8 +164,6 @@ export function WorkflowEditor(props: WorkflowEditorProps) {
 }
 
 function WorkflowEditorContent({
-  nodes: initialNodes,
-  edges: initialEdges,
   readOnly = false,
   debugInspectMode = false,
   workflow,
@@ -334,9 +270,6 @@ function WorkflowEditorContent({
   const insertNodeBetween = useWorkflowStore(
     (state) => state.insertNodeBetween
   );
-  const syncFromReactFlow = useWorkflowStore(
-    (state) => state.syncFromReactFlow
-  );
   const setSelectedNodeId = useWorkflowStore(
     (state) => state.setSelectedNodeId
   );
@@ -345,17 +278,9 @@ function WorkflowEditorContent({
   );
   const removeNode = useWorkflowStore((state) => state.removeNode);
   const placeNote = useWorkflowStore((state) => state.placeNote);
-  const updateNode = useWorkflowStore((state) => state.updateNode);
 
-  const {
-    getIntersectingNodes,
-    getNodesBounds,
-    screenToFlowPosition,
-    fitView,
-    setCenter,
-    setViewport,
-    getZoom,
-  } = useReactFlow();
+  const { getIntersectingNodes, screenToFlowPosition, setCenter, getZoom } =
+    useReactFlow();
   const reactFlowStore = useStoreApi();
 
   // Let the toolbar (outside this ReactFlowProvider) map screen points onto
@@ -418,6 +343,9 @@ function WorkflowEditorContent({
     setSelectedEdgeId(null);
     setShowStepPicker(false);
   }, []);
+
+  // Undo and redo of canvas edits, where the canvas can be edited.
+  useUndoKeys(!readOnly && !!workflow);
 
   // Handle backspace/delete key to remove selected node
   useEffect(() => {
@@ -527,27 +455,6 @@ function WorkflowEditorContent({
     setCreateStepContext,
   });
 
-  // Initialize store with provided nodes and edges
-  const lastSyncedDataRef = useRef<string>('');
-  const lastFittedCanvasLayoutRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const dataHash = JSON.stringify({
-      nodeIds: initialNodes.map((n) => n.id).sort(),
-      edgeIds: initialEdges.map((e) => e.id).sort(),
-      nodeCount: initialNodes.length,
-      edgeCount: initialEdges.length,
-      // Include node data to detect content changes when switching versions
-      // (nodes may have same IDs but different step configurations)
-      nodeData: initialNodes.map((n) => ({ id: n.id, data: n.data })),
-    });
-
-    if (dataHash !== lastSyncedDataRef.current) {
-      syncFromReactFlow(initialNodes, initialEdges);
-      lastSyncedDataRef.current = dataHash;
-    }
-  }, [initialNodes, initialEdges, syncFromReactFlow]);
-
   const canvasLayoutKey = useMemo(
     () =>
       JSON.stringify({
@@ -570,95 +477,14 @@ function WorkflowEditorContent({
     [edgesWithStartIndicator, nodesWithStartIndicator]
   );
 
-  // What the viewport is fitted to: which steps and edges exist, and the
-  // detail level. Deliberately not sizes or positions — editing a step can
-  // grow its card, and re-fitting on that would yank the view mid-edit. Not
-  // notes either: adding one would move the camera away from the new note.
-  const canvasFitKey = useMemo(
-    () =>
-      JSON.stringify({
-        detail: canvasDetail,
-        nodes: nodesWithStartIndicator
-          .filter((node) => node.type !== NODE_TYPES.NoteNode)
-          .map((node) => node.id),
-        edges: edgesWithStartIndicator.map((edge) => edge.id),
-      }),
-    [canvasDetail, edgesWithStartIndicator, nodesWithStartIndicator]
-  );
-
-  const fitCanvasReadable = useCallback(() => {
-    const { width, height } = reactFlowStore.getState();
-    const bounds = getNodesBounds(nodesWithStartIndicator);
-    if (!width || !height || bounds.width === 0 || bounds.height === 0) {
-      fitView({ duration: 200, ...CANVAS_FIT_VIEW_OPTIONS });
-      return;
-    }
-    const fitted = getViewportForBounds(
-      bounds,
-      width,
-      height,
-      CANVAS_MIN_ZOOM,
-      CANVAS_FIT_VIEW_OPTIONS.maxZoom,
-      CANVAS_FIT_VIEW_OPTIONS.padding
-    );
-    if (fitted.zoom >= CANVAS_READABLE_ZOOM) {
-      setViewport(fitted, { duration: 200 });
-      return;
-    }
-    const zoom = CANVAS_READABLE_ZOOM;
-    const contentHeight = bounds.height * zoom;
-    setViewport(
-      {
-        zoom,
-        x: CANVAS_VIEW_MARGIN - bounds.x * zoom,
-        y:
-          contentHeight + CANVAS_VIEW_MARGIN * 2 <= height
-            ? (height - contentHeight) / 2 - bounds.y * zoom
-            : CANVAS_VIEW_MARGIN - bounds.y * zoom,
-      },
-      { duration: 200 }
-    );
-  }, [
-    fitView,
-    getNodesBounds,
-    nodesWithStartIndicator,
-    reactFlowStore,
-    setViewport,
-  ]);
-
-  // Fit only once React Flow has measured every node: fitting earlier uses
-  // partial bounds and leaves part of the workflow off-screen.
-  const nodesInitialized = useNodesInitialized();
-  useEffect(() => {
-    if (
-      lastFittedCanvasLayoutRef.current === canvasFitKey ||
-      (visibleCanvasNodes.length > 0 && !nodesInitialized)
-    ) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      if (visibleCanvasNodes.length > 0) {
-        fitCanvasReadable();
-      } else {
-        const startIndicatorSize =
-          NODE_TYPE_SIZES[NODE_TYPES.StartIndicatorNode];
-        const startCenterX = startIndicatorSize.width / 2;
-        const startCenterY = startIndicatorSize.height / 2;
-        setCenter(startCenterX, startCenterY, { zoom: 1, duration: 200 });
-      }
-
-      lastFittedCanvasLayoutRef.current = canvasFitKey;
-    }, 100);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    canvasFitKey,
-    fitCanvasReadable,
-    nodesInitialized,
-    setCenter,
-    visibleCanvasNodes.length,
-  ]);
+  // Fits the view to the workflow when its steps or the detail level change
+  // (./use-canvas-fit.ts).
+  useCanvasFit({
+    nodes: nodesWithStartIndicator,
+    edges: edgesWithStartIndicator,
+    canvasDetail,
+    visibleNodeCount: visibleCanvasNodes.length,
+  });
 
   useEffect(() => {
     // React Flow needs handle bounds before it can draw edges. In the locked
@@ -885,227 +711,16 @@ function WorkflowEditorContent({
     (result: StepPickerResult) => {
       if (!createStepContext) return;
 
-      const uniqueName = generateUniqueStepName(result.name, nodes);
-      const newNodeId = generateStepId(
-        uniqueName,
-        nodes.map((node) => node.id)
+      // Its id, its place and what it will be wired to (./pending-step.ts).
+      setPendingNewNode(
+        planPendingStep({
+          picked: result,
+          context: createStepContext,
+          nodes,
+          initialData: form.initialValues,
+          intersecting: getIntersectingNodes,
+        })
       );
-      const data = {
-        ...form.initialValues,
-        stepType: result.stepType,
-        name: uniqueName,
-        agentId: result.agentId || '',
-        capabilityId: result.capabilityId || '',
-      } as form.SchemaType;
-
-      // Parallel branch over an existing edge: defer creation like the other
-      // flows; the diamond edges are wired in handlePendingNodeSave.
-      if (createStepContext.parallelBranch) {
-        const sourceNode = nodes.find(
-          (n) => n.id === createStepContext.parallelBranch!.source
-        );
-
-        let finalPosition = createStepContext.position;
-        let parentId: string | undefined;
-
-        if (sourceNode?.parentId) {
-          parentId = sourceNode.parentId;
-
-          const getAbsolutePosition = (
-            node: Node
-          ): { x: number; y: number } => {
-            if (!node.parentId) return node.position;
-            const parent = nodes.find((n) => n.id === node.parentId);
-            if (!parent) return node.position;
-            const parentAbsolute = getAbsolutePosition(parent);
-            return {
-              x: parentAbsolute.x + node.position.x,
-              y: parentAbsolute.y + node.position.y,
-            };
-          };
-
-          const parentNode = nodes.find((n) => n.id === parentId);
-          if (parentNode) {
-            const parentAbsolute = getAbsolutePosition(parentNode);
-            finalPosition = {
-              x: createStepContext.position.x - parentAbsolute.x,
-              y: createStepContext.position.y - parentAbsolute.y,
-            };
-          }
-        }
-
-        setPendingNewNode({
-          id: newNodeId,
-          data: data as any,
-          position: finalPosition,
-          parentId,
-          sourceNodeId: createStepContext.parallelBranch.source,
-          sourceHandle: createStepContext.parallelBranch.sourceHandle,
-          targetNodeId: createStepContext.parallelBranch.target,
-        });
-
-        setCreateStepContext(null);
-        setSelectedEdgeId(null);
-        setShowStepPicker(false);
-        return;
-      }
-
-      // Check if we're inserting between nodes via edge click
-      if (createStepContext.insertionEdge) {
-        if (createStepContext.insertionEdge.source === '__start_indicator__') {
-          const targetNode = nodes.find(
-            (n) => n.id === createStepContext.insertionEdge!.target
-          );
-          if (targetNode) {
-            const nodeType = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-            const newNodeSize = NODE_TYPE_SIZES[nodeType] || {
-              width: 180,
-              height: 48,
-            };
-            const horizontalSpacing = 108;
-
-            const newPosition = snapPositionToGrid({
-              x: targetNode.position.x - newNodeSize.width - horizontalSpacing,
-              y:
-                targetNode.position.y +
-                (targetNode.height || 48) / 2 -
-                newNodeSize.height / 2,
-            });
-
-            // Store as pending node instead of creating immediately
-            setPendingNewNode({
-              id: newNodeId,
-              data: data as any,
-              position: newPosition,
-              targetNodeId: createStepContext.insertionEdge.target,
-              becomesEntryPoint: true,
-            });
-
-            setCreateStepContext(null);
-            setSelectedEdgeId(null);
-            setShowStepPicker(false);
-            return;
-          }
-        }
-
-        // Regular insertion between nodes
-        setPendingNewNode({
-          id: newNodeId,
-          data: data as any,
-          position: createStepContext.position,
-          insertionEdge: createStepContext.insertionEdge,
-        });
-        setCreateStepContext(null);
-        setSelectedEdgeId(null);
-        setShowStepPicker(false);
-        return;
-      }
-
-      // Check if we're creating a node from a dragged connection
-      if (createStepContext.connection) {
-        const sourceNode = nodes.find(
-          (n) => n.id === createStepContext.connection!.source
-        );
-        const type = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-        const newNodeSize = NODE_TYPE_SIZES[type];
-
-        let finalPosition = createStepContext.position;
-        let parentId: string | undefined;
-
-        if (sourceNode) {
-          const getAbsolutePosition = (
-            node: Node
-          ): { x: number; y: number } => {
-            if (!node.parentId) return node.position;
-            const parent = nodes.find((n) => n.id === node.parentId);
-            if (!parent) return node.position;
-            const parentAbsolute = getAbsolutePosition(parent);
-            return {
-              x: parentAbsolute.x + node.position.x,
-              y: parentAbsolute.y + node.position.y,
-            };
-          };
-
-          const sourceAbsolute = getAbsolutePosition(sourceNode);
-          const sourceHandleY =
-            sourceAbsolute.y + (sourceNode.height || 48) / 2;
-          const newNodeHandleOffset = newNodeSize.height / 2;
-
-          const absolutePosition = {
-            x: createStepContext.position.x,
-            y: sourceHandleY - newNodeHandleOffset,
-          };
-
-          if (sourceNode.parentId) {
-            parentId = sourceNode.parentId;
-            const parentNode = nodes.find((n) => n.id === parentId);
-            if (parentNode) {
-              const parentAbsolute = getAbsolutePosition(parentNode);
-              finalPosition = {
-                x: absolutePosition.x - parentAbsolute.x,
-                y: absolutePosition.y - parentAbsolute.y,
-              };
-            }
-          } else {
-            finalPosition = absolutePosition;
-          }
-        }
-
-        // Store as pending node instead of creating immediately
-        setPendingNewNode({
-          id: newNodeId,
-          data: data as any,
-          position: finalPosition,
-          parentId,
-          sourceNodeId: createStepContext.connection.source,
-          sourceHandle: createStepContext.connection.sourceHandle,
-        });
-
-        setCreateStepContext(null);
-        setSelectedEdgeId(null);
-        setShowStepPicker(false);
-        return;
-      }
-
-      // Regular node creation flow
-      const type = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-      const style = NODE_TYPE_SIZES[type];
-
-      let parentId: string | undefined = createStepContext.parentId;
-      let finalPosition = createStepContext.position;
-
-      const tempNode: Node = {
-        id: 'temp',
-        type,
-        position: createStepContext.position,
-        data: {},
-        style,
-        width: style.width,
-        height: style.height,
-      };
-
-      const intersections = getIntersectingNodes(tempNode).filter(
-        (n) => n.type === NODE_TYPES.ContainerNode
-      );
-
-      const groupNode = intersections[intersections.length - 1];
-
-      if (!parentId && groupNode) {
-        finalPosition = getNodePositionInsideParent(tempNode, groupNode) ?? {
-          x: 0,
-          y: 0,
-        };
-        parentId = groupNode?.id;
-      }
-
-      // Store as pending node instead of creating immediately
-      setPendingNewNode({
-        id: newNodeId,
-        data: data as any,
-        position: finalPosition,
-        parentId,
-      });
-
       setCreateStepContext(null);
       setSelectedEdgeId(null);
       setShowStepPicker(false);
@@ -1144,6 +759,7 @@ function WorkflowEditorContent({
       if (!validation.canApply) {
         toast.error('Step validation failed', {
           description:
+            validation.blockingError ||
             validation.rustValidation.errors[0] ||
             validation.rustValidation.message,
         });
@@ -1167,44 +783,24 @@ function WorkflowEditorContent({
       // A staged step id rename is applied here, with the rest of the edit.
       // Form-only fields: the staged rename, and the on-wait JSON error that
       // only exists to block Save (ED-32).
-      const { renameStepTo, ...data } = submitted;
-      delete (data as { onWaitJsonError?: unknown }).onWaitJsonError;
-      delete (data as { addOnWaitFlow?: unknown }).addOnWaitFlow;
+      const { data, renameStepTo } = stepEditOf(submitted);
       const canApply = await validateNodeEditCandidate(
         nodeId,
         data as form.SchemaType
       );
       if (!canApply) return false;
 
-      let savedId = nodeId;
-      if (renameStepTo && renameStepTo !== canvasNodeStepId(nodeId)) {
-        const renameError = useWorkflowStore
-          .getState()
-          .renameStep(nodeId, renameStepTo);
-        if (renameError) {
-          toast.error(renameError);
-          return false;
-        }
-        savedId =
-          useWorkflowStore.getState().lastStepRename?.newId ?? renameStepTo;
+      // The rename, the data and what follows from it (./apply-step-edit.ts).
+      const applied = applyStepEdit(nodeId, data, renameStepTo);
+      if ('error' in applied) {
+        toast.error(applied.error);
+        return false;
       }
-      updateNode(savedId, data as unknown as Partial<ExecutionGraphStepDto>);
-      // An AI Agent's conversation id reaches its memory provider on Save
-      // only (ED-33).
-      const synced = withMemoryConversation(
-        useWorkflowStore.getState().nodes,
-        data.inputMapping
-      );
-      if (synced)
-        useWorkflowStore.setState((state) => ({
-          nodes: synced,
-          ...dirtied(state),
-        }));
       memoryDraftRef.current = null;
       closeNodeConfig();
       return true;
     },
-    [validateNodeEditCandidate, updateNode, closeNodeConfig]
+    [validateNodeEditCandidate, closeNodeConfig]
   );
 
   const handleNodeDelete = useCallback(
@@ -1235,9 +831,7 @@ function WorkflowEditorContent({
 
       let addedId: string | null = nodeId;
       const nodeType = STEP_TYPES[data.stepType] || NODE_TYPES.BasicNode;
-      const isConditional =
-        nodeType === NODE_TYPES.ConditionalNode ||
-        data.stepType === 'Conditional';
+      const isConditional = nodeType === NODE_TYPES.ConditionalNode;
 
       // Handle edge connections based on creation context
       if (pendingNewNode.insertionEdge) {
@@ -1261,73 +855,26 @@ function WorkflowEditorContent({
 
         addedId = createdNodeId ?? null;
         if (createdNodeId) {
-          if (pendingNewNode.sourceNodeId && pendingNewNode.targetNodeId) {
-            // Parallel branch: the existing source->target edge is kept; the
-            // new step gets the diamond legs source->new and new->target so
-            // the unconditional fan-out re-converges (validator E073).
-            const continuationEdges = isConditional
-              ? [
-                  {
-                    from: createdNodeId,
-                    to: pendingNewNode.targetNodeId,
-                    label: 'true',
-                  },
-                  {
-                    from: createdNodeId,
-                    to: pendingNewNode.targetNodeId,
-                    label: 'false',
-                  },
-                ]
-              : [
-                  {
-                    from: createdNodeId,
-                    to: pendingNewNode.targetNodeId,
-                    label: 'source',
-                  },
-                ];
-
-            addStoreEdges([
-              {
-                from: pendingNewNode.sourceNodeId,
-                to: createdNodeId,
-                label: pendingNewNode.sourceHandle || 'source',
-              },
-              ...continuationEdges,
-            ]);
-          } else if (pendingNewNode.targetNodeId) {
-            // Connecting to a target node (e.g., inserting before first node from start indicator)
-            if (isConditional) {
-              addStoreEdges([
-                {
-                  from: createdNodeId,
-                  to: pendingNewNode.targetNodeId,
-                  label: 'true',
-                },
-                {
-                  from: createdNodeId,
-                  to: pendingNewNode.targetNodeId,
-                  label: 'false',
-                },
-              ]);
-            } else {
-              addStoreEdge(
-                createdNodeId,
-                pendingNewNode.targetNodeId,
-                'source'
-              );
-            }
-            // A pinned entry point would leave the new first step unreachable
-            // (E002). In auto mode the entry is re-derived from the edges.
-            if (pendingNewNode.becomesEntryPoint && workflow?.entryPoint) {
-              onWorkflowChange?.({ entryPoint: createdNodeId });
-            }
-          } else if (pendingNewNode.sourceNodeId) {
-            // Connecting from a source node (dragged connection)
-            addStoreEdge(
-              pendingNewNode.sourceNodeId,
-              createdNodeId,
-              pendingNewNode.sourceHandle || 'source'
-            );
+          // The edges its place on the canvas calls for (./pending-step.ts).
+          const newEdges = pendingStepEdges(
+            pendingNewNode,
+            createdNodeId,
+            isConditional
+          );
+          if (newEdges.length === 1) {
+            addStoreEdge(newEdges[0].from, newEdges[0].to, newEdges[0].label);
+          } else if (newEdges.length > 1) {
+            addStoreEdges(newEdges);
+          }
+          // A pinned entry point would leave the new first step unreachable
+          // (E002). In auto mode the entry is re-derived from the edges.
+          if (
+            pendingNewNode.targetNodeId &&
+            !pendingNewNode.sourceNodeId &&
+            pendingNewNode.becomesEntryPoint &&
+            workflow?.entryPoint
+          ) {
+            onWorkflowChange?.({ entryPoint: createdNodeId });
           }
 
           setPendingCenterNodeId(createdNodeId);

@@ -104,7 +104,7 @@ describe('PERMISSIVE_FALLBACK', () => {
 
 describe('enabledAgentSet', () => {
   it('returns undefined for the PERMISSIVE_FALLBACK so callers do not filter', () => {
-    // The whole point of this helper: callers like `getAgents(token, set)`
+    // The whole point of this helper: callers like `getAgents(set)`
     // treat `undefined` as "no filter, accept everything". Without it, the
     // fallback's empty `agents` array would collapse the agent registry to
     // an empty list in `vite dev` / Storybook / failed-fetch contexts.

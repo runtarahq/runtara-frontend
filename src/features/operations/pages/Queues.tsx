@@ -4,9 +4,14 @@ import { Pencil, Plus } from 'lucide-react';
 import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
-import { useOperations } from '../queries';
+import { useOperations } from '@/features/operations/queries';
 import { DeleteQueue } from '../components/DeleteQueue';
-import { OperationHeader, OperationSection, RefreshControls } from './shared';
+import {
+  OperationHeader,
+  OperationSection,
+} from '@/features/operations/components/shared';
+import { RefreshControls } from '@/features/runs/components/RunActions';
+import { queryKeys } from '@/shared/queries/query-keys';
 export function QueuesPage() {
   const { views, processes } = useOperations();
   const client = useQueryClient();
@@ -21,7 +26,9 @@ export function QueuesPage() {
               updatedAt={views.dataUpdatedAt}
               busy={views.isFetching}
               onRefresh={() =>
-                void client.invalidateQueries({ queryKey: ['operations'] })
+                void client.invalidateQueries({
+                  queryKey: queryKeys.operations.all,
+                })
               }
             />
             <Can permission="workflow:update">

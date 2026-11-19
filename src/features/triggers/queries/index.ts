@@ -4,7 +4,6 @@ import { cronToHuman } from '@/features/triggers/utils/cron';
 import { createWorkflowNameMap } from '@/features/triggers/utils/workflow-enrichment';
 import { getWorkflows } from '@/features/workflows/queries';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
 // Helper function to convert snake_case API response to camelCase EnrichedTrigger for UI
 function transformTriggerFromAPI(
@@ -43,11 +42,11 @@ function transformTriggerToAPI(
   };
 }
 
-export async function getInvocationTriggers(token: string) {
+export async function getInvocationTriggers() {
   // Fetch triggers and workflows in parallel
   const [triggersResult, workflowsResult] = await Promise.all([
-    RuntimeREST.api.listInvocationTriggers(createAuthHeaders(token)),
-    getWorkflows(token),
+    RuntimeREST.api.listInvocationTriggers(),
+    getWorkflows(),
   ]);
 
   const workflowNameMap = createWorkflowNameMap(workflowsResult);
@@ -57,14 +56,11 @@ export async function getInvocationTriggers(token: string) {
   );
 }
 
-export async function getInvocationTriggerById(
-  token: string,
-  triggerId: string
-) {
+export async function getInvocationTriggerById(triggerId: string) {
   // Fetch trigger and workflows in parallel
   const [triggerResult, workflowsResult] = await Promise.all([
-    RuntimeREST.api.getInvocationTrigger(triggerId, createAuthHeaders(token)),
-    getWorkflows(token),
+    RuntimeREST.api.getInvocationTrigger(triggerId),
+    getWorkflows(),
   ]);
 
   const workflowNameMap = createWorkflowNameMap(workflowsResult);
@@ -99,37 +95,21 @@ export async function getInvocationTriggerById(
   };
 }
 
-export async function createInvocationTrigger(
-  token: string,
-  invocationTrigger: any
-) {
+export async function createInvocationTrigger(invocationTrigger: any) {
   const requestData = transformTriggerToAPI(invocationTrigger);
 
-  await RuntimeREST.api.createInvocationTrigger(
-    requestData,
-    createAuthHeaders(token)
-  );
+  await RuntimeREST.api.createInvocationTrigger(requestData);
 }
 
-export async function removeInvocationTrigger(
-  token: string,
-  triggerId: string
-) {
-  await RuntimeREST.api.deleteInvocationTrigger(
-    triggerId,
-    createAuthHeaders(token)
-  );
+export async function removeInvocationTrigger(triggerId: string) {
+  await RuntimeREST.api.deleteInvocationTrigger(triggerId);
 }
 
-export async function updateInvocationTrigger(token: string, newTrigger: any) {
+export async function updateInvocationTrigger(newTrigger: any) {
   const { id, ...restData } = newTrigger;
   const requestData = transformTriggerToAPI(
     restData
   ) as RuntimeAPI.UpdateInvocationTriggerRequest;
 
-  await RuntimeREST.api.updateInvocationTrigger(
-    id,
-    requestData,
-    createAuthHeaders(token)
-  );
+  await RuntimeREST.api.updateInvocationTrigger(id, requestData);
 }

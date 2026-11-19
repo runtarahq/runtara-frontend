@@ -14,11 +14,18 @@ test.describe('Navigation', () => {
       await expect(page).toHaveURL(/\/login/);
     });
 
-    test('should show 404 for unknown routes', async ({ page }) => {
+    test('should show the not-found page for unknown routes', async ({
+      page,
+    }) => {
       await page.goto('/unknown-route-that-does-not-exist');
 
-      // Should display 404 content
-      await expect(page.locator('text=404')).toBeVisible();
+      // An explained not-found screen that names the address, not a bare 404.
+      await expect(
+        page.getByRole('heading', { name: /page not found/i })
+      ).toBeVisible();
+      await expect(
+        page.getByText('/unknown-route-that-does-not-exist')
+      ).toBeVisible();
     });
   });
 

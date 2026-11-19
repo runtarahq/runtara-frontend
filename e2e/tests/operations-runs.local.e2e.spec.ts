@@ -129,9 +129,16 @@ test('Runs stays compact and exposes secondary information on demand', async ({
     .getByRole('columnheader', { name: 'Completed', exact: true })
     .click();
   await expect(page).toHaveURL(/sortBy=completedAt/);
+  // The first press sorts newest first; the header says so once the page
+  // has followed the URL, and only then does a second press reverse it.
+  await expect(
+    table.getByRole('columnheader', { name: 'Completed', exact: true })
+  ).toHaveAttribute('aria-sort', 'descending');
+  await expect(rows.first()).toBeVisible();
   await table
     .getByRole('button', { name: 'Completed', exact: true })
     .press('Enter');
+  await expect(page).toHaveURL(/sortBy=completedAt&sortOrder=asc/);
   await expect(
     table.getByRole('columnheader', { name: 'Completed', exact: true })
   ).toHaveAttribute('aria-sort', 'ascending');
@@ -139,6 +146,11 @@ test('Runs stays compact and exposes secondary information on demand', async ({
     0
   );
   await page.getByRole('button', { name: /^Waiting / }).click();
+  // The rows are the waiting runs' once the filter shows as applied.
+  await expect(page.getByRole('button', { name: /^Waiting / })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
   await expect(rows.first()).toBeVisible();
   for (const row of await rows.all()) {
     const actions = row.getByRole('cell').last();

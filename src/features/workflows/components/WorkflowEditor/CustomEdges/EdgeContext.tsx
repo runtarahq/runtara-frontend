@@ -1,6 +1,6 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { Edge } from '@xyflow/react';
-import type { ConditionSuggestion } from '@/shared/components/ui/condition-editor';
+import type { ConditionSuggestion } from '@/shared/conditions';
 import type { OrthogonalRoute } from '../CustomNodes/layout';
 
 interface EdgeInsertData {

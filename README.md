@@ -26,12 +26,22 @@ releases are independent, so a console fix ships without a server release.
   (see `package.json`). `npm run generate-api-runtime-release` regenerates
   `src/generated/RuntaraRuntimeApi.ts` from the same release's `openapi.json`.
   Moving to a new runtara minor means bumping that URL and regenerating.
+  `npm run check-api-runtime-release` tells whether the client checked in is
+  that release's, and CI runs it on every pull request. A client generated
+  ahead of a release records what it has beyond it with
+  `npm run record-api-runtime-pending` (`scripts/api-runtime.pending.patch`);
+  delete that file with the bump to the release that carries it.
 - **Releasing.** Set `version` in `package.json`, merge, and push the tag
   `vX.Y.Z`. The release workflow builds with `VITE_RUNTARA_VERSION` set and
   publishes `runtara-frontend-X.Y.Z.tar.gz` (the contents of `dist/`) with its
   `.sha256`, and the image `ghcr.io/runtarahq/runtara-frontend:X.Y.Z` (and
   `:latest`, unless the tag is a prerelease) for `linux/amd64` and
   `linux/arm64`. runtara's evaluation `docker-compose.yml` runs `:latest`.
+  The tarball and the image are one build: the workflow bundles the console
+  once and the image wraps that bundle (`--build-arg BUNDLE=prebuilt`, see the
+  `Dockerfile`). Both carry a provenance attestation
+  (`gh attestation verify`), and the release is created only once the image
+  is pushed.
 
 ## Dev loops
 
@@ -134,11 +144,14 @@ to the console's `oauth-complete.html`.
 - `npm run dev` — Vite dev server on `:8081`
 - `npm run build` — TypeScript check + production bundle into `dist/`
 - `npm run preview` — serve the production bundle locally
+- `npm run check-bundle-size` — after a build, hold the first load to its budget
 - `npm run lint` — ESLint
 - `npm test` — Vitest
+- `npm run test:edition` — type-check and test the console built with the example edition (`examples/edition`)
 - `npm run test:e2e` — Playwright (see `e2e/README.md`)
 - `npm run generate-api-runtime-release` — regenerate the runtime API client from the pinned runtara release's `openapi.json`
-- `npm run generate-api-runtime-local` / `generate-api-management-local` — regenerate TypeScript API clients from a running server
+- `npm run check-api-runtime-release` — fail when the checked-in runtime API client is not that release's
+- `npm run generate-api-runtime-local` — regenerate the runtime API client from a running server
 
 ## Project layout
 

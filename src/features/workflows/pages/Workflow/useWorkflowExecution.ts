@@ -1,9 +1,10 @@
+import { useRefreshRunsOnStatus } from './use-refresh-runs';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { useCustomMutation, useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { queryClient } from '@/bootstrap';
+import { queryClient } from '@/shared/queries/query-client';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import {
@@ -19,7 +20,7 @@ import {
 import {
   isAtBreakpoint,
   isWaitingSuspension,
-} from '@/features/workflows/utils/suspension';
+} from '@/features/runs/utils/suspension';
 import { createStepNodeResolver } from '@/features/workflows/utils/step-node-resolver';
 import type { ExecutionStatus } from '@/generated/RuntaraRuntimeApi';
 import { breakpointKey } from './breakpoint-key';
@@ -51,21 +52,18 @@ export function useWorkflowExecution(workflowId: string | undefined) {
   const [resumeGuardLapses, setResumeGuardLapses] = useState(0);
 
   const scheduleMutation = useCustomMutation({
-    mutationFn: (
-      token: string,
-      {
-        workflowId,
-        inputs,
-        version,
-        debug,
-      }: {
-        workflowId: string;
-        trackEvents: boolean;
-        inputs?: Record<string, any>;
-        version?: number;
-        debug?: boolean;
-      }
-    ) => scheduleWorkflow(token, workflowId, inputs, version, debug),
+    mutationFn: ({
+      workflowId,
+      inputs,
+      version,
+      debug,
+    }: {
+      workflowId: string;
+      trackEvents: boolean;
+      inputs?: Record<string, any>;
+      version?: number;
+      debug?: boolean;
+    }) => scheduleWorkflow(workflowId, inputs, version, debug),
     onSuccess: (
       response: any,
       variables: {
@@ -107,12 +105,12 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         workflowId ?? '',
         executingInstanceId ?? ''
       ),
-      queryFn: async (token: string) => {
+      queryFn: async () => {
         // Reading a run this page has only just queued would 404 — the runtime
         // has not written its row yet. Only that run waits; anything else,
         // including an instance attached to on load, reads straight away.
         await holdForQueuedRow(queuedRunRef.current, executingInstanceId!);
-        return getWorkflowInstance(token, workflowId!, executingInstanceId!);
+        return getWorkflowInstance(workflowId!, executingInstanceId!);
       },
       enabled: !!executingInstanceId,
       // The seeded queued status is for display only. Without this it would
@@ -128,6 +126,9 @@ export function useWorkflowExecution(workflowId: string | undefined) {
       },
     });
 
+  // The run in the lists of runs, as soon as it starts and as it changes.
+  useRefreshRunsOnStatus(executingInstanceId, executionInstanceData?.status);
+
   // Poll step events (only in debug/trackEvents mode)
   const { data: executionStepEventsData, refetch: refetchStepEvents } =
     useCustomQuery({
@@ -135,8 +136,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         workflowId,
         executingInstanceId ?? undefined
       ),
-      queryFn: (token: string) =>
-        getStepEvents(token, workflowId!, executingInstanceId!),
+      queryFn: () => getStepEvents(workflowId!, executingInstanceId!),
       enabled: !!executingInstanceId && executionDebugMode,
       refetchInterval: () => {
         // Keep polling while the run is live (suspended included), often
@@ -461,13 +461,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         });
 
         if (skippedNodeIds.length > 0) {
-          const newMap = new Map(currentStore.nodeExecutionStatus);
-          skippedNodeIds.forEach((nodeId) => newMap.delete(nodeId));
-
-          useExecutionStore.setState({
-            nodeExecutionStatus: newMap,
-            statusVersion: currentStore.statusVersion + 1,
-          });
+          currentStore.clearNodeStatuses(skippedNodeIds);
         }
       }
     } else if (
@@ -529,13 +523,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
 
         // Clear status for all skipped nodes in one update
         if (skippedNodeIds.length > 0) {
-          const newMap = new Map(currentStore.nodeExecutionStatus);
-          skippedNodeIds.forEach((nodeId) => newMap.delete(nodeId));
-
-          useExecutionStore.setState({
-            nodeExecutionStatus: newMap,
-            statusVersion: currentStore.statusVersion + 1,
-          });
+          currentStore.clearNodeStatuses(skippedNodeIds);
         }
       }
     } else {

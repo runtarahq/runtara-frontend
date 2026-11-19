@@ -426,4 +426,62 @@ describe('queryKeys', () => {
       expect(listKey.slice(0, schemaKey.length)).toEqual(schemaKey);
     });
   });
+
+  describe('operations', () => {
+    const tenant = 'acme';
+
+    it('puts every key under the feature, then the tenant', () => {
+      const keys = [
+        queryKeys.operations.queues(tenant),
+        queryKeys.operations.views(tenant),
+        queryKeys.operations.processes(tenant),
+        queryKeys.operations.overviewFailures(tenant),
+        queryKeys.operations.runningCount(tenant),
+        queryKeys.operations.invocations24h(tenant),
+        queryKeys.operations.recentRuns(tenant),
+        queryKeys.operations.attention(tenant, []),
+        queryKeys.operations.items(tenant, {}, 0, '', false),
+        queryKeys.operations.queueCounts(tenant, {}),
+        queryKeys.operations.requestList(tenant, [], false, 0),
+        queryKeys.operations.run(tenant, 'wf', 'run'),
+        queryKeys.operations.runPendingInput(tenant, 'wf', 'run'),
+        queryKeys.operations.runActivity(tenant, 'wf', 'run'),
+      ];
+      for (const key of keys) {
+        expect(key.slice(0, 2)).toEqual(['operations', tenant]);
+      }
+      // No two of them are one key.
+      expect(new Set(keys.map((key) => JSON.stringify(key))).size).toBe(
+        keys.length
+      );
+    });
+
+    it('keeps a tenant apart from another, and from the whole feature', () => {
+      expect(queryKeys.operations.all).toEqual(['operations']);
+      expect(queryKeys.operations.tenant(tenant)).toEqual([
+        'operations',
+        tenant,
+      ]);
+      expect(queryKeys.operations.queues('other')).not.toEqual(
+        queryKeys.operations.queues(tenant)
+      );
+    });
+
+    it("keeps a request list's filter and page where its placeholder reads them", () => {
+      // Requests.tsx keeps its rows across a refresh by comparing these two.
+      const key = queryKeys.operations.requestList(tenant, ['scope'], true, 3);
+      expect(key[4]).toBe(true);
+      expect(key[5]).toBe(3);
+    });
+
+    it('names a run by its workflow and instance', () => {
+      expect(queryKeys.operations.run(tenant, 'wf-1', 'run-1')).toEqual([
+        'operations',
+        tenant,
+        'run',
+        'wf-1',
+        'run-1',
+      ]);
+    });
+  });
 });

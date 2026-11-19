@@ -1,70 +1,54 @@
-import type { SchemaField as EditorSchemaField } from '@/features/workflows/components/WorkflowEditor/EditorSidebar/SchemaFieldsEditor';
 import {
   useWorkflowSettings,
   type WorkflowChanges,
-  type WorkflowVariable,
 } from './useWorkflowSettings';
 import { useWorkflowExecution } from './useWorkflowExecution';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
-import {
-  useCustomMutation,
-  useCustomQuery,
-  isEntitlementDenial,
-} from '@/shared/hooks/api';
+import { useCustomMutation } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { WorkflowEditor } from '@/features/workflows/components/WorkflowEditor';
 import { WorkflowActionsForm } from '@/features/workflows/pages/Workflow/WorkflowActionsForm';
 import { Loader } from '@/shared/components/loader.tsx';
 import { composeExecutionGraph } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
-import {
-  validateExecutionGraphWithRust,
-  validateSchemaFieldsWithRust,
-} from '@/features/workflows/utils/rust-workflow-validation';
 import '@xyflow/react/dist/base.css';
-import { queryClient } from '@/bootstrap.tsx';
+import { queryClient } from '@/shared/queries/query-client';
 import { slugify } from '@/shared/utils/string-utils';
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
 import { DebugStepInspector } from '@/features/workflows/components/DebugStepInspector';
+import { EditorStoresProvider } from '@/features/workflows/stores/EditorStoresProvider';
 
 import { WorkflowExecuteDialog } from '@/features/workflows/components/WorkflowExecuteDialog';
 import {
-  getWorkflowVersions,
-  getWorkflowWorkflow,
   setCurrentVersion,
   updateWorkflow,
   toggleTrackEvents,
-  WorkflowVersionInfoDto,
 } from '@/features/workflows/queries';
 import { usePageTitle } from '@/shared/hooks/usePageTitle';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
-import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
+import { isWaitingSuspension } from '@/features/runs/utils/suspension';
 
-import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
-import { dropSavedEntries } from './drop-saved-entries';
-import { useOneAtATime } from './use-one-at-a-time';
-import { BackgroundBuildWatch, useBuildWatchTimeout } from './build-watch';
+import { useStagedSettings } from './staged-settings';
+import { parseWorkflowImport } from './import-workflow';
+import { runFailureMessage } from './run-failure';
+import { useCompilationWatch } from './use-compilation-watch';
+import { useUnsavedChangesGuard } from './use-unsaved-changes-guard';
+import { useVersionSelection, useWorkflowLoad } from './use-workflow-load';
+import { prepareWorkflowSave } from './save-workflow';
 import {
-  getCompilationProgress,
-  rebuildWorkflowVersion,
-} from '@/features/workflows/queries';
-import type { CompilationToolbarStatus } from '@/features/workflows/pages/Workflow/WorkflowActionsForm';
+  graphOptions,
+  mergeWorkflowSettings,
+  withSavedSettings,
+} from './workflow-settings';
+import { useOneAtATime } from './use-one-at-a-time';
+import { BackgroundBuildWatch } from './build-watch';
+import { rebuildWorkflowVersion } from '@/features/workflows/queries';
 import { ValidationPanel } from '@/features/workflows/components/ValidationPanel';
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
-import {
-  convertClientErrors,
-  convertClientWarnings,
-  convertServerErrors,
-} from '@/features/workflows/utils/validation-helpers';
+import { convertServerErrors } from '@/features/workflows/utils/validation-helpers';
 
-import {
-  parseSchema,
-  buildSchemaFromFields,
-  buildStateSchemaFromFields,
-  type SchemaField,
-} from '@/features/workflows/utils/schema';
 import {
   NODE_TYPES,
   NODE_TYPE_SIZES,
@@ -75,427 +59,77 @@ import {
   readCanvasDetail,
   writeCanvasDetail,
 } from '@/features/workflows/components/WorkflowEditor/editor-preferences';
-import type { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
-import { MEMORY_PRESET_MIB } from '@/features/workflows/utils/memory';
+import { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
 import { isActiveStatus } from '@/shared/utils/status-display';
 
-function hasOwn(object: object, key: string) {
-  return Object.prototype.hasOwnProperty.call(object, key);
-}
-
-function getWorkflowStoreContentHash(): string {
-  const { nodes, edges } = useWorkflowStore.getState();
-
-  return JSON.stringify({
-    nodes: nodes
-      .map((node) => ({
-        id: node.id,
-        parentId: node.parentId,
-        type: node.type,
-        data: node.data,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-    edges: edges
-      .map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-  });
-}
+// The page of one workflow. Its editor state lives in stores of its own
+// (stores/editor-scope), made when the page opens on a workflow and dropped
+// when it leaves it: another workflow starts from nothing, with no reset.
 export function Workflow() {
   const { workflowId } = useParams();
-  const [selectedVersion, setSelectedVersion] = useState<number | undefined>(
-    undefined
+  return (
+    <EditorStoresProvider key={workflowId}>
+      <WorkflowPage />
+    </EditorStoresProvider>
   );
-  const [queryVersion, setQueryVersion] = useState<number | undefined>(
-    undefined
-  );
-  const [versionsWithDebug, setVersionsWithDebug] = useState<
-    WorkflowVersionInfoDto[]
-  >([]);
+}
+
+function WorkflowPage() {
+  const { workflowId } = useParams();
+  // Which version is shown and which is loaded (./use-workflow-load.ts).
+  const versionSelection = useVersionSelection();
+  const {
+    selectedVersion,
+    setSelectedVersion,
+    queryVersion,
+    setQueryVersion,
+    isSwitchingVersion,
+  } = versionSelection;
 
   const [executeDialogOpen, setExecuteDialogOpen] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
 
-  // The version we just saved and want to surface compilation progress for.
-  // Set in the save mutation's onSuccess; cleared after the user has had a
-  // moment to see the terminal state so the toolbar slot frees up again.
-  const [watchedCompilationVersion, setWatchedCompilationVersion] = useState<
-    number | undefined
-  >(undefined);
-
-  // Versions the user explicitly clicked Rebuild on. Set immediately at click
-  // time (not derived from polling) so the row's Rebuild button can become
-  // "Rebuilding" and disable itself before the first poll arrives — the
-  // warm-cache case where compile finishes in <1 s and polling would only
-  // ever see the terminal state. Cleared by the same effect that clears
-  // `watchedCompilationVersion` after terminal. More than one: starting B
-  // while A builds hands A to a background watch instead of dropping it
-  // (WF-7).
-  const [rebuildingVersions, setRebuildingVersions] = useState<number[]>([]);
-  const finishRebuild = useCallback(
-    (version: number) =>
-      setRebuildingVersions((all) => all.filter((v) => v !== version)),
-    []
-  );
-
-  const [isUnsavedChangesDialogOpen, setIsUnsavedChangesDialogOpen] =
-    useState(false);
-  const pendingUnsavedChangesActionRef = useRef<(() => void) | null>(null);
-  // Track if we're switching versions (for showing inline loading instead of full page loader)
-  const [isSwitchingVersion, setIsSwitchingVersion] = useState(false);
+  // What the toolbar and the version rows show of a build (see
+  // ./use-compilation-watch.ts).
+  const {
+    watchedCompilationVersion,
+    setWatchedCompilationVersion,
+    rebuildingVersions,
+    setRebuildingVersions,
+    finishRebuild,
+    compilationToolbarStatus,
+  } = useCompilationWatch(workflowId);
 
   // Staged workflow changes (name, description, variables, schemas, timeout) - preserved until global save
-  const [stagedWorkflowChanges, setStagedWorkflowChanges] =
-    useState<WorkflowChanges>({});
+  const stagedWorkflowChanges = useStagedSettings((state) => state.staged);
+  const discardStagedChanges = useStagedSettings((state) => state.discard);
 
-  // A new page starts with no steps highlighted as staged.
-  useEffect(() => {
-    useWorkflowStore.getState().setStagedNodeIds(new Set());
-  }, []);
-
-  // Reactively subscribe to isDirty state
-  const isDirty = useWorkflowStore((state) => state.isDirty);
-  const isStructurallyDirty = useWorkflowStore(
-    (state) => state.isStructurallyDirty
-  );
-
-  // Compute if there are any unsaved changes (workflow dirty or staged node/workflow changes)
-  // Ignore dirty state during version switching to prevent button flickering
-  const hasUnsavedChanges = useMemo(() => {
-    // During version switch, we don't have unsaved changes (they were intentionally discarded)
-    if (isSwitchingVersion) {
-      return false;
-    }
-    const hasWorkflowChanges = Object.keys(stagedWorkflowChanges).length > 0;
-    return isDirty || hasWorkflowChanges;
-  }, [isDirty, stagedWorkflowChanges, isSwitchingVersion]);
-
-  // Structural changes (add/remove/edit nodes or edges) block execution.
-  // Position-only changes (dragging, auto-layout) do not.
-  const hasStructuralUnsavedChanges = useMemo(() => {
-    if (isSwitchingVersion) {
-      return false;
-    }
-    return isStructurallyDirty || Object.keys(stagedWorkflowChanges).length > 0;
-  }, [isStructurallyDirty, stagedWorkflowChanges, isSwitchingVersion]);
-
-  // Helper to check for unsaved changes before performing a destructive action (version change, import)
-  const confirmIfUnsavedChanges = useCallback(
-    (action: () => void) => {
-      if (hasUnsavedChanges) {
-        pendingUnsavedChangesActionRef.current = action;
-        setIsUnsavedChangesDialogOpen(true);
-      } else {
-        action();
-      }
-    },
-    [hasUnsavedChanges]
-  );
-
-  const handleConfirmUnsavedChanges = useCallback(() => {
-    const pendingAction = pendingUnsavedChangesActionRef.current;
-    pendingUnsavedChangesActionRef.current = null;
-    setIsUnsavedChangesDialogOpen(false);
-
-    if (pendingAction) {
-      pendingAction();
-    }
-  }, []);
-
-  const handleCancelUnsavedChanges = useCallback(() => {
-    pendingUnsavedChangesActionRef.current = null;
-    setIsUnsavedChangesDialogOpen(false);
-  }, []);
-
-  // Use the global navigation blocker store
-  const setBlocker = useNavigationBlockerStore((state) => state.setBlocker);
-
-  // Register/unregister the blocker based on hasUnsavedChanges
-  useEffect(() => {
-    setBlocker(hasUnsavedChanges, () => {
-      setStagedWorkflowChanges({});
-      useWorkflowStore.getState().clearDirtyFlag();
-    });
-
-    return () => {
-      setBlocker(false);
-    };
-  }, [hasUnsavedChanges, setBlocker]);
-
-  // Fetch available versions
-  const { data: versionsResponse } = useCustomQuery({
-    queryKey: queryKeys.workflows.versions(workflowId ?? ''),
-    queryFn: (token: string) => getWorkflowVersions(token, workflowId!),
-    enabled: !!workflowId,
-    placeholderData: { data: [], message: '', success: true } as any,
+  // Whether there is anything unsaved, and asking before it is thrown away
+  // (./use-unsaved-changes-guard.ts).
+  const {
+    hasUnsavedChanges,
+    hasStructuralUnsavedChanges,
+    confirmIfUnsavedChanges,
+    isUnsavedChangesDialogOpen,
+    handleConfirmUnsavedChanges,
+    handleCancelUnsavedChanges,
+  } = useUnsavedChangesGuard({
+    isSwitchingVersion,
+    stagedWorkflowChanges,
+    discardStagedChanges,
   });
 
-  // Poll compilation progress for the version the user just saved. Stops on
-  // terminal status; the auto-clear effect below frees the toolbar slot a
-  // beat after success so the user sees the green check before it vanishes.
-  const { data: compilationProgress } = useCustomQuery({
-    queryKey: queryKeys.workflows.compilationProgress(
-      workflowId ?? '',
-      watchedCompilationVersion ?? 0
-    ),
-    queryFn: (token: string) =>
-      getCompilationProgress(token, workflowId!, watchedCompilationVersion!),
-    enabled: !!workflowId && watchedCompilationVersion !== undefined,
-    // No placeholder: the previous attempt's answer is not this one's, and
-    // carrying it over showed a recent failure as a rebuild's result (WF-6).
-    placeholderData: undefined,
-    refetchInterval: (q) => {
-      const last = q.state.data as { status?: string } | undefined;
-      if (!last) return 1000;
-      if (last.status === 'success' || last.status === 'failed') return false;
-      return 1000;
-    },
-    // Headless browsers (and users who Alt-tab) shouldn't see a stuck
-    // "preparing" indicator while the build is long done — keep polling
-    // in background until terminal.
-    refetchIntervalInBackground: true,
-    staleTime: 0,
-  });
-
-  // Compose the toolbar status. `unknown` from the endpoint means no Redis
-  // hash and no DB row yet — render nothing rather than a misleading slot.
-  //
-  // Memoized by content so the post-terminal effect below sees a stable
-  // identity once polling stops at success/failed. Without this memo the
-  // effect re-runs on every parent re-render (each call returns a fresh
-  // object), the timer's cleanup keeps killing it, and the rebuild state
-  // never clears — that was the "Rebuild button disappeared and Not
-  // compiled badge stuck until refresh" bug.
-  const compilationToolbarStatus: CompilationToolbarStatus | undefined =
-    useMemo(() => {
-      if (
-        watchedCompilationVersion === undefined ||
-        !compilationProgress ||
-        compilationProgress.status === 'unknown'
-      ) {
-        return undefined;
-      }
-      return {
-        status:
-          compilationProgress.status as CompilationToolbarStatus['status'],
-        stage: compilationProgress.stage ?? null,
-        stageIndex: compilationProgress.stageIndex ?? null,
-        totalStages: compilationProgress.totalStages ?? null,
-        message: compilationProgress.message ?? null,
-        errorMessage: compilationProgress.errorMessage ?? null,
-      };
-    }, [watchedCompilationVersion, compilationProgress]);
-
-  // Auto-clear the watched version a beat after terminal so the toolbar
-  // slot frees up. Also refresh the versions list so the badge picks up
-  // the new state (especially important after a force-rebuild, where the
-  // version number doesn't change but the badge state does).
-  //
-  // We `await refetchQueries` inside the timer rather than firing
-  // `invalidateQueries` and hoping: without the await, the versions list
-  // may still be mid-refetch when `isRebuilding` flips false, so the row
-  // briefly reads the API's mid-rebuild snapshot (compiled=false, because
-  // the handler deletes the row before the worker re-inserts it).
-  // Success: 2.5 s — long enough to register the green check.
-  // Failure: 8 s + toast so the user has time to read the error.
-  useEffect(() => {
-    if (!compilationToolbarStatus) return;
-    const status = compilationToolbarStatus.status;
-    if (status !== 'success' && status !== 'failed') return;
-
-    const isSuccess = status === 'success';
-    // Kick off a refetch immediately so the badge can update as soon as
-    // possible; the awaited refetch in the timer is the safety net.
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.workflows.versions(workflowId ?? ''),
-    });
-    if (!isSuccess) {
-      toast.error('Compilation failed', {
-        description:
-          compilationToolbarStatus.errorMessage ??
-          'See the Versions tab for prior compiled builds.',
-      });
-    }
-
-    let cancelled = false;
-    const id = window.setTimeout(
-      async () => {
-        try {
-          await queryClient.refetchQueries({
-            queryKey: queryKeys.workflows.versions(workflowId ?? ''),
-          });
-        } catch {
-          // refetch failure is non-fatal — the user can hit reload
-        }
-        if (!cancelled) {
-          if (watchedCompilationVersion !== undefined)
-            finishRebuild(watchedCompilationVersion);
-          setWatchedCompilationVersion(undefined);
-        }
-      },
-      isSuccess ? 2500 : 8000
-    );
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-  }, [
-    compilationToolbarStatus,
-    workflowId,
-    watchedCompilationVersion,
-    finishRebuild,
-  ]);
-
-  useBuildWatchTimeout(workflowId, watchedCompilationVersion, () => {
-    const version = watchedCompilationVersion;
-    setWatchedCompilationVersion(undefined);
-    setRebuildingVersions((all) => all.filter((v) => v !== version));
-  });
-
-  // Extract versions from wrapped response
-  const versions = useMemo(
-    () => (versionsResponse as any)?.data || [],
-    [versionsResponse]
-  );
-
-  // Use queryVersion for the actual query to control when it changes
-  const { data: response, isFetching } = useCustomQuery({
-    queryKey: queryKeys.workflows.workflow(workflowId ?? '', queryVersion),
-    queryFn: (token: string) =>
-      getWorkflowWorkflow(token, workflowId!, queryVersion),
-    enabled: !!workflowId,
-    placeholderData: {
-      data: {
-        nodes: [],
-        edges: [],
-      },
-      message: '',
-      success: true,
-    } as any,
-  });
-
-  // Extract workflow data from wrapped response
-  const data = useMemo(
-    () => (response as any)?.data || { nodes: [], edges: [] },
-    [response]
-  );
-  const hasInputSchema = useMemo(
-    () => ((data as any)?.inputSchemaFields ?? []).length > 0,
-    [data]
-  );
-  const workflowInputSchema = useMemo(() => {
-    const fields = (data as any)?.inputSchemaFields ?? [];
-    return fields.length > 0 ? buildSchemaFromFields(fields) : {};
-  }, [data]);
-
-  // Reset selectedVersion and invalidate queries when workflowId changes
-  useEffect(() => {
-    // Reset execution state when switching workflows
-    useExecutionStore.getState().resetExecution();
-
-    // Reset workflow state when switching workflows
-    useWorkflowStore.getState().resetState();
-
-    // Clear validation problems from previous workflow
-    useValidationStore.getState().clearMessages();
-
-    // Clear staged workflow changes
-    setStagedWorkflowChanges({});
-
-    setSelectedVersion(undefined);
-    setQueryVersion(undefined);
-
-    // Batch invalidate queries to ensure fresh data is fetched for the new workflow
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.workflows.workflow(workflowId ?? ''),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.workflows.versions(workflowId ?? ''),
-      }),
-    ]);
-  }, [workflowId]);
-
-  // Reset execution state when leaving the workflow page
-  useEffect(() => {
-    return () => {
-      useExecutionStore.getState().resetExecution();
-    };
-  }, []);
-
-  // Clear dirty flag after workflow data is loaded and rendered
-  useEffect(() => {
-    if (!isFetching) {
-      const loadedContentHash = getWorkflowStoreContentHash();
-      // Use a small timeout to ensure React Flow has finished initializing
-      const timer = setTimeout(() => {
-        if (getWorkflowStoreContentHash() === loadedContentHash) {
-          useWorkflowStore.getState().clearDirtyFlag();
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isFetching, workflowId, queryVersion]);
-
-  // Set the current version as the default selected version when data is loaded
-  useEffect(() => {
-    if (data.currentVersionNumber && selectedVersion === undefined) {
-      setSelectedVersion(data.currentVersionNumber);
-      setQueryVersion(data.currentVersionNumber);
-    }
-  }, [data.currentVersionNumber, selectedVersion]);
-
-  // Set versions with debug mode from API response
-  useEffect(() => {
-    if (!versions || versions.length === 0) {
-      setVersionsWithDebug([]);
-      return;
-    }
-
-    // API now provides trackEvents directly in WorkflowVersionInfoDto
-    setVersionsWithDebug(versions);
-  }, [versions]);
-
-  // Reset isSwitchingVersion when fetching completes and dirty flag is cleared
-  // Use the same delay as the dirty flag clearing to prevent button flickering
-  useEffect(() => {
-    if (!isFetching && isSwitchingVersion) {
-      const timer = setTimeout(() => {
-        setIsSwitchingVersion(false);
-      }, 150); // Slightly longer than the 100ms dirty flag clear timeout
-      return () => clearTimeout(timer);
-    }
-  }, [isFetching, isSwitchingVersion]);
-
-  // Internal version change handler (bypasses unsaved changes check)
-  const performVersionChange = useCallback(
-    (version: number | undefined) => {
-      // Clear dirty flag when switching versions
-      useWorkflowStore.getState().clearDirtyFlag();
-      // Clear staged workflow changes when switching versions
-      setStagedWorkflowChanges({});
-
-      // Mark that we're switching versions to show inline loading
-      setIsSwitchingVersion(true);
-
-      // Remove cached data for the target version to force a fresh fetch
-      // This ensures we always get the correct workflow data for each version
-      queryClient.removeQueries({
-        queryKey: queryKeys.workflows.workflow(workflowId ?? '', version),
-        exact: true,
-      });
-
-      setSelectedVersion(version);
-      setQueryVersion(version); // This will trigger a new query
-    },
-    [workflowId]
-  );
+  // The workflow at the loaded version, its versions, and switching between
+  // them (./use-workflow-load.ts).
+  const {
+    data,
+    isFetching,
+    versionsWithDebug,
+    setVersionsWithDebug,
+    hasInputSchema,
+    workflowInputSchema,
+    performVersionChange,
+  } = useWorkflowLoad(workflowId, versionSelection, discardStagedChanges);
 
   // Sync queryVersion with selectedVersion only when user explicitly changes version
   // Not when we programmatically update it after save
@@ -549,50 +183,12 @@ export function Workflow() {
         // make it the active version. currentVersionNumber should only change when
         // explicitly activating a version via setCurrentVersion API.
         if (currentCachedData) {
+          // What was saved is what the server now holds: the staged settings
+          // over the cached ones, by the one rule that merges them. The
+          // active version (currentVersionNumber) is not touched.
           const updatedData = {
             ...currentCachedData,
-            data: {
-              ...currentCachedData.data,
-              // Update name and description if they were changed
-              ...(savedStagedChanges.name !== undefined && {
-                name: savedStagedChanges.name,
-              }),
-              ...(savedStagedChanges.description !== undefined && {
-                description: savedStagedChanges.description,
-              }),
-              ...(savedStagedChanges.variables !== undefined && {
-                variables: savedStagedChanges.variables,
-              }),
-              ...(savedStagedChanges.inputSchemaFields !== undefined && {
-                inputSchemaFields: savedStagedChanges.inputSchemaFields,
-              }),
-              ...(savedStagedChanges.outputSchemaFields !== undefined && {
-                outputSchemaFields: savedStagedChanges.outputSchemaFields,
-              }),
-              ...(savedStagedChanges.stateSchemaFields !== undefined && {
-                stateSchemaFields: savedStagedChanges.stateSchemaFields,
-              }),
-              ...(savedStagedChanges.executionTimeoutSeconds !== undefined && {
-                executionTimeoutSeconds:
-                  savedStagedChanges.executionTimeoutSeconds,
-              }),
-              ...(savedStagedChanges.rateLimitBudgetMs !== undefined && {
-                rateLimitBudgetMs: savedStagedChanges.rateLimitBudgetMs,
-              }),
-              ...(hasOwn(savedStagedChanges, 'durable') && {
-                durable: savedStagedChanges.durable,
-              }),
-              ...(savedStagedChanges.entryPoint !== undefined && {
-                entryPoint: savedStagedChanges.entryPoint,
-              }),
-              ...(hasOwn(savedStagedChanges, 'memoryMb') && {
-                memoryMb: savedStagedChanges.memoryMb,
-              }),
-              ...(savedStagedChanges.trackEvents !== undefined && {
-                trackEvents: savedStagedChanges.trackEvents,
-              }),
-              // Keep the original currentVersionNumber (the active version)
-            },
+            data: withSavedSettings(currentCachedData.data, savedStagedChanges),
           };
 
           // Update the current query's cached data
@@ -696,15 +292,7 @@ export function Workflow() {
 
   // Workflow-level changes from the settings panel and the canvas (e.g. a new
   // entry point), kept until the global save like node changes.
-  const handleWorkflowChange = useCallback(
-    (changes: Partial<typeof stagedWorkflowChanges>) => {
-      setStagedWorkflowChanges((prev) => ({
-        ...prev,
-        ...changes,
-      }));
-    },
-    []
-  );
+  const handleWorkflowChange = useStagedSettings((state) => state.stage);
 
   // One save at a time (WF-3).
   const handleSubmit = useOneAtATime((values: Record<string, any>) =>
@@ -712,221 +300,37 @@ export function Workflow() {
   );
 
   const submitWorkflow = async ({ name }: Record<string, any>) => {
-    // What this save sends; see dropSavedEntries.
+    // What this save sends; see useStagedSettings' settle.
     const sentWorkflowChanges = stagedWorkflowChanges;
-    // Get the current state from Zustand store
-    const { isDirty } = useWorkflowStore.getState();
+    const finalState = useWorkflowStore.getState();
+    const savedRevision = finalState.dirtyRevision;
 
-    // Check if the name has changed
-    const nameChanged = name !== data.name;
-
-    // Check if there are staged workflow changes (metadata: variables, schemas, description)
-    const hasStagedWorkflowChanges =
-      Object.keys(stagedWorkflowChanges).length > 0;
-
-    // Check if the canvas has changed
-    const hasWorkflowChanges = isDirty;
-
-    // If nothing has changed, just show a message and return
-    if (!hasWorkflowChanges && !nameChanged && !hasStagedWorkflowChanges) {
+    // Composed and checked by the browser's validator (./save-workflow.ts).
+    const prepared = await prepareWorkflowSave({
+      name,
+      data,
+      staged: stagedWorkflowChanges,
+      isDirty: finalState.isDirty,
+      nodes: finalState.nodes,
+      edges: finalState.edges,
+    });
+    if (prepared.outcome === 'unchanged') {
       toast.info('No changes to save');
       return;
     }
-
-    const finalState = useWorkflowStore.getState();
-    const savedRevision = finalState.dirtyRevision;
-    // Build variables object for execution graph
-    // Use staged changes if available, otherwise use original data
-    // Convert from UI format [{ name, value, type }, ...] to API format { varName: { type, value }, ... }
-    // Values are already typed correctly (boolean, number, etc.) from VariablesEditor
-    const variablesArray =
-      stagedWorkflowChanges.variables ?? data.variables ?? [];
-    let variables:
-      | Record<string, { type: string; value: unknown; description?: string }>
-      | undefined;
-    if (variablesArray.length > 0) {
-      variables = variablesArray.reduce(
-        (
-          acc: Record<
-            string,
-            { type: string; value: unknown; description?: string }
-          >,
-          variable: WorkflowVariable
-        ) => {
-          acc[variable.name] = {
-            type: variable.type || 'string',
-            value: variable.value,
-            ...(variable.description
-              ? { description: variable.description }
-              : {}),
-          };
-          return acc;
-        },
-        {} as Record<
-          string,
-          { type: string; value: unknown; description?: string }
-        >
-      );
-    }
-
-    // Build input/output schemas for execution graph
-    // Use staged changes if available, otherwise use original data
-    const inputSchemaFieldsToUse =
-      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [];
-    const outputSchemaFieldsToUse =
-      stagedWorkflowChanges.outputSchemaFields ?? data.outputSchemaFields ?? [];
-    const stateSchemaFieldsToUse =
-      stagedWorkflowChanges.stateSchemaFields ?? data.stateSchemaFields ?? [];
-
-    const [
-      inputSchemaValidation,
-      outputSchemaValidation,
-      stateSchemaValidation,
-    ] = await Promise.all([
-      validateSchemaFieldsWithRust('Input schema', inputSchemaFieldsToUse),
-      validateSchemaFieldsWithRust('Output schema', outputSchemaFieldsToUse),
-      validateSchemaFieldsWithRust('State schema', stateSchemaFieldsToUse),
-    ]);
-    // WASM unavailability is an unknown state, not a failure — surface it as
-    // a warning and continue. The backend validator is authoritative for
-    // schema fields, so blocking save here just on missing WASM punishes
-    // users for an environment problem (e.g. agent components not staged).
-    // Mirrors the execution-graph path's treatment of `unavailable` below.
-    const schemaFieldUnavailableWarnings = convertClientWarnings(
-      [inputSchemaValidation, outputSchemaValidation, stateSchemaValidation]
-        .filter((result) => result.status === 'unavailable')
-        .map((result) => result.message),
-      finalState.nodes
-    );
-
-    const schemaFieldErrors = [
-      ...(inputSchemaValidation.status === 'invalid'
-        ? inputSchemaValidation.errors.length > 0
-          ? inputSchemaValidation.errors
-          : [inputSchemaValidation.message]
-        : []),
-      ...(outputSchemaValidation.status === 'invalid'
-        ? outputSchemaValidation.errors.length > 0
-          ? outputSchemaValidation.errors
-          : [outputSchemaValidation.message]
-        : []),
-      ...(stateSchemaValidation.status === 'invalid'
-        ? stateSchemaValidation.errors.length > 0
-          ? stateSchemaValidation.errors
-          : [stateSchemaValidation.message]
-        : []),
-    ];
-
-    if (schemaFieldErrors.length > 0) {
-      useValidationStore
-        .getState()
-        .setMessages([
-          ...convertClientErrors(schemaFieldErrors, finalState.nodes),
-          ...schemaFieldUnavailableWarnings,
-        ]);
-      return;
-    }
-
-    const inputSchema =
-      inputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(inputSchemaFieldsToUse)
-        : undefined;
-    const outputSchema =
-      outputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(outputSchemaFieldsToUse)
-        : undefined;
-    const stateSchema =
-      stateSchemaFieldsToUse.length > 0
-        ? buildStateSchemaFromFields(stateSchemaFieldsToUse)
-        : undefined;
-
-    // Get execution timeout from staged changes or original data
-    const executionTimeoutSeconds =
-      stagedWorkflowChanges.executionTimeoutSeconds ??
-      data.executionTimeoutSeconds;
-
-    // Get rate limit budget from staged changes or original data
-    const rateLimitBudgetMs =
-      stagedWorkflowChanges.rateLimitBudgetMs ?? data.rateLimitBudgetMs;
-    const durable = hasOwn(stagedWorkflowChanges, 'durable')
-      ? stagedWorkflowChanges.durable
-      : data.durable;
-    const entryPoint = hasOwn(stagedWorkflowChanges, 'entryPoint')
-      ? stagedWorkflowChanges.entryPoint
-      : data.entryPoint;
-    const memoryMb = hasOwn(stagedWorkflowChanges, 'memoryMb')
-      ? stagedWorkflowChanges.memoryMb
-      : data.memoryMb;
-    const trackEvents = hasOwn(stagedWorkflowChanges, 'trackEvents')
-      ? stagedWorkflowChanges.trackEvents
-      : data.trackEvents;
-
-    // Get name and description for the execution graph
-    // Name is required - prefer staged changes, fall back to current data, ensure non-empty
-    const workflowName = stagedWorkflowChanges.name || data.name || '';
-    // Description is optional - only include if it has a value
-    const workflowDescription =
-      stagedWorkflowChanges.description ?? data.description ?? '';
-
-    // Compose execution graph with name, description, variables, schemas, and timeout included
-    const executionGraph =
-      composeExecutionGraph(finalState.nodes, finalState.edges, {
-        name: workflowName,
-        description: workflowDescription,
-        variables,
-        inputSchema,
-        outputSchema,
-        stateSchema,
-        executionTimeoutSeconds,
-        rateLimitBudgetMs,
-        durable,
-        entryPoint,
-      }) ?? {};
-
-    const rustValidation = await validateExecutionGraphWithRust(executionGraph);
-    const rustErrors =
-      rustValidation.status === 'invalid'
-        ? rustValidation.errors.length > 0
-          ? convertClientErrors(
-              rustValidation.errors,
-              finalState.nodes,
-              rustValidation.errorGraphPaths
-            )
-          : convertClientErrors([rustValidation.message], finalState.nodes)
-        : [];
-    const rustWarnings = convertClientWarnings(
-      rustValidation.warnings,
-      finalState.nodes,
-      rustValidation.warningGraphPaths
-    );
-    // WASM unavailability is unknown validation state, not success. Surface it
-    // while still letting the backend validator decide the save request.
-    const wasmUnavailableWarnings =
-      rustValidation.status === 'unavailable'
-        ? convertClientWarnings([rustValidation.message], finalState.nodes)
-        : [];
-    const preSaveWarnings = [
-      ...rustWarnings,
-      ...wasmUnavailableWarnings,
-      ...schemaFieldUnavailableWarnings,
-    ];
-
-    if (rustValidation.status === 'invalid') {
-      useValidationStore
-        .getState()
-        .setMessages([...rustErrors, ...preSaveWarnings]);
-
-      const firstErrorStepId = useValidationStore
-        .getState()
-        .getFirstErrorStepId();
+    if (prepared.outcome === 'invalid') {
+      useValidationStore.getState().setMessages(prepared.messages);
+      const firstErrorStepId = prepared.focusFirstError
+        ? useValidationStore.getState().getFirstErrorStepId()
+        : null;
       if (firstErrorStepId) {
         useWorkflowStore.getState().setSelectedNodeId(firstErrorStepId);
         useWorkflowStore.getState().setPendingCenterNodeId(firstErrorStepId);
       }
       return;
     }
-
-    // If only warnings, still show them but continue with save.
+    const preSaveWarnings = prepared.warnings;
+    // Warnings alone are shown, and the save goes on.
     if (preSaveWarnings.length > 0) {
       useValidationStore.getState().setMessages(preSaveWarnings);
     }
@@ -937,12 +341,7 @@ export function Workflow() {
       savingWorkflowChangesRef.current = sentWorkflowChanges;
       await new Promise((resolve, reject) => {
         updateMutation.mutate(
-          {
-            id: workflowId!,
-            data: executionGraph,
-            memoryMb,
-            trackEvents,
-          },
+          { id: workflowId!, ...prepared.request },
           {
             onSuccess: resolve,
             onError: reject,
@@ -951,11 +350,8 @@ export function Workflow() {
       });
       // Clear the staged changes this save sent. Ones edited while it was in
       // flight were not sent, so they stay staged and unsaved.
-      setStagedWorkflowChanges((current) =>
-        dropSavedEntries(current, sentWorkflowChanges)
-      );
+      useStagedSettings.getState().settle(sentWorkflowChanges);
       // Clear any validation errors from previous failed saves
-      useWorkflowStore.getState().clearValidationErrors();
       useValidationStore.getState().clearMessages();
     } catch (error: any) {
       // Extract validation errors from the API response
@@ -971,13 +367,10 @@ export function Workflow() {
           .getState()
           .setMessages([...serverErrors, ...preSaveWarnings]);
 
-        // Also set in workflowStore for node highlighting (existing behavior)
-        useWorkflowStore.getState().setValidationErrors(validationErrors);
-
         // Focus the view on the first step with an error
-        const firstErrorStepId =
-          useValidationStore.getState().getFirstErrorStepId() ||
-          useWorkflowStore.getState().getFirstErrorStepId();
+        const firstErrorStepId = useValidationStore
+          .getState()
+          .getFirstErrorStepId();
         if (firstErrorStepId) {
           // Select and center on the first error node
           useWorkflowStore.getState().setSelectedNodeId(firstErrorStepId);
@@ -1002,42 +395,47 @@ export function Workflow() {
     setExecuteDialogOpen(true);
   };
 
-  const handleExecuteWorkflow = async (inputs: Record<string, any>) => {
+  // Starts a run, plain or under the debugger, from its dialog or (for a
+  // workflow that takes no input) straight from the toolbar. A refusal is
+  // shown in the dialog when it is open, else as a toast.
+  const startRun = async (
+    inputs: Record<string, any>,
+    mode: 'run' | 'debug'
+  ) => {
     if (!workflowId) {
       toast.error('Workflow ID is missing');
       return;
     }
-
-    const trackEvents = data.trackEvents || false;
+    const debug = mode === 'debug';
+    const dialogOpen = debug ? debugExecuteDialogOpen : executeDialogOpen;
+    const setDialogOpen = debug
+      ? setDebugExecuteDialogOpen
+      : setExecuteDialogOpen;
     setExecuteError(null);
 
     try {
       await scheduleMutation.mutateAsync({
         workflowId,
-        trackEvents,
+        // A debug run always tracks its events.
+        trackEvents: debug ? true : data.trackEvents || false,
         inputs,
         version: selectedVersion,
+        ...(debug ? { debug: true } : {}),
       });
-      setExecuteDialogOpen(false);
-    } catch (error: any) {
-      // Entitlement-shaped denials (403, or 429 for maxConcurrentExecutions)
-      // are already
-      // surfaced by the shared useCustomMutation handler with a proper
-      // message — bail so we don't show the raw summary a second time
-      // (SYN-433: entitlement double-popup).
-      if (isEntitlementDenial(error)) return;
-      const apiError =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        error?.message;
-      const errorMessage = apiError || 'Input validation failed';
-      if (executeDialogOpen) {
-        setExecuteError(errorMessage);
+      setDialogOpen(false);
+    } catch (error: unknown) {
+      const message = runFailureMessage(error);
+      if (message === null) return;
+      if (dialogOpen) {
+        setExecuteError(message);
       } else {
-        toast.error(errorMessage);
+        toast.error(message);
       }
     }
   };
+
+  const handleExecuteWorkflow = (inputs: Record<string, any>) =>
+    startRun(inputs, 'run');
 
   // ── Server-side Debug Execution (breakpoints) ──────────────────────────
   const [debugExecuteDialogOpen, setDebugExecuteDialogOpen] = useState(false);
@@ -1055,41 +453,8 @@ export function Workflow() {
     setDebugExecuteDialogOpen(true);
   };
 
-  const handleDebugExecuteServerSubmit = async (
-    inputs: Record<string, any>
-  ) => {
-    if (!workflowId) {
-      toast.error('Workflow ID is missing');
-      return;
-    }
-
-    setExecuteError(null);
-
-    try {
-      await scheduleMutation.mutateAsync({
-        workflowId,
-        trackEvents: true, // Always enable event tracking in debug mode
-        inputs,
-        version: selectedVersion,
-        debug: true,
-      });
-      setDebugExecuteDialogOpen(false);
-    } catch (error: any) {
-      // See note in handleExecuteSubmit — shared handler already toasted any
-      // entitlement denial (SYN-433: entitlement double-popup).
-      if (isEntitlementDenial(error)) return;
-      const apiError =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        error?.message;
-      const errorMessage = apiError || 'Input validation failed';
-      if (debugExecuteDialogOpen) {
-        setExecuteError(errorMessage);
-      } else {
-        toast.error(errorMessage);
-      }
-    }
-  };
+  const handleDebugExecuteServerSubmit = (inputs: Record<string, any>) =>
+    startRun(inputs, 'debug');
 
   /**
    * Navigate to a specific step in the workflow editor.
@@ -1137,8 +502,8 @@ export function Workflow() {
     void,
     { workflowId: string; version: number }
   >({
-    mutationFn: (token, { workflowId: wid, version }) =>
-      rebuildWorkflowVersion(token, wid, version),
+    mutationFn: ({ workflowId: wid, version }) =>
+      rebuildWorkflowVersion(wid, version),
   });
 
   const handleVersionRebuild = useCallback(
@@ -1158,97 +523,29 @@ export function Workflow() {
       setWatchedCompilationVersion(version);
       rebuildMutation.mutate({ workflowId, version });
     },
-    [workflowId, rebuildMutation]
+    [
+      workflowId,
+      rebuildMutation,
+      setRebuildingVersions,
+      setWatchedCompilationVersion,
+    ]
   );
 
   const handleExportJSON = () => {
     // Get the current state from Zustand store
     const { nodes, edges } = useWorkflowStore.getState();
 
-    // Build variables object for export
-    const variablesArray =
-      stagedWorkflowChanges.variables ?? data.variables ?? [];
-    let variables:
-      | Record<string, { type: string; value: unknown; description?: string }>
-      | undefined;
-    if (variablesArray.length > 0) {
-      variables = variablesArray.reduce(
-        (
-          acc: Record<
-            string,
-            { type: string; value: unknown; description?: string }
-          >,
-          variable: WorkflowVariable
-        ) => {
-          acc[variable.name] = {
-            type: variable.type || 'string',
-            value: variable.value,
-            ...(variable.description
-              ? { description: variable.description }
-              : {}),
-          };
-          return acc;
-        },
-        {} as Record<
-          string,
-          { type: string; value: unknown; description?: string }
-        >
-      );
-    }
-
-    // Build schemas for export
-    const inputSchemaFieldsToUse =
-      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [];
-    const outputSchemaFieldsToUse =
-      stagedWorkflowChanges.outputSchemaFields ?? data.outputSchemaFields ?? [];
-    const inputSchema =
-      inputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(inputSchemaFieldsToUse)
-        : undefined;
-    const outputSchema =
-      outputSchemaFieldsToUse.length > 0
-        ? buildSchemaFromFields(outputSchemaFieldsToUse)
-        : undefined;
-    const stateSchemaFieldsToUse =
-      stagedWorkflowChanges.stateSchemaFields ?? data.stateSchemaFields ?? [];
-    const stateSchema =
-      stateSchemaFieldsToUse.length > 0
-        ? buildStateSchemaFromFields(stateSchemaFieldsToUse)
-        : undefined;
-
-    // Get execution timeout for export
-    const exportExecutionTimeoutSeconds =
-      stagedWorkflowChanges.executionTimeoutSeconds ??
-      data.executionTimeoutSeconds;
-    const exportRateLimitBudgetMs =
-      stagedWorkflowChanges.rateLimitBudgetMs ?? data.rateLimitBudgetMs;
-    const exportDurable = hasOwn(stagedWorkflowChanges, 'durable')
-      ? stagedWorkflowChanges.durable
-      : data.durable;
-    const exportEntryPoint = hasOwn(stagedWorkflowChanges, 'entryPoint')
-      ? stagedWorkflowChanges.entryPoint
-      : data.entryPoint;
-    const exportName = stagedWorkflowChanges.name ?? data.name ?? '';
-    const exportDescription =
-      stagedWorkflowChanges.description ?? data.description ?? '';
-    const exportMemoryMb = hasOwn(stagedWorkflowChanges, 'memoryMb')
-      ? stagedWorkflowChanges.memoryMb
-      : data.memoryMb;
-    const exportTrackEvents = hasOwn(stagedWorkflowChanges, 'trackEvents')
-      ? stagedWorkflowChanges.trackEvents
-      : data.trackEvents;
+    // The saved settings with the staged ones over them, as a save has them.
+    const settings = mergeWorkflowSettings(data, stagedWorkflowChanges);
+    const exportName = settings.name;
+    const exportDescription = settings.description;
+    const exportDurable = settings.durable;
+    const exportMemoryMb = settings.memoryMb;
+    const exportTrackEvents = settings.trackEvents;
 
     const executionGraph = composeExecutionGraph(nodes, edges, {
       name: exportName,
-      description: exportDescription,
-      variables,
-      inputSchema,
-      outputSchema,
-      stateSchema,
-      executionTimeoutSeconds: exportExecutionTimeoutSeconds,
-      rateLimitBudgetMs: exportRateLimitBudgetMs,
-      durable: exportDurable,
-      entryPoint: exportEntryPoint,
+      ...graphOptions(settings),
     });
 
     if (executionGraph) {
@@ -1297,107 +594,20 @@ export function Workflow() {
 
   // Internal import handler (bypasses unsaved changes check)
   const performImportJSON = useCallback((jsonString: string) => {
+    // What the file holds (./import-workflow.ts); applying it is the page's.
+    const imported = parseWorkflowImport(jsonString);
+    if (!imported.ok) {
+      toast.error(
+        imported.reason === 'not-a-graph'
+          ? 'Invalid execution graph format'
+          : 'Failed to import execution graph'
+      );
+      return;
+    }
     try {
-      const parsed = JSON.parse(jsonString);
-
-      // Handle new format with wrapper: { name, description, executionGraph }
-      const executionGraph = parsed.executionGraph ?? parsed;
-
-      if (
-        executionGraph &&
-        (executionGraph.steps || executionGraph.executionPlan)
-      ) {
-        // Extract variables from execution graph and convert to UI format
-        // API format: { varName: { type, value }, ... }
-        // UI format: [{ name, value, type }, ...]
-        const variablesObj = executionGraph.variables || {};
-        const variables = Object.entries(variablesObj).map(
-          ([name, val]: [string, any]) => ({
-            name,
-            value: val?.value ?? val ?? '',
-            type: val?.type ?? 'string',
-            description: val?.description ?? null,
-          })
-        );
-
-        // Extract and parse input/output schemas from execution graph
-        // Convert SchemaField[] to the required format with all fields having defaults
-        const normalizeSchemaFields = (
-          fields: SchemaField[]
-        ): EditorSchemaField[] =>
-          fields.map((field) => ({
-            ...field,
-            type: field.type ?? 'string',
-            required: field.required ?? true,
-            description: field.description ?? '',
-            properties: field.properties
-              ? normalizeSchemaFields(field.properties)
-              : undefined,
-          }));
-        const inputSchemaFields = normalizeSchemaFields(
-          parseSchema(executionGraph.inputSchema)
-        );
-        const outputSchemaFields = normalizeSchemaFields(
-          parseSchema(executionGraph.outputSchema)
-        );
-        // State has no required fields; its schema builder omits `required`.
-        const stateSchemaFields = normalizeSchemaFields(
-          parseSchema(executionGraph.stateSchema)
-        ).map((field) => ({ ...field, required: false }));
-
-        // Extract execution timeout from execution graph
-        const executionTimeoutSeconds = executionGraph.executionTimeoutSeconds;
-        const rateLimitBudgetMs = executionGraph.rateLimitBudgetMs;
-
-        // Stage the workflow changes (variables, schemas, timeout)
-        const workflowChanges: typeof stagedWorkflowChanges = {};
-        workflowChanges.variables = variables;
-        workflowChanges.inputSchemaFields = inputSchemaFields;
-        workflowChanges.outputSchemaFields = outputSchemaFields;
-        workflowChanges.stateSchemaFields = stateSchemaFields;
-        if (parsed.name !== undefined || executionGraph.name !== undefined) {
-          workflowChanges.name = parsed.name ?? executionGraph.name ?? '';
-        }
-        if (
-          parsed.description !== undefined ||
-          executionGraph.description !== undefined
-        ) {
-          workflowChanges.description =
-            parsed.description ?? executionGraph.description ?? '';
-        }
-        if (executionTimeoutSeconds !== undefined) {
-          workflowChanges.executionTimeoutSeconds = executionTimeoutSeconds;
-        }
-        if (rateLimitBudgetMs !== undefined) {
-          workflowChanges.rateLimitBudgetMs = rateLimitBudgetMs;
-        }
-        if (hasOwn(executionGraph, 'durable')) {
-          workflowChanges.durable = executionGraph.durable ?? null;
-        } else if (hasOwn(parsed, 'durable')) {
-          workflowChanges.durable = parsed.durable ?? null;
-        }
-        if (executionGraph.entryPoint !== undefined) {
-          workflowChanges.entryPoint = executionGraph.entryPoint;
-        }
-        // Exports from before memory was a number carry a tier preset.
-        const importedMemoryMb =
-          parsed.memoryMb ?? MEMORY_PRESET_MIB[parsed.memoryTier as string];
-        if (importedMemoryMb !== undefined) {
-          workflowChanges.memoryMb = importedMemoryMb;
-        }
-        if (parsed.trackEvents !== undefined) {
-          workflowChanges.trackEvents = parsed.trackEvents;
-        }
-
-        setStagedWorkflowChanges(workflowChanges);
-
-        // Use the store to set the execution graph (for nodes/edges)
-        useWorkflowStore.getState().setExecutionGraph(executionGraph);
-
-        toast.info('Execution graph imported successfully');
-      } else {
-        toast.error('Invalid execution graph format');
-      }
+      useStagedSettings.getState().replace(imported.settings);
+      useWorkflowStore.getState().setExecutionGraph(imported.executionGraph);
+      toast.info('Execution graph imported successfully');
     } catch (error) {
       console.error('Error importing execution graph:', error);
       toast.error('Failed to import execution graph');
@@ -1570,8 +780,6 @@ export function Workflow() {
             </div>
           )}
           <WorkflowEditor
-            nodes={data.nodes}
-            edges={data.edges}
             readOnly={!!executingInstanceId}
             debugInspectMode={isSuspended}
             workflow={workflowForSettings}

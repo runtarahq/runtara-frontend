@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
 import { useChatInputs } from './useChatInputs';
-import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
 import {
   sendConversationMessage,
@@ -168,9 +167,8 @@ interface Unconfirmed {
 }
 
 export function useChatStream(workflowId: string) {
-  const token = useToken();
   const { refreshPendingInput, submitInput, uncertainResponses } =
-    useChatInputs(workflowId, token);
+    useChatInputs(workflowId);
   const abortRef = useRef<AbortController | null>(null);
   // The ids of the messages this page sent, which it shows as it sends them
   // and so does not show again when the conversation reports them.
@@ -212,7 +210,6 @@ export function useChatStream(workflowId: string) {
       while (isCurrent()) {
         try {
           const response = await streamConversationEvents(
-            token,
             workflowId,
             key,
             after,
@@ -255,7 +252,7 @@ export function useChatStream(workflowId: string) {
           await new Promise((resolve) => setTimeout(resolve, STREAM_RETRY_MS));
       }
     },
-    [token, workflowId, refreshPendingInput]
+    [workflowId, refreshPendingInput]
   );
 
   /** Makes this the page's one stream, replacing any before it. */
@@ -288,7 +285,6 @@ export function useChatStream(workflowId: string) {
     sent.current.add(opening.id);
     try {
       const started = await sendConversationMessage(
-        token,
         workflowId,
         key,
         opening,
@@ -308,7 +304,7 @@ export function useChatStream(workflowId: string) {
       return;
     }
     await follow(key, 0, abortController);
-  }, [token, workflowId, begin, follow]);
+  }, [workflowId, begin, follow]);
 
   /**
    * Open a conversation that exists (e.g. after a page refresh): its events
@@ -378,7 +374,6 @@ export function useChatStream(workflowId: string) {
       sent.current.add(intent.message.id);
       try {
         const outcome = await sendConversationMessage(
-          token,
           workflowId,
           conversationKey,
           intent.message
@@ -424,7 +419,7 @@ export function useChatStream(workflowId: string) {
         enqueueing.current = false;
       }
     },
-    [token, workflowId, submitInput, settleUnconfirmed]
+    [workflowId, submitInput, settleUnconfirmed]
   );
 
   const cancelStream = useCallback(() => {

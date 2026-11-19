@@ -10,7 +10,6 @@ export { canvasNodeStepId } from '@/features/workflows/utils/execution-graph/can
 export type {
   ExecutionGraph,
   ExecutionGraphStep,
-  ExecutionGraphTransition,
 } from '@/features/workflows/utils/execution-graph/types';
 
 export function getLayoutedElements(

@@ -20,6 +20,7 @@ import {
   parseJsonText,
 } from '@/features/workflows/utils/mapping-serialization';
 
+import type { StepType } from '@/features/workflows/types/execution-graph';
 export type StepDetailKind =
   'reference' | 'template' | 'composite' | 'literal' | 'list';
 
@@ -436,42 +437,66 @@ export function stepDetailRows(
 
   const ordered = orderRows(rows, context);
 
-  if (data.stepType === 'WaitForSignal') {
+  // The rows only its step type has (see STEP_OWN_ROWS).
+  const ownRows =
+    typeof data.stepType === 'string' &&
+    Object.prototype.hasOwnProperty.call(STEP_OWN_ROWS, data.stepType)
+      ? STEP_OWN_ROWS[data.stepType as StepType]
+      : undefined;
+  ownRows?.(ordered, data, entries);
+
+  return ordered;
+}
+
+/**
+ * The detail rows a step type adds to the ones its mapping gives: by step
+ * type, like the other step-type tables, though most have none.
+ */
+const STEP_OWN_ROWS: Partial<
+  Record<
+    StepType,
+    (
+      rows: StepDetailRow[],
+      data: StepDetailData,
+      entries: MappingEntry[]
+    ) => void
+  >
+> = {
+  WaitForSignal: (rows, _data, entries) => {
     const fields = responseFieldNames(entries);
     if (fields.length > 0) {
-      ordered.unshift({
+      rows.unshift({
         key: 'responseSchema',
         label: 'Asks for',
         value: truncate(fields.map(humanizeKey).join(', ')),
         kind: 'list',
       });
     }
-  }
-
-  if (
-    data.stepType === 'Split' &&
-    typeof data.splitParallelism === 'number' &&
-    data.splitParallelism > 0
-  ) {
-    ordered.push({
-      key: 'parallelism',
-      label: 'Parallelism',
-      value: `${data.splitParallelism} at a time`,
-      kind: 'literal',
-    });
-  }
-
-  if (data.stepType === 'EmbedWorkflow' && !isEmptyValue(data.childVersion)) {
-    ordered.push({
-      key: 'childVersion',
-      label: 'Version',
-      value: String(data.childVersion),
-      kind: 'literal',
-    });
-  }
-
-  return ordered;
-}
+  },
+  Split: (rows, data) => {
+    if (
+      typeof data.splitParallelism === 'number' &&
+      data.splitParallelism > 0
+    ) {
+      rows.push({
+        key: 'parallelism',
+        label: 'Parallelism',
+        value: `${data.splitParallelism} at a time`,
+        kind: 'literal',
+      });
+    }
+  },
+  EmbedWorkflow: (rows, data) => {
+    if (!isEmptyValue(data.childVersion)) {
+      rows.push({
+        key: 'childVersion',
+        label: 'Version',
+        value: String(data.childVersion),
+        kind: 'literal',
+      });
+    }
+  },
+};
 
 interface ConditionLike {
   op?: string;

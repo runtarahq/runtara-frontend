@@ -1,9 +1,6 @@
 import { useController, useFieldArray, useFormContext } from 'react-hook-form';
 import { Icons } from '@/shared/components/icons.tsx';
-import {
-  ConditionEditor,
-  type Condition,
-} from '@/shared/components/ui/condition-editor';
+import { ConditionEditor, type Condition } from '@/shared/conditions';
 import { ErrorConditionTemplates } from '@/shared/components/ErrorConditionTemplates';
 import { FieldError } from '@/shared/components/ui/form';
 import { useCallback, useContext, useEffect, useMemo, useRef } from 'react';
@@ -17,6 +14,12 @@ import { ValueType } from '../TypeHintSelector';
 import { parseSchema } from '@/features/workflows/utils/schema';
 import { findAgentById } from '@/shared/utils/agent-id';
 
+import {
+  stepTakesAgent,
+  stepCallsWorkflow,
+  exactStepTypeTraits,
+} from '@/features/workflows/step-types/catalog';
+import { NODE_TYPES } from '@/features/workflows/config/node-types';
 interface ParsedField {
   name: string;
   type: string;
@@ -126,9 +129,11 @@ export function InputMappingField(props: any) {
   const conditionField = watch('condition');
   const agentId = watch('agentId');
   const childWorkflowId = watch('childWorkflowId'); // Get childWorkflowId for EmbedWorkflow steps
-  const isConditional = stepType === 'Conditional';
-  const isSwitch = stepType === 'Switch';
-  const isEmbedWorkflow = stepType === 'EmbedWorkflow';
+  // By the node each is drawn as: the two that route, by condition or value.
+  const drawnAs = exactStepTypeTraits(stepType)?.nodeType;
+  const isConditional = drawnAs === NODE_TYPES.ConditionalNode;
+  const isSwitch = drawnAs === NODE_TYPES.SwitchNode;
+  const isEmbedWorkflow = stepCallsWorkflow(stepType);
 
   // Ensure watchFieldArray is an array
   const fieldArray = Array.isArray(watchFieldArray) ? watchFieldArray : [];
@@ -214,7 +219,7 @@ export function InputMappingField(props: any) {
     }
 
     // For non-Agent steps, we don't need agent schema
-    if (stepType !== 'Agent') {
+    if (!stepTakesAgent(stepType)) {
       return;
     }
 
@@ -323,7 +328,8 @@ export function InputMappingField(props: any) {
   // no longer flagged as a missing required input. Runs after the
   // auto-populate effect above, which may have just seeded an empty row.
   useEffect(() => {
-    if (stepType !== 'Agent' || !capabilityId || !agentId || !agents) return;
+    if (!stepTakesAgent(stepType) || !capabilityId || !agentId || !agents)
+      return;
     const capability = findAgentById(agents, agentId)?.supportedCapabilities?.[
       capabilityId
     ];
@@ -366,7 +372,7 @@ export function InputMappingField(props: any) {
 
   // Hide input mapping when Agent step type is selected but no capability is chosen yet
   // This allows the user to focus on selecting agent and capability first
-  if (stepType === 'Agent' && !capabilityId) {
+  if (stepTakesAgent(stepType) && !capabilityId) {
     return null;
   }
 
@@ -603,7 +609,7 @@ export function InputMappingField(props: any) {
 
   // For Agent step types, use the SimpleInputMappingEditor
   // For create mode (no nodeId), use a temporary ID
-  if (stepType === 'Agent') {
+  if (stepTakesAgent(stepType)) {
     // Filter out CONNECTION_DATA fields and connection_id if connection is selected
     // Handle case where capability.inputs may be undefined
     const capabilityInputs = hasEnhancedMetadata ? capability.inputs : [];
@@ -649,9 +655,9 @@ export function InputMappingField(props: any) {
     );
   }
 
-  // For Error and other non-Agent step types that don't need input mapping
-  // Just return null - these steps have their own dedicated form fields
-  if (stepType === 'Error') {
+  // A step whose fields are saved on the step itself has a form of its own
+  // for them, and no input mapping to show here.
+  if (exactStepTypeTraits(stepType)?.directFields) {
     return null;
   }
 

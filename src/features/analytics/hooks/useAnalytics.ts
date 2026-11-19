@@ -1,4 +1,4 @@
-import { useCustomQuery } from '@/shared/hooks/api';
+import { useCustomQuery, keepPreviousData } from '@/shared/hooks/api';
 import { getTenantMetrics, getSystemAnalytics } from '../queries';
 import { subDays, subHours } from 'date-fns';
 import { DateRangeOption } from '@/shared/components/date-range-selector';
@@ -90,16 +90,13 @@ export function useTenantMetrics(dateRange: DateRangeOption) {
     // Granularity is part of the key: two periods could otherwise share a
     // cached response bucketed at a width neither asked for.
     queryKey: queryKeys.analytics.tenant(dateRange, granularity),
+    // The figures of the period before stay up while another period loads.
+    placeholderData: keepPreviousData,
     // The window ends now at each fetch: computed once, every refresh asked
     // for the same past window (AN-1).
-    queryFn: (token: string) => {
+    queryFn: () => {
       const params = getDateRangeParams(dateRange);
-      return getTenantMetrics(
-        token,
-        params.startTime,
-        params.endTime,
-        granularity
-      );
+      return getTenantMetrics(params.startTime, params.endTime, granularity);
     },
     refetchInterval: 60 * 1000, // Refresh every 60 seconds
     refetchIntervalInBackground: false,
@@ -112,7 +109,7 @@ export function useTenantMetrics(dateRange: DateRangeOption) {
 export function useSystemAnalytics() {
   return useCustomQuery({
     queryKey: queryKeys.analytics.system(),
-    queryFn: (token: string) => getSystemAnalytics(token),
+    queryFn: () => getSystemAnalytics(),
     refetchInterval: 30 * 1000, // Refresh every 30 seconds for real-time system info
     refetchIntervalInBackground: false,
   });
@@ -135,13 +132,13 @@ export function usePreviousTenantMetrics(dateRange: DateRangeOption) {
 
   return useCustomQuery({
     queryKey: queryKeys.analytics.tenantPrevious(dateRange, granularity),
+    placeholderData: keepPreviousData,
     // Moves with the displayed window, which ends now at each fetch.
-    queryFn: (token: string) => {
+    queryFn: () => {
       const current = getDateRangeParams(dateRange);
       const span = PERIOD_MS[dateRange] ?? PERIOD_MS['30d'];
       const end = new Date(current.startTime);
       return getTenantMetrics(
-        token,
         new Date(end.getTime() - span).toISOString(),
         end.toISOString(),
         granularity

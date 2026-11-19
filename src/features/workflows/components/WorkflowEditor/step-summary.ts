@@ -1,3 +1,7 @@
+import {
+  stepTypeTraits,
+  stepTakesAgent,
+} from '@/features/workflows/step-types/catalog';
 import { humanizeKey } from './step-details';
 
 /** One-line step summaries for the canvas cards. */
@@ -19,51 +23,23 @@ export function stepDescription(
   capabilityName?: string
 ): string | undefined {
   if (data.description) return data.description;
-  switch (data.stepType) {
-    case 'Agent': {
-      const agent =
-        agentName || (data.agentId ? humanizeKey(data.agentId) : 'Agent');
-      const capability =
-        capabilityName ||
-        (data.capabilityId ? humanizeKey(data.capabilityId) : '');
-      return capability ? `${agent} · ${capability}` : agent;
-    }
-    case 'Conditional':
-      return 'Routes execution by condition.';
-    case 'Switch':
-      return 'Routes execution by value.';
-    case 'Split':
-      return 'Runs a subgraph for each item.';
-    case 'While':
-      return 'Repeats its subgraph while the condition is true.';
-    case 'EmbedWorkflow':
-      return 'Calls another workflow.';
-    case 'Finish':
-      return 'Completes this path.';
-    default:
-      return undefined;
+  if (stepTakesAgent(data.stepType)) {
+    const agent =
+      agentName || (data.agentId ? humanizeKey(data.agentId) : 'Agent');
+    const capability =
+      capabilityName ||
+      (data.capabilityId ? humanizeKey(data.capabilityId) : '');
+    return capability ? `${agent} · ${capability}` : agent;
   }
+  // What the step type does, when the catalog says (step-types/catalog.ts).
+  return stepTypeTraits(data.stepType)?.summary;
 }
 
 /** `WaitForSignal` → "Wait for signal", `AiAgent` → "AI agent". */
 export function stepTypeLabel(stepType: string): string {
-  if (stepType === 'AiAgent') return 'AI agent';
-  return humanizeKey(stepType);
+  return stepTypeTraits(stepType)?.label ?? humanizeKey(stepType);
 }
 
 export function stepBadgeVariant(stepType: string) {
-  switch (stepType) {
-    case 'Conditional':
-    case 'Switch':
-      return 'warning' as const;
-    case 'Split':
-    case 'While':
-      return 'default' as const;
-    case 'EmbedWorkflow':
-      return 'secondary' as const;
-    case 'Finish':
-      return 'success' as const;
-    default:
-      return 'muted' as const;
-  }
+  return stepTypeTraits(stepType)?.badge ?? ('muted' as const);
 }

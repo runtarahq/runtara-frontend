@@ -4,23 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
 import { Table, TableBody } from '@/shared/components/ui/table';
 import { useAuthStore } from '@/shared/stores/authStore';
+import { buildWorkflow as sharedWorkflow } from '@/test/builders';
 import { WorkflowCard } from './index';
 
+/** A workflow that says nothing about chat, unless the test does. */
 function buildWorkflow(overrides: Partial<WorkflowDto> = {}): WorkflowDto {
-  return {
+  return sharedWorkflow({
     id: 'wf-1',
     name: 'Probe workflow',
-    description: '',
-    created: '2026-07-27T10:00:00.000Z',
-    updated: '2026-07-27T10:00:00.000Z',
-    currentVersionNumber: 1,
-    lastVersionNumber: 1,
-    executionGraph: {},
-    inputSchema: {},
-    outputSchema: {},
-    path: '/',
+    supportsChat: undefined,
     ...overrides,
-  } as unknown as WorkflowDto;
+  });
 }
 
 function renderCard(workflow: WorkflowDto, onChat = vi.fn()) {

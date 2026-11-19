@@ -16,8 +16,6 @@ import {
 // keyed by origin (not path), so the per-tenant SPA inherits the OIDC state.
 const mountReturnUrl = new URL(mountReturnPath, appBaseUrl).href;
 
-export { mountReturnPath, tenantIdFromUrl };
-
 const onSigninCallback = (user?: User) => {
   const orgId = user?.profile?.org_id as string | undefined;
 
@@ -34,68 +32,77 @@ const onSigninCallback = (user?: User) => {
   window.history.replaceState({}, document.title, window.location.pathname);
 };
 
-const OIDC_AUTHORITY = config.oidc.authority;
-const OIDC_CLIENT_ID = config.oidc.clientId;
-const OIDC_AUDIENCE = config.oidc.audience;
+/**
+ * The settings the app's `AuthProvider` is mounted with. Worked out when the
+ * app boots, not when this module is imported: a module that only needs
+ * something near here no longer fails to load for want of OIDC settings.
+ *
+ * @throws when sign-in is by OIDC and its settings are missing.
+ */
+export function createOidcConfig() {
+  const OIDC_AUTHORITY = config.oidc.authority;
+  const OIDC_CLIENT_ID = config.oidc.clientId;
+  const OIDC_AUDIENCE = config.oidc.audience;
 
-if (isOidcAuth && (!OIDC_AUTHORITY || !OIDC_CLIENT_ID || !OIDC_AUDIENCE)) {
-  throw new Error(
-    'Missing required OIDC configuration. Provide either window.__RUNTARA_CONFIG__.oidc{Authority,ClientId,Audience} (config.js, rendered by the console image from RUNTARA_UI_OIDC_* env vars) or VITE_OIDC_AUTHORITY / VITE_OIDC_CLIENT_ID / VITE_OIDC_AUDIENCE at build time.'
-  );
+  if (isOidcAuth && (!OIDC_AUTHORITY || !OIDC_CLIENT_ID || !OIDC_AUDIENCE)) {
+    throw new Error(
+      'Missing required OIDC configuration. Provide either window.__RUNTARA_CONFIG__.oidc{Authority,ClientId,Audience} (config.js, rendered by the console image from RUNTARA_UI_OIDC_* env vars) or VITE_OIDC_AUTHORITY / VITE_OIDC_CLIENT_ID / VITE_OIDC_AUDIENCE at build time.'
+    );
+  }
+
+  // Non-OIDC auth modes (`local`, `trust_proxy`) still mount `<AuthProvider>` so
+  // call sites can keep using `useAuth()`, but `useAutoSignin` won't fire the
+  // redirect and `PrivateRoute` short-circuits. We supply syntactically valid
+  // stub endpoints so `oidc-client-ts` doesn't attempt discovery against a real
+  // IdP; nothing actually calls them because `signinRedirect` is never invoked.
+  const STUB_AUTHORITY = `${window.location.origin}/__runtara_no_auth__`;
+  const authority = OIDC_AUTHORITY ?? STUB_AUTHORITY;
+  const clientId = OIDC_CLIENT_ID ?? 'runtara-no-auth';
+
+  const metadata = isOidcAuth
+    ? {
+        issuer: `${authority}/`,
+        authorization_endpoint: `${authority}/authorize`,
+        token_endpoint: `${authority}/oauth/token`,
+        userinfo_endpoint: `${authority}/userinfo`,
+        jwks_uri: `${authority}/.well-known/jwks.json`,
+        end_session_endpoint: `${authority}/v2/logout?client_id=${clientId}&returnTo=${encodeURIComponent(mountReturnUrl)}`,
+      }
+    : {
+        // Non-OIDC stub: endpoints point at the local SPA so the client library
+        // is well-formed but any outbound call would 404 same-origin instead of
+        // leaking to an external host. Never exercised in practice.
+        issuer: `${authority}/`,
+        authorization_endpoint: `${authority}/authorize`,
+        token_endpoint: `${authority}/token`,
+        userinfo_endpoint: `${authority}/userinfo`,
+        jwks_uri: `${authority}/jwks.json`,
+        end_session_endpoint: `${authority}/logout`,
+      };
+
+  return {
+    authority,
+    client_id: clientId,
+    response_type: 'code',
+    scope: 'email openid phone org_id',
+    redirect_uri: mountReturnUrl,
+    post_logout_redirect_uri: mountReturnUrl,
+    extraTokenParams: OIDC_AUDIENCE ? { audience: OIDC_AUDIENCE } : undefined,
+    // Pass the tenant id from the URL as Auth0's `organization` param so a
+    // multi-org user lands directly in the org they tried to deep-link to,
+    // skipping the org-selector. If they aren't a member, Auth0 errors cleanly
+    // instead of silently authenticating them into their default org.
+    extraQueryParams: {
+      ...(OIDC_AUDIENCE ? { audience: OIDC_AUDIENCE } : {}),
+      // Only for an IdP that models tenants as Auth0 Organizations; where
+      // membership decides the tenant, the login names none.
+      ...(tenantIdFromUrl && config.oidc.organizations
+        ? { organization: tenantIdFromUrl }
+        : {}),
+    },
+    automaticSilentRenew: isOidcAuth,
+    userStore: new WebStorageStateStore({ store: window.localStorage }),
+    onSigninCallback,
+    metadata,
+  };
 }
-
-// Non-OIDC auth modes (`local`, `trust_proxy`) still mount `<AuthProvider>` so
-// call sites can keep using `useAuth()`, but `useAutoSignin` won't fire the
-// redirect and `PrivateRoute` short-circuits. We supply syntactically valid
-// stub endpoints so `oidc-client-ts` doesn't attempt discovery against a real
-// IdP; nothing actually calls them because `signinRedirect` is never invoked.
-const STUB_AUTHORITY = `${window.location.origin}/__runtara_no_auth__`;
-const authority = OIDC_AUTHORITY ?? STUB_AUTHORITY;
-const clientId = OIDC_CLIENT_ID ?? 'runtara-no-auth';
-
-const metadata = isOidcAuth
-  ? {
-      issuer: `${authority}/`,
-      authorization_endpoint: `${authority}/authorize`,
-      token_endpoint: `${authority}/oauth/token`,
-      userinfo_endpoint: `${authority}/userinfo`,
-      jwks_uri: `${authority}/.well-known/jwks.json`,
-      end_session_endpoint: `${authority}/v2/logout?client_id=${clientId}&returnTo=${encodeURIComponent(mountReturnUrl)}`,
-    }
-  : {
-      // Non-OIDC stub: endpoints point at the local SPA so the client library
-      // is well-formed but any outbound call would 404 same-origin instead of
-      // leaking to an external host. Never exercised in practice.
-      issuer: `${authority}/`,
-      authorization_endpoint: `${authority}/authorize`,
-      token_endpoint: `${authority}/token`,
-      userinfo_endpoint: `${authority}/userinfo`,
-      jwks_uri: `${authority}/jwks.json`,
-      end_session_endpoint: `${authority}/logout`,
-    };
-
-export const oidcConfig = {
-  authority,
-  client_id: clientId,
-  response_type: 'code',
-  scope: 'email openid phone org_id',
-  redirect_uri: mountReturnUrl,
-  post_logout_redirect_uri: mountReturnUrl,
-  extraTokenParams: OIDC_AUDIENCE ? { audience: OIDC_AUDIENCE } : undefined,
-  // Pass the tenant id from the URL as Auth0's `organization` param so a
-  // multi-org user lands directly in the org they tried to deep-link to,
-  // skipping the org-selector. If they aren't a member, Auth0 errors cleanly
-  // instead of silently authenticating them into their default org.
-  extraQueryParams: {
-    ...(OIDC_AUDIENCE ? { audience: OIDC_AUDIENCE } : {}),
-    // Only for an IdP that models tenants as Auth0 Organizations; where
-    // membership decides the tenant, the login names none.
-    ...(tenantIdFromUrl && config.oidc.organizations
-      ? { organization: tenantIdFromUrl }
-      : {}),
-  },
-  automaticSilentRenew: isOidcAuth,
-  userStore: new WebStorageStateStore({ store: window.localStorage }),
-  onSigninCallback,
-  metadata,
-};

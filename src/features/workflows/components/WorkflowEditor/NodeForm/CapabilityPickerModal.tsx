@@ -130,7 +130,7 @@ export function CapabilityPickerModal({
   // Fetch agent details when agent is selected (for capabilities view)
   const { data: agentDetails, isFetching } = useCustomQuery({
     queryKey: queryKeys.agents.byId(selectedAgent?.id ?? ''),
-    queryFn: (token: string) => getAgentDetails(token, selectedAgent!.id),
+    queryFn: () => getAgentDetails(selectedAgent!.id),
     // Also gate on entitlement so a stale-agent step (selected from the raw
     // list but disabled in the snapshot) doesn't fire a 403 here.
     enabled:

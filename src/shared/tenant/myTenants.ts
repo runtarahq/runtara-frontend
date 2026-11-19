@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
 /** A tenant the signed-in user may act in, from `GET /api/runtime/me/tenants`. */
 export type MyTenant = { id: string; role: string | null };
@@ -67,7 +66,7 @@ export function useMyTenantsLookup(): MyTenantsLookup {
     }
     let cancelled = false;
     RuntimeREST.instance
-      .get('/api/runtime/me/tenants', createAuthHeaders(token))
+      .get('/api/runtime/me/tenants')
       .then((res) => {
         if (!cancelled) setTenants(res.data?.tenants ?? []);
       })

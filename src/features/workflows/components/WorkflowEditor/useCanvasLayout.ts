@@ -14,7 +14,7 @@ import {
   type Point,
 } from './CustomNodes/note-placement';
 import { CANVAS_Z } from './canvas-z';
-import type { CreateStepContext } from './index';
+import type { CreateStepContext } from './pending-step';
 
 interface CanvasLayoutOptions {
   nodes: Node[];

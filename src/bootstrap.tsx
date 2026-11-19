@@ -1,12 +1,11 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from 'react-oidc-context';
-import { ReactFlowProvider } from '@xyflow/react';
 import { Toaster } from '@/shared/components/ui/sonner';
-import { oidcConfig } from '@/shared/config/oidcConfig';
+import { createOidcConfig } from '@/shared/config/oidcConfig';
 import { initAnalytics } from '@/shared/analytics/plausible';
-import { ensureRustValidationInitialized } from '@/shared/lib/rust-validation-wasm';
+import { queryClient } from '@/shared/queries/query-client';
 import App from '@/App';
 
 // Self-hosted Inter (variable font) — the primary face declared in
@@ -16,28 +15,16 @@ import '@fontsource-variable/inter';
 import './index.css';
 
 initAnalytics();
-ensureRustValidationInitialized().catch((err) => {
-  console.warn('[validation] WASM preload failed', err);
-});
 
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes - data stays fresh for 5 minutes
-      gcTime: 1000 * 60 * 10, // 10 minutes - cache garbage collection time
-      retry: 1, // Only retry once on failure instead of 3 times
-      refetchOnWindowFocus: false, // Already set in useCustomQuery but good as default
-    },
-  },
-});
+// Sign-in settings, worked out here: a deployment missing them fails as
+// it boots, with a message that says which.
+const oidcConfig = createOidcConfig();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider {...oidcConfig}>
       <QueryClientProvider client={queryClient}>
-        <ReactFlowProvider>
-          <App />
-        </ReactFlowProvider>
+        <App />
         <Toaster />
       </QueryClientProvider>
     </AuthProvider>

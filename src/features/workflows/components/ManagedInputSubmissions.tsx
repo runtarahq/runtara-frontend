@@ -9,7 +9,6 @@ import {
 import { useAuth } from 'react-oidc-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { useToken } from '@/shared/hooks';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { Button } from '@/shared/components/ui/button';
@@ -56,7 +55,6 @@ function InputOwner({
     };
   }, []);
   const inputs = useSyncExternalStore(store.subscribe, store.snapshot);
-  const token = useToken();
   const queryClient = useQueryClient();
   const retry = async (operationId: string) => {
     // Also guard saved callbacks from the previous tenant before React rerenders.
@@ -69,7 +67,7 @@ function InputOwner({
     const confirmed = await store.send(
       operationId,
       async ({ request, operationId }) =>
-        deliverSignal(token, request.instanceId, {
+        deliverSignal(request.instanceId, {
           requestId: request.requestId,
           operationId,
           payload: request.payload,

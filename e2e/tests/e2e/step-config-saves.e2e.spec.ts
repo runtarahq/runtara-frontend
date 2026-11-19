@@ -1,7 +1,5 @@
 import { test, expect } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
 
 /**
  * Step Configuration Save E2E Tests (SYN-217, SYN-244, SYN-242)
@@ -18,39 +16,8 @@ import { fileURLToPath } from 'url';
  * Requires: runtara-server on :7001 with PostgreSQL
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const RUNTIME_URL = process.env.RUNTIME_URL || 'http://localhost:7001';
 const API_BASE = `${RUNTIME_URL}/api/runtime/workflows`;
-const TENANT_ID = process.env.TEST_ORG_ID || 'org_xxxxx';
-
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-
-  throw new Error('No access token found in auth state file');
-}
-
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-    'X-Org-Id': TENANT_ID,
-  };
-}
 
 // ---------- SYN-217: Filter step condition saves ----------
 

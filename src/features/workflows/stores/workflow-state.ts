@@ -1,14 +1,10 @@
 import type { Node, Edge, NodeChange, EdgeChange } from '@xyflow/react';
 import type {
   ExecutionGraphDto,
-  ExecutionGraphStepDto,
+  StepNodeData,
 } from '@/features/workflows/types/execution-graph';
-import type { ValidationError } from '@/shared/hooks/api';
 
 export interface WorkflowState {
-  // Core workflow data (backend format)
-  executionGraph: ExecutionGraphDto | null;
-
   // React Flow visual representation
   nodes: Node[];
   edges: Edge[];
@@ -19,8 +15,6 @@ export interface WorkflowState {
   isStructurallyDirty: boolean;
   // Goes up on every edit, so a save can tell whether more came after it.
   dirtyRevision: number;
-  selectedNodes: string[];
-  selectedEdges: string[];
 
   // Staged node IDs (nodes with unsaved changes in sidebar)
   stagedNodeIds: Set<string>;
@@ -31,16 +25,10 @@ export interface WorkflowState {
   // Node ID that should be centered in viewport (for newly created nodes)
   pendingCenterNodeId: string | null;
 
-  // Validation errors from last save attempt (for highlighting steps with issues)
-  validationErrors: ValidationError[];
-
-  // Step IDs that have validation errors (derived from validationErrors for quick lookup)
-  stepsWithErrors: Set<string>;
-
   // Pending new node (for deferred creation until user confirms in dialog)
   pendingNewNode: {
     id: string;
-    data: Partial<ExecutionGraphStepDto>;
+    data: StepNodeData;
     position: { x: number; y: number };
     parentId?: string;
     sourceNodeId?: string; // Node to connect FROM (new node is target)
@@ -76,12 +64,43 @@ export interface WorkflowState {
   // set on every successful rename.
   lastStepRename: { oldId: string; newId: string } | null;
 
+  // Undo: the canvases before each of the last edits, oldest first, and the
+  // ones undone since, for redo. `historyAt` is when the last edit was made.
+  past: { nodes: Node[]; edges: Edge[] }[];
+  future: { nodes: Node[]; edges: Edge[] }[];
+  historyAt: number;
+
   // Actions - State Management
+  /**
+   * Loads a graph into the editor: draws it as the canvas's nodes and edges
+   * and starts it clean. The one way a fetched or imported graph gets in.
+   */
   setExecutionGraph: (graph: ExecutionGraphDto) => void;
+  /**
+   * Replaces the canvas's nodes with an edited copy of them. An edit: the
+   * workflow is changed, structurally when the edit adds, removes or rewires.
+   */
+  editNodes: (
+    update: (nodes: Node[]) => Node[],
+    options?: { structural?: boolean }
+  ) => void;
+  /**
+   * Takes an abandoned edit back out of the nodes. Not an edit: with
+   * `dirtyBefore`, the workflow is as changed as it was before that edit.
+   */
+  revertNodes: (
+    update: (nodes: Node[]) => Node[],
+    dirtyBefore?: { isDirty: boolean; isStructurallyDirty: boolean }
+  ) => void;
   resetState: () => void;
+  /** Puts the canvas back as it was before the last edit. */
+  undo: () => void;
+  /** Makes the last undone edit again. */
+  redo: () => void;
   /** With `savedRevision`, clears only if nothing was edited since then. */
   clearDirtyFlag: (savedRevision?: number) => void;
-  setStagedNodeIds: (ids: Set<string>) => void;
+  /** Marks a step as holding form edits not yet applied, for its card. */
+  markNodeStaged: (nodeId: string) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
   setPendingCenterNodeId: (nodeId: string | null) => void;
   setPendingNewNode: (node: WorkflowState['pendingNewNode']) => void;
@@ -91,17 +110,14 @@ export interface WorkflowState {
   setRequestEditNodeId: (nodeId: string | null) => void;
 
   // Actions - Validation Errors
-  setValidationErrors: (errors: ValidationError[]) => void;
-  clearValidationErrors: () => void;
-  getFirstErrorStepId: () => string | null;
 
   // Actions - Node Operations
   addNode: (
-    step: Partial<ExecutionGraphStepDto>,
+    step: StepNodeData,
     position: { x: number; y: number },
     parentId?: string
   ) => string;
-  updateNode: (nodeId: string, updates: Partial<ExecutionGraphStepDto>) => void;
+  updateNode: (nodeId: string, updates: StepNodeData) => void;
   /**
    * Switch a node to the container node type (WaitForSignal "Add on-wait
    * flow"): children added with this node as parentId then form the nested
@@ -130,9 +146,8 @@ export interface WorkflowState {
     options?: { anchorStepId?: string | null; autoEdit?: boolean }
   ) => string;
   /**
-   * Edit a note's text or size. Marks the workflow changed — the note card
-   * used syncFromReactFlow, which is for loading and clears the dirty flag,
-   * so a note edit alone left nothing to save.
+   * Edit a note's text or size. Marks the workflow changed, as any edit
+   * does.
    */
   updateNote: (
     noteId: string,
@@ -156,21 +171,13 @@ export interface WorkflowState {
     sourceNodeId: string,
     targetNodeId: string,
     sourceHandle: string,
-    newStepData: Partial<ExecutionGraphStepDto>,
+    newStepData: StepNodeData,
     position: { x: number; y: number }
   ) => void;
 
   // Actions - React Flow Integration
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
-
-  // Actions - Selection
-  setSelectedNodes: (nodeIds: string[]) => void;
-  setSelectedEdges: (edgeIds: string[]) => void;
-
-  // Actions - Synchronization
-  syncFromReactFlow: (nodes: Node[], edges: Edge[]) => void;
-  getReactFlowElements: () => { nodes: Node[]; edges: Edge[] };
 
   // Actions - Layout
   applyAutoLayout: () => void;

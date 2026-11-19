@@ -28,6 +28,12 @@ import { parseSchema } from '@/features/workflows/utils/schema';
 import { NodeFormContext } from './NodeFormContext';
 import { findAgentById } from '@/shared/utils/agent-id';
 
+import {
+  stepTakesAgent,
+  stepCallsWorkflow,
+  stepEndsPath,
+} from '@/features/workflows/step-types/catalog';
+import { isLegacyStartStep } from '@/features/workflows/types/execution-graph';
 interface OutputFieldLike {
   name: string;
   type?: string;
@@ -312,11 +318,15 @@ export function StepOutputPanel() {
   });
   const [open, setOpen] = useState(false);
 
-  if (!stepType || stepType === 'Start' || stepType === 'Finish') {
+  if (
+    !stepType ||
+    isLegacyStartStep({ stepType: stepType }) ||
+    stepEndsPath(stepType)
+  ) {
     return null;
   }
   // Agent steps without a chosen capability have nothing to describe yet.
-  if (stepType === 'Agent' && !capabilityId) {
+  if (stepTakesAgent(stepType) && !capabilityId) {
     return null;
   }
 
@@ -336,9 +346,9 @@ export function StepOutputPanel() {
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="pb-2 pt-1">
-        {stepType === 'Agent' ? (
+        {stepTakesAgent(stepType) ? (
           <AgentOutputBody stepId={nodeId} />
-        ) : stepType === 'EmbedWorkflow' ? (
+        ) : stepCallsWorkflow(stepType) ? (
           <EmbedOutputBody stepId={nodeId} />
         ) : (
           <ShapeOutputBody stepType={stepType} stepId={nodeId} />

@@ -68,7 +68,8 @@ export function convertClientErrors(
       for (const name of stepNames) {
         stepId = findStepNode(name, graphPaths?.[index]);
         if (stepId) {
-          stepName = name;
+          // The validator quotes a step by its id; a person knows its name.
+          stepName = getStepNameById(stepId, nodes) || name;
           break;
         }
       }
@@ -113,7 +114,8 @@ export function convertClientWarnings(
       for (const name of stepNames) {
         stepId = findStepNode(name, graphPaths?.[index]);
         if (stepId) {
-          stepName = name;
+          // The validator quotes a step by its id; a person knows its name.
+          stepName = getStepNameById(stepId, nodes) || name;
           break;
         }
       }

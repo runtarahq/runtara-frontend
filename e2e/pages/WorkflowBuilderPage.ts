@@ -189,7 +189,68 @@ export class WorkflowBuilderPage {
 
   async selectCanvasStep(name: string): Promise<void> {
     await this.useCanvas();
-    await this.canvasStep(name).first().click();
+    await this.clickCanvasStep(name);
+  }
+
+  /**
+   * Clicks a step where the step itself is what is under the pointer. The
+   * middle of a container is taken by the steps nested in it, or by its
+   * "Add first step" button while it is empty, so a container is clicked in
+   * its margin, as a user would.
+   */
+  private async clickCanvasStep(
+    name: string,
+    options: { double?: boolean } = {}
+  ): Promise<void> {
+    const node = this.canvasStep(name).first();
+    await expect(node).toBeVisible({ timeout: 15000 });
+    await expect(async () => {
+      // The canvas may still be moving into view: a spot is only worth
+      // picking once the step has settled.
+      const before = await node.boundingBox();
+      await this.page.waitForTimeout(100);
+      expect(await node.boundingBox()).toEqual(before);
+
+      const position = await node.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const inset = 10;
+        const xs = [
+          box.width / 2,
+          inset,
+          box.width - inset,
+          box.width / 4,
+          (box.width * 3) / 4,
+        ];
+        const ys = [
+          box.height / 2,
+          inset,
+          box.height - inset,
+          box.height / 4,
+          (box.height * 3) / 4,
+        ];
+        for (const y of ys) {
+          for (const x of xs) {
+            const hit = document.elementFromPoint(box.left + x, box.top + y);
+            if (
+              hit &&
+              element.contains(hit) &&
+              !hit.closest(
+                'button, [role="button"], input, .react-flow__handle, .react-flow__resize-control'
+              )
+            ) {
+              return { x, y };
+            }
+          }
+        }
+        return null;
+      });
+      expect(position, `a free spot to click on step ${name}`).not.toBeNull();
+      if (options.double) {
+        await node.dblclick({ position: position!, timeout: 3000 });
+      } else {
+        await node.click({ position: position!, timeout: 3000 });
+      }
+    }).toPass({ timeout: 15000 });
   }
 
   async beginCanvasRouteStep(
@@ -207,6 +268,79 @@ export class WorkflowBuilderPage {
     await expect(this.page.getByTestId('node-config-dialog')).toBeVisible({
       timeout: 10000,
     });
+  }
+
+  /**
+   * Inserts a step on an existing route: the edge is selected, which shows
+   * its "Insert a step" button. `sourceStepName` null is the Start indicator.
+   * A Conditional inserted this way leads both its branches on to the target.
+   */
+  async beginCanvasStepOnRoute(
+    sourceStepName: string | null,
+    targetStepName: string,
+    sourceHandle: RouteHandle | 'source',
+    kind: AddStepKind
+  ): Promise<void> {
+    await this.useCanvas();
+    const sourceNodeId =
+      sourceStepName === null
+        ? '__start_indicator__'
+        : await this.canvasNodeId(sourceStepName);
+    const targetNodeId = await this.canvasNodeId(targetStepName);
+    const edge = this.page.locator(
+      `[data-edge-source="${attrValue(sourceNodeId)}"][data-edge-target="${attrValue(targetNodeId)}"][data-edge-handle="${attrValue(sourceHandle)}"]`
+    );
+    await expect(edge).toHaveCount(1);
+    // The edge is an SVG path, and two routes between the same steps share
+    // their ends: click the middle of this one's line. The canvas may still
+    // be moving into view, so the point is taken once the line has settled,
+    // and taken again if the click missed it.
+    const middleOfRoute = () =>
+      edge
+        .locator('path')
+        .last()
+        .evaluate((element) => {
+          const path = element as SVGPathElement;
+          const middle = path.getPointAtLength(path.getTotalLength() / 2);
+          const matrix = path.getScreenCTM();
+          if (!matrix) throw new Error('The route is not rendered');
+          const onScreen = new DOMPoint(middle.x, middle.y).matrixTransform(
+            matrix
+          );
+          return { x: onScreen.x, y: onScreen.y };
+        });
+    const insert = this.page.getByRole('button', {
+      name: 'Insert a step on this route',
+    });
+    await expect(async () => {
+      const before = await middleOfRoute();
+      await this.page.waitForTimeout(100);
+      const point = await middleOfRoute();
+      expect(point).toEqual(before);
+      await this.page.mouse.click(point.x, point.y);
+      await expect(insert).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
+    await insert.click();
+    await this.pickStep(kind);
+    await expect(this.page.getByTestId('node-config-dialog')).toBeVisible({
+      timeout: 10000,
+    });
+  }
+
+  async insertCanvasStepOnRoute(
+    sourceStepName: string | null,
+    targetStepName: string,
+    sourceHandle: RouteHandle | 'source',
+    kind: AddStepKind,
+    options: StepCreateOptions = {}
+  ): Promise<void> {
+    await this.beginCanvasStepOnRoute(
+      sourceStepName,
+      targetStepName,
+      sourceHandle,
+      kind
+    );
+    await this.saveOpenCanvasDialog(options);
   }
 
   async beginFirstCanvasStep(kind: AddStepKind): Promise<void> {
@@ -275,10 +409,23 @@ export class WorkflowBuilderPage {
   }
 
   async configureOpenCanvasSplitSource(source = 'data.items') {
-    const dialog = this.page.getByTestId('node-config-dialog');
-    await dialog
-      .getByPlaceholder("e.g., steps['fetch'].outputs.items")
-      .fill(source);
+    await this.fillSplitSource(source);
+  }
+
+  /**
+   * Types a Split's array source. The field opens as a variable picker; its
+   * mode button cycles on to the mode with a plain input.
+   */
+  private async fillSplitSource(source: string): Promise<void> {
+    const panel = this.page.getByTestId('node-config-dialog');
+    const input = panel.getByPlaceholder("e.g., steps['fetch'].outputs.items");
+    for (let i = 0; i < 4 && !(await input.isVisible()); i++) {
+      await panel
+        .getByRole('button', { name: /^Switch to \w+ mode$/ })
+        .first()
+        .click();
+    }
+    await input.fill(source);
   }
 
   async configureOpenCanvasCondition(left = 'ready', right = 'ready') {
@@ -290,9 +437,7 @@ export class WorkflowBuilderPage {
   async configureSplitSource(stepName: string, source = 'data.items') {
     await this.editCanvasStep(stepName);
     const panel = this.page.getByTestId('node-config-dialog');
-    await panel
-      .getByPlaceholder("e.g., steps['fetch'].outputs.items")
-      .fill(source);
+    await this.fillSplitSource(source);
     await panel.getByTestId('node-config-save').click();
     await expect(panel).toHaveCount(0);
   }
@@ -335,9 +480,18 @@ export class WorkflowBuilderPage {
     firstCaseMatch = 'approved'
   ) {
     const panel = this.page.getByTestId('node-config-dialog');
-    await panel
-      .getByPlaceholder('Enter value or use reference mode...')
-      .fill(switchValue);
+    // The value opens in reference mode (a variable picker); the mode button
+    // cycles on to the mode with a plain input.
+    const valueInput = panel.getByPlaceholder(
+      'Enter value or use reference mode...'
+    );
+    for (let i = 0; i < 4 && !(await valueInput.isVisible()); i++) {
+      await panel
+        .getByRole('button', { name: /^Switch to \w+ mode$/ })
+        .first()
+        .click();
+    }
+    await valueInput.fill(switchValue);
     await panel.getByTestId('switch-routing-mode').click();
     await panel.getByTestId('switch-add-case').click();
     await panel.getByTestId('switch-case-match-0').fill(firstCaseMatch);
@@ -347,15 +501,13 @@ export class WorkflowBuilderPage {
   /** Opens the step's editor (double-click) — the only way into it on the canvas. */
   async editCanvasStep(stepName: string): Promise<void> {
     await this.useCanvas();
-    await this.canvasStep(stepName).first().dblclick();
+    await this.clickCanvasStep(stepName, { double: true });
     await expect(this.page.getByTestId('node-config-dialog')).toBeVisible();
   }
 
   async deleteCanvasStep(stepName: string): Promise<void> {
     await this.useCanvas();
-    const node = this.canvasStep(stepName).first();
-    await expect(node).toBeVisible({ timeout: 15000 });
-    await node.click();
+    await this.clickCanvasStep(stepName);
     await this.page.keyboard.press('Delete');
     await expect(this.canvasStep(stepName)).toHaveCount(0);
   }
@@ -388,37 +540,53 @@ export class WorkflowBuilderPage {
     });
   }
 
+  /**
+   * Presses Save and expects the workflow not to be saved: the validator's
+   * errors are listed and no save reaches the server, or the server refuses
+   * the one that does.
+   */
   async expectSaveValidationFailure(): Promise<void> {
     const saveButton = this.page.getByTitle('Save changes');
     await expect(saveButton).toBeEnabled({ timeout: 10000 });
 
+    // Problems may already list errors from when a step was added, and Save
+    // reads "Save changes" until a save completes, so neither proves a
+    // refusal. What does: no save goes through.
+    const saved = this.page
+      .waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          /\/workflows\/[^/]+\/update$/.test(new URL(response.url()).pathname),
+        { timeout: 4000 }
+      )
+      .then(
+        (response) => response.ok(),
+        () => false
+      );
     await saveButton.click();
+    expect(await saved, 'the workflow was saved').toBe(false);
 
-    await expect(
-      this.page.getByRole('button', { name: /Problems/ })
-    ).toBeVisible({
-      timeout: 15000,
-    });
-    await this.page.getByRole('button', { name: /Problems/ }).click();
-    await expect(
-      this.page.getByRole('button', { name: /Errors \([1-9]/ })
-    ).toBeVisible({
-      timeout: 15000,
-    });
+    const problems = this.page.getByRole('button', { name: /Problems/ });
+    const errors = this.page.getByRole('button', { name: /Errors \([1-9]/ });
+    await expect(problems).toBeVisible({ timeout: 15000 });
+    if (!(await errors.isVisible())) await problems.click();
+    await expect(errors).toBeVisible({ timeout: 15000 });
     await expect(this.page.getByTitle('Save changes')).toBeVisible({
       timeout: 10000,
     });
   }
 
+  /** Clears the listed problems; there must be some to clear. */
   async clearValidationMessages(): Promise<void> {
-    await this.page.getByRole('button', { name: /Problems/ }).click();
     const clearButton = this.page.getByTitle('Clear all messages');
-    if (await clearButton.isVisible().catch(() => false)) {
-      await clearButton.click();
-      await expect(this.page.getByText('No problems detected')).toBeVisible({
-        timeout: 10000,
-      });
+    // The Problems tab toggles its panel: open it only if it is closed.
+    if (!(await clearButton.isVisible())) {
+      await this.page.getByRole('button', { name: /Problems/ }).click();
     }
+    await clearButton.click();
+    await expect(this.page.getByText('No problems detected')).toBeVisible({
+      timeout: 10000,
+    });
   }
 
   async reloadAndWait(): Promise<void> {
@@ -432,14 +600,17 @@ export class WorkflowBuilderPage {
   async deleteWorkflowFromList(name: string): Promise<void> {
     await this.page.goto(appPath('/workflows'));
     await this.page.waitForLoadState('domcontentloaded');
-    await this.page.getByPlaceholder('Search workflows...').fill(name);
+    // The search is folded into a button until it is used.
+    await this.page.getByRole('button', { name: /^Search/ }).click();
+    await this.page.getByPlaceholder(/Search workflows/).fill(name);
 
-    const card = this.page.locator('article').filter({ hasText: name });
-    await expect(card).toBeVisible({ timeout: 15000 });
-    await card.hover();
-    await card.getByTitle('Delete').first().click();
+    // The list is a table: a workflow is a row, its actions shown on hover.
+    const row = this.page.locator('tr').filter({ hasText: name });
+    await expect(row).toBeVisible({ timeout: 15000 });
+    await row.hover();
+    await row.getByTitle('Delete').first().click();
     await this.page.getByRole('button', { name: 'Confirm' }).click();
-    await expect(card).toHaveCount(0, { timeout: 15000 });
+    await expect(row).toHaveCount(0, { timeout: 15000 });
   }
 
   async createOpenAiConnection(name: string): Promise<void> {
@@ -473,21 +644,23 @@ export class WorkflowBuilderPage {
   async deleteConnectionFromList(name: string): Promise<void> {
     await this.page.goto(appPath('/connections'));
     await this.page.waitForLoadState('domcontentloaded');
-    const card = this.page.locator('article').filter({ hasText: name });
-    await expect(card).toBeVisible({ timeout: 15000 });
-    await card.getByTitle('Delete connection').first().click();
+    // A connection is a row; Delete is in its actions menu.
+    const row = this.page.locator('tr').filter({ hasText: name });
+    await expect(row).toBeVisible({ timeout: 15000 });
+    await row.getByRole('button', { name: `More actions for ${name}` }).click();
+    await this.page.getByRole('menuitem', { name: /delete/i }).click();
     await this.page.getByRole('button', { name: /delete connection/i }).click();
-    await expect(card).toHaveCount(0, { timeout: 15000 });
+    await expect(row).toHaveCount(0, { timeout: 15000 });
   }
 
+  /**
+   * The provider is inferred from the connection, the one select in the form.
+   * The model is a select when the connection lists its models and a free-text
+   * identifier when it cannot (a test key lists none).
+   */
   async configureOpenAiAgent(connectionName: string): Promise<void> {
     const panel = this.page.getByTestId('node-config-dialog');
     await panel.getByRole('combobox').first().click();
-    await this.page.getByRole('option', { name: 'OpenAI' }).click();
-
-    const connectionSelect = panel.getByRole('combobox').nth(1);
-    await expect(connectionSelect).toBeEnabled({ timeout: 15000 });
-    await connectionSelect.click();
     await this.page.getByRole('option', { name: connectionName }).click();
 
     await panel
@@ -497,9 +670,17 @@ export class WorkflowBuilderPage {
       .getByPlaceholder('Enter user prompt or select a reference...')
       .fill('Summarize the workflow state.');
 
-    const modelSelect = panel.getByRole('combobox').nth(2);
-    await modelSelect.click();
-    await this.page.getByRole('option', { name: /GPT-4o Mini/ }).click();
+    const modelInput = panel.getByPlaceholder('gpt-4o', { exact: true });
+    const modelSelect = panel.getByRole('combobox').nth(1);
+    await expect(modelInput.or(modelSelect).first()).toBeVisible({
+      timeout: 15000,
+    });
+    if (await modelInput.isVisible()) {
+      await modelInput.fill('gpt-4o-mini');
+    } else {
+      await modelSelect.click();
+      await this.page.getByRole('option', { name: /GPT-4o Mini/i }).click();
+    }
   }
 
   async addCanvasAiTool(
@@ -518,7 +699,12 @@ export class WorkflowBuilderPage {
     await this.saveOpenCanvasDialog(options);
   }
 
-  async addCanvasAiMemory(sourceStepName: string): Promise<void> {
+  async addCanvasAiMemory(
+    sourceStepName: string,
+    /** The connection the provider keeps the memory in, by its title. */
+    connectionName: string,
+    conversationId = 'e2e-conversation'
+  ): Promise<void> {
     await this.useCanvas();
     await this.page
       .getByRole('button', { name: `Add memory to ${sourceStepName}` })
@@ -528,6 +714,28 @@ export class WorkflowBuilderPage {
     );
     await expect(objectModelAgent).toBeVisible({ timeout: 30000 });
     await objectModelAgent.click();
+
+    // The agent's editor opens on the new memory, which needs a conversation
+    // id; leaving without Save takes the memory back out.
+    const panel = this.page.getByTestId('node-config-dialog');
+    const conversation = panel
+      .getByText('Conversation ID *')
+      .locator('xpath=..');
+    await expect(conversation).toBeVisible({ timeout: 10000 });
+    const conversationInput = conversation.getByPlaceholder('data.sessionId');
+    for (let i = 0; i < 4 && !(await conversationInput.isVisible()); i++) {
+      await conversation
+        .getByRole('button', { name: /^Switch to \w+ mode$/ })
+        .first()
+        .click();
+    }
+    await conversationInput.fill(conversationId);
+    // The provider works through a connection, chosen here: its own step is
+    // not on the canvas.
+    await panel.getByRole('combobox', { name: 'Memory connection' }).click();
+    await this.page.getByRole('option', { name: connectionName }).click();
+    await panel.getByTestId('node-config-save').click();
+    await expect(panel).toHaveCount(0);
     await expect(
       this.page.getByRole('button', { name: `Add memory to ${sourceStepName}` })
     ).toHaveCount(0, { timeout: 10000 });
@@ -559,6 +767,29 @@ export class WorkflowBuilderPage {
 
     await dialog.getByTestId('node-config-save').click();
     await expect(dialog).toHaveCount(0);
+  }
+
+  /**
+   * Submits the open step dialog expecting the editor to refuse the step:
+   * what the dialog itself can put right keeps it open and says why.
+   */
+  async expectOpenCanvasDialogRefused(
+    options: StepCreateOptions = {}
+  ): Promise<void> {
+    const dialog = this.page.getByTestId('node-config-dialog');
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+
+    if (options.name) {
+      const nameInput = dialog.getByPlaceholder('Step name');
+      await nameInput.clear();
+      await nameInput.fill(options.name);
+    }
+
+    await dialog.getByTestId('node-config-save').click();
+    await expect(
+      this.page.getByText('Step validation failed').first()
+    ).toBeVisible({ timeout: 10000 });
+    await expect(dialog).toBeVisible();
   }
 
   private async pickStep(kind: AddStepKind): Promise<void> {

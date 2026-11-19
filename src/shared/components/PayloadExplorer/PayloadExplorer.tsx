@@ -1,23 +1,12 @@
 import {
-  useCallback,
   useEffect,
   useId,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
-  type ReactNode,
 } from 'react';
-import {
-  ChevronDown,
-  ChevronUp,
-  ChevronsDownUp,
-  ChevronsUpDown,
-  Copy,
-  ListFilter,
-  Search,
-  X,
-} from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Copy, ListFilter } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
@@ -27,9 +16,7 @@ import {
 } from '@/shared/utils/truncated-payload';
 import {
   EXPAND_ALL_MAX_BRANCHES,
-  SEARCH_MAX_NODES,
   ancestorIds,
-  childCount,
   collectBranchIds,
   flattenRows,
   formatCount,
@@ -38,97 +25,39 @@ import {
   getAt,
   groupValue,
   initialExpanded,
-  isBranch,
   kindOf,
   matchFilter,
-  measurePayload,
-  plural,
-  searchPayload,
   type PathSegment,
-  type PayloadSize,
   type SearchResult,
   type TreeRow,
 } from './model';
-import { PayloadTree, type FieldLabel } from './PayloadTree';
+import { PayloadTree } from './PayloadTree';
 import { PayloadRaw } from './PayloadRaw';
 import { PayloadInspector } from './PayloadInspector';
+import { EmptyState, IconButton, SectionNotes } from './ExplorerParts';
+import {
+  MatchNav,
+  ModeSwitch,
+  SearchBox,
+  SectionPicker,
+  type ExplorerMode,
+} from './ExplorerToolbar';
+import {
+  cachedSearch,
+  cachedSize,
+  isEmptyValue,
+  otherSectionsHint,
+} from './payload-cache';
+import type {
+  PayloadExplorerProps,
+  PayloadSection,
+  SectionView,
+} from './types';
+import { useFullValues } from './use-full-values';
 
-export interface PayloadSection {
-  id: string;
-  label: string;
-  /** The parsed JSON value. `null` or `undefined` shows the empty state. */
-  value: unknown;
-  emptyState?: { title: string; description?: string };
-  /** Extra context shown above the tree, e.g. "Updated 3 hr ago". */
-  meta?: ReactNode;
-  /** Friendly labels for top-level keys, e.g. from a state schema. */
-  fieldLabels?: Record<string, FieldLabel>;
-}
-
-export interface PayloadExplorerProps {
-  sections: PayloadSection[];
-  defaultSectionId?: string;
-  /**
-   * Fetches a section's full value when it contains server-elided
-   * placeholders. Without it, placeholders show their size only.
-   */
-  loadFullValue?: (sectionId: string) => Promise<unknown>;
-  /** Height of the scrolling area in pixels (420 by default, 240 compact). */
-  maxHeight?: number;
-  /**
-   * Fits tight spaces (a step's details, a side panel): one toolbar row with
-   * icon actions, and a path-only strip that appears once a field is selected.
-   */
-  compact?: boolean;
-  ariaLabel?: string;
-  className?: string;
-}
-
-interface SectionView {
-  expanded: ReadonlySet<string>;
-  selectedId: string | null;
-  matchIndex: number;
-}
+export type { PayloadExplorerProps, PayloadSection } from './types';
 
 const SEARCH_DEBOUNCE_MS = 150;
-
-// Payloads are immutable once fetched, so search results and sizes are cached
-// per value: re-renders (polling, typing elsewhere) never re-walk a payload.
-const searchCache = new WeakMap<object, Map<string, SearchResult>>();
-const sizeCache = new WeakMap<object, PayloadSize>();
-
-function cachedSearch(value: unknown, query: string): SearchResult {
-  if (typeof value !== 'object' || value === null)
-    return searchPayload(value, query);
-  let byQuery = searchCache.get(value);
-  if (!byQuery) {
-    byQuery = new Map();
-    searchCache.set(value, byQuery);
-  }
-  let result = byQuery.get(query);
-  if (!result) {
-    result = searchPayload(value, query);
-    // Keep the last few queries only; each result can hold 1,000 paths.
-    if (byQuery.size >= 8)
-      byQuery.delete(byQuery.keys().next().value as string);
-    byQuery.set(query, result);
-  }
-  return result;
-}
-
-function cachedSize(value: unknown): PayloadSize {
-  if (typeof value !== 'object' || value === null) return measurePayload(value);
-  let size = sizeCache.get(value);
-  if (!size) {
-    size = measurePayload(value);
-    sizeCache.set(value, size);
-  }
-  return size;
-}
-
-function isEmptyValue(value: unknown) {
-  return value === null || value === undefined;
-}
 
 async function writeClipboard(text: string, message: string) {
   try {
@@ -164,32 +93,9 @@ export function PayloadExplorer({
       ''
   );
   const active = sections.find((s) => s.id === activeId) ?? sections[0];
-
-  // Each full value with the section value it was loaded for. A poll that
-  // brings a new section value makes it stale: it used to stay on screen,
-  // hiding every later update to that section (SH-6).
-  const [loadedFull, setLoadedFull] = useState<
-    Record<string, { for: unknown; value: unknown }>
-  >({});
-  const fullValues = useMemo(() => {
-    const current: Record<string, unknown> = {};
-    for (const section of sections) {
-      const entry = loadedFull[section.id];
-      if (entry && entry.for === section.value)
-        current[section.id] = entry.value;
-    }
-    return current;
-  }, [loadedFull, sections]);
-  // Sections whose full value is loading. A set, so one load finishing does
-  // not clear another section's indicator while that one is still going
-  // (SH-7).
-  const [loadingFull, setLoadingFull] = useState<ReadonlySet<string>>(
-    () => new Set()
-  );
-  const valueOf = useCallback(
-    (section: PayloadSection) =>
-      section.id in fullValues ? fullValues[section.id] : section.value,
-    [fullValues]
+  const { fullValues, loadingFull, valueOf, ensureFull } = useFullValues(
+    sections,
+    loadFullValue
   );
 
   // Per-section folding, selection and match position. A section's first view
@@ -224,7 +130,7 @@ export function PayloadExplorer({
     return () => clearTimeout(timer);
   }, [input]);
   const [onlyMatches, setOnlyMatches] = useState(false);
-  const [mode, setMode] = useState<'tree' | 'json'>('tree');
+  const [mode, setMode] = useState<ExplorerMode>('tree');
 
   const searches: Record<string, SearchResult> = {};
   for (const section of sections)
@@ -296,33 +202,6 @@ export function PayloadExplorer({
     view && matchCount ? search!.matches[view.matchIndex % matchCount] : null;
 
   // ---- Actions -------------------------------------------------------------
-
-  const ensureFull = async (section: PayloadSection): Promise<unknown> => {
-    if (section.id in fullValues) return fullValues[section.id];
-    if (!loadFullValue) return undefined;
-    setLoadingFull((prev) => new Set(prev).add(section.id));
-    try {
-      const full = await loadFullValue(section.id);
-      setLoadedFull((prev) => ({
-        ...prev,
-        [section.id]: { for: section.value, value: full },
-      }));
-      return full;
-    } catch (error) {
-      toast.error(
-        `Could not load the full ${section.label.toLowerCase()}: ${
-          error instanceof Error ? error.message : 'request failed'
-        }`
-      );
-      return undefined;
-    } finally {
-      setLoadingFull((prev) => {
-        const next = new Set(prev);
-        next.delete(section.id);
-        return next;
-      });
-    }
-  };
 
   const loadFull = async () => {
     if (!active) return;
@@ -492,182 +371,48 @@ export function PayloadExplorer({
     </span>
   );
 
-  const sectionPicker =
-    sections.length > 1 ? (
-      <div
-        role="tablist"
-        aria-label={`${ariaLabel} sections`}
-        className={cn(
-          'flex flex-wrap gap-0.5 rounded-lg border bg-muted/40 p-0.5',
-          compact && 'rounded-md'
-        )}
-      >
-        {sections.map((section) => {
-          const selected = section.id === active.id;
-          const result = searches[section.id];
-          const sectionValue = valueOf(section);
-          const count = query
-            ? `${formatCount(result.matches.length)}${result.stoppedAt === 'matches' ? '+' : ''}`
-            : isEmptyValue(sectionValue)
-              ? '—'
-              : isBranch(sectionValue)
-                ? formatCount(childCount(sectionValue))
-                : '1';
-          return (
-            <button
-              key={section.id}
-              id={`${idPrefix}-tab-${section.id}`}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              aria-controls={`${idPrefix}-panel`}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => switchSection(section.id)}
-              onKeyDown={onTabKeyDown}
-              className={cn(
-                'inline-flex items-center gap-1.5 font-medium transition-colors',
-                compact
-                  ? 'rounded px-2 py-0.5 text-xs'
-                  : 'rounded-md px-3 py-1 text-sm',
-                selected
-                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {section.label}
-              <span
-                className={cn(
-                  'text-[11px] tabular-nums',
-                  query && result.matches.length
-                    ? 'rounded-full bg-warning/30 px-1.5 font-semibold text-foreground'
-                    : 'text-muted-foreground'
-                )}
-                aria-label={
-                  query ? `${result.matches.length} matches` : undefined
-                }
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    ) : (
-      <span
-        id={`${idPrefix}-tab-${active.id}`}
-        className={cn('font-medium', compact ? 'text-xs' : 'text-sm')}
-      >
-        {active.label}
-      </span>
-    );
+  const sectionPicker = (
+    <SectionPicker
+      sections={sections}
+      active={active}
+      searches={searches}
+      valueOf={valueOf}
+      query={query}
+      idPrefix={idPrefix}
+      ariaLabel={ariaLabel}
+      compact={compact}
+      onSwitch={switchSection}
+      onKeyDown={onTabKeyDown}
+    />
+  );
 
   const searchBox = (
-    <label
-      className={cn(
-        'flex min-w-0 items-center gap-2 rounded-md border bg-background focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20',
-        compact ? 'h-7 flex-[1_1_8rem] px-2' : 'h-8 flex-[1_1_16rem] px-2.5'
-      )}
-    >
-      <Search
-        className={cn(
-          'shrink-0 text-muted-foreground',
-          compact ? 'size-3.5' : 'size-4'
-        )}
-      />
-      <input
-        ref={searchRef}
-        type="search"
-        value={input}
-        onChange={(event) => setInput(event.target.value)}
-        onKeyDown={onSearchKeyDown}
-        placeholder={
-          compact
-            ? 'Search'
-            : `Search keys and values${sections.length > 1 ? ` in ${sections.map((s) => s.label.toLowerCase()).join(', ')}` : ''}`
-        }
-        aria-label="Search keys and values"
-        spellCheck={false}
-        autoComplete="off"
-        className={cn(
-          'min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden',
-          compact ? 'text-xs' : 'text-sm'
-        )}
-      />
-      {input ? (
-        <button
-          type="button"
-          aria-label="Clear search"
-          className="grid size-5 place-items-center rounded text-muted-foreground hover:text-foreground"
-          onClick={() => {
-            setInput('');
-            setQuery('');
-            searchRef.current?.focus();
-          }}
-        >
-          <X className="size-3.5" />
-        </button>
-      ) : (
-        !compact && (
-          <kbd className="rounded border border-b-2 px-1.5 font-mono text-[10px] text-muted-foreground">
-            /
-          </kbd>
-        )
-      )}
-    </label>
+    <SearchBox
+      inputRef={searchRef}
+      input={input}
+      onInput={setInput}
+      onKeyDown={onSearchKeyDown}
+      onClear={() => {
+        setInput('');
+        setQuery('');
+        searchRef.current?.focus();
+      }}
+      sectionLabels={sections.map((section) => section.label)}
+      compact={compact}
+    />
   );
 
   const matchNav = query && (
-    <div
-      className="flex items-center gap-0.5 text-xs tabular-nums text-muted-foreground"
-      aria-live="polite"
-    >
-      <span className="px-1">
-        {matchCount
-          ? `${formatCount((view.matchIndex % matchCount) + 1)} of ${formatCount(matchCount)}${search.stoppedAt === 'matches' ? '+' : ''}`
-          : 'No matches'}
-      </span>
-      <IconButton
-        label="Previous match"
-        disabled={matchCount < 2}
-        onClick={() => goToMatch(-1)}
-      >
-        <ChevronUp className="size-3.5" />
-      </IconButton>
-      <IconButton
-        label="Next match"
-        disabled={matchCount < 2}
-        onClick={() => goToMatch(1)}
-      >
-        <ChevronDown className="size-3.5" />
-      </IconButton>
-    </div>
+    <MatchNav
+      matchCount={matchCount}
+      matchIndex={view.matchIndex}
+      capped={search.stoppedAt === 'matches'}
+      onGo={goToMatch}
+    />
   );
 
   const modeSwitch = (
-    <div
-      role="group"
-      aria-label="View"
-      className="inline-flex overflow-hidden rounded-md border"
-    >
-      {(['tree', 'json'] as const).map((m) => (
-        <button
-          key={m}
-          type="button"
-          aria-pressed={mode === m}
-          onClick={() => setMode(m)}
-          className={cn(
-            'font-medium',
-            compact ? 'h-6 px-2 text-[11px]' : 'h-7 px-2.5 text-xs',
-            m === 'json' && 'border-l',
-            mode === m
-              ? 'bg-primary/10 text-primary-text'
-              : 'bg-background text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {m === 'tree' ? 'Tree' : 'JSON'}
-        </button>
-      ))}
-    </div>
+    <ModeSwitch mode={mode} onMode={setMode} compact={compact} />
   );
 
   const treeDisabled = mode !== 'tree' || empty;
@@ -861,159 +606,5 @@ export function PayloadExplorer({
         </div>
       )}
     </section>
-  );
-}
-
-function SectionNotes({
-  compact,
-  meta,
-  size,
-  search,
-  canLoadFull,
-  loadingFull,
-  onLoadFull,
-}: {
-  compact: boolean;
-  meta?: ReactNode;
-  size: PayloadSize | null;
-  search: SearchResult;
-  canLoadFull: boolean;
-  loadingFull: boolean;
-  onLoadFull: () => void;
-}) {
-  const notes: ReactNode[] = [];
-  if (meta) notes.push(<span key="meta">{meta}</span>);
-  if (size?.elidedCount) {
-    notes.push(
-      <span key="elided" className="text-warning">
-        {plural(size.elidedCount, 'large value')} not loaded (
-        {formatSize(size.elidedBytes)})
-        {canLoadFull && (
-          <button
-            type="button"
-            onClick={onLoadFull}
-            disabled={loadingFull}
-            className="ml-1.5 font-medium text-primary-text hover:underline disabled:opacity-60"
-          >
-            {loadingFull ? 'Loading…' : 'Load full value'}
-          </button>
-        )}
-      </span>
-    );
-  }
-  if (size?.truncatedCount) {
-    notes.push(
-      <span key="truncated" className="text-warning">
-        {plural(size.truncatedCount, 'value')} cut off by the server (
-        {formatSize(size.truncatedBytes)} originally); only the stored part is
-        shown.
-      </span>
-    );
-  }
-  if (search.stoppedAt === 'matches') {
-    notes.push(
-      <span key="cap">
-        Showing the first {formatCount(search.matches.length)} matches. Refine
-        the search to see others.
-      </span>
-    );
-  } else if (search.stoppedAt === 'fields') {
-    notes.push(
-      <span key="cap">
-        Searched the first {formatCount(SEARCH_MAX_NODES)} fields; matches
-        further in are not listed.
-      </span>
-    );
-  }
-  if (!notes.length) return null;
-  return (
-    <div
-      className={cn(
-        'flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground',
-        compact ? 'px-2 pt-1.5 text-[11px]' : 'px-4 pt-2 text-xs'
-      )}
-      aria-live="polite"
-    >
-      {notes}
-    </div>
-  );
-}
-
-function otherSectionsHint(
-  sections: PayloadSection[],
-  searches: Record<string, SearchResult>,
-  activeId: string
-) {
-  const elsewhere = sections
-    .filter((s) => s.id !== activeId && searches[s.id].matches.length)
-    .map(
-      (s) =>
-        `${formatCount(searches[s.id].matches.length)} in ${s.label.toLowerCase()}`
-    );
-  return elsewhere.length
-    ? `Found ${elsewhere.join(', ')}.`
-    : 'Nothing here matches the search.';
-}
-
-function EmptyState({
-  title,
-  description,
-  compact = false,
-}: {
-  title: string;
-  description?: string;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex flex-col items-center gap-1 text-center',
-        compact ? 'px-3 py-4' : 'px-6 py-10'
-      )}
-    >
-      <p
-        className={cn(
-          'font-medium text-muted-foreground',
-          compact ? 'text-xs' : 'text-sm'
-        )}
-      >
-        {title}
-      </p>
-      {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
-      )}
-    </div>
-  );
-}
-
-function IconButton({
-  label,
-  disabled,
-  pressed,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled?: boolean;
-  /** Set for toggles; renders the pressed state. */
-  pressed?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={pressed}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'grid size-6 place-items-center rounded hover:bg-primary/10 hover:text-primary-text disabled:pointer-events-none disabled:opacity-40',
-        pressed ? 'bg-primary/10 text-primary-text' : 'text-muted-foreground'
-      )}
-    >
-      {children}
-    </button>
   );
 }

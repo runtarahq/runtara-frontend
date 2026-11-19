@@ -3,10 +3,12 @@ import {
   NODE_TYPES,
   NODE_TYPE_SIZES,
 } from '@/features/workflows/config/workflow';
-import type {
-  ExecutionGraphDto,
-  ExecutionGraphStepDto,
-  ExecutionGraphTransitionDto,
+import {
+  type ExecutionGraphDto,
+  type ExecutionGraphStepDto,
+  type ExecutionGraphTransitionDto,
+  stepOnWait,
+  stepSubgraph,
 } from '@/features/workflows/types/execution-graph';
 import type { ExecutionGraph } from './types';
 import { canvasNodeStepId } from './canvas-ids';
@@ -19,6 +21,7 @@ import { serializeSteps } from './serialize-steps';
   |steps   -->   steps[id].subgraph   -->   |steps -->   ...
   |entryPoint                               |entryPoint
 */
+import { isContainerStepType } from '@/features/workflows/step-types/catalog';
 export function composeExecutionGraph(
   nodes: Node[],
   edges: Edge[],
@@ -168,7 +171,7 @@ export function composeExecutionGraph(
 
   nds.forEach((node) => {
     const stepType = node.data?.stepType;
-    if (stepType === 'Split' || stepType === 'While') {
+    if (isContainerStepType(stepType)) {
       const containerStep = nodesMap.get(node.id);
       if (containerStep && !containerStep.subgraph) {
         // Seed the rebuilt subgraph with the graph-level fields captured at
@@ -336,12 +339,13 @@ function addStarts(executionGraph: ExecutionGraphDto) {
     }
 
     for (const step of Object.values(steps)) {
-      if (step.subgraph) {
-        findAllStarts(step.subgraph);
+      const subgraph = stepSubgraph(step);
+      if (subgraph) {
+        findAllStarts(subgraph);
       }
       // WaitForSignal onWait is a nested ExecutionGraph too — keep its
       // entryPoint valid as children are added/removed/rewired.
-      const onWait = (step as { onWait?: ExecutionGraphDto }).onWait;
+      const onWait = stepOnWait(step);
       if (onWait?.steps) {
         findAllStarts(onWait);
       }

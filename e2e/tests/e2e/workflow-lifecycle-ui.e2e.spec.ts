@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
+import {
+  WorkflowBuilderPage,
+  randomDoubleStep,
+} from '../../pages/WorkflowBuilderPage';
 
 /**
  * Workflow Lifecycle E2E Test — Browser UI
@@ -14,40 +16,11 @@ import { fileURLToPath } from 'url';
  * Requires: full local stack running (gateway, runtime, management, frontend)
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const WORKFLOW_NAME = `E2E UI Lifecycle ${Date.now()}`;
 
 /** Read the access token from the Playwright auth state file. */
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-
-  throw new Error('No access token found in auth state file');
-}
-
 /** Build common headers for authenticated API calls. */
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
-
 test.describe.serial('Workflow Lifecycle (UI)', () => {
   let workflowId: string;
   let token: string;
@@ -93,34 +66,12 @@ test.describe.serial('Workflow Lifecycle (UI)', () => {
   });
 
   test('add a random-double step and save', async ({ page }) => {
-    await page.goto(`/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
+    const builder = new WorkflowBuilderPage(page);
+    await builder.gotoWorkflow(workflowId);
 
-    // Wait for the ReactFlow canvas to render
-    await expect(page.locator('.react-flow')).toBeVisible({ timeout: 15000 });
-
-    // Click the "+" button next to the Start indicator node
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
-
-    // StepPickerModal should open — search for "Random Double" capability
-    // (displayName is "Random Double", name is "random_double", id is "random-double")
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Random Double');
-
-    // Wait for capability search results (requires agent details to load)
-    const capabilityResult = page.getByText('Random Double').first();
-    await expect(capabilityResult).toBeVisible({ timeout: 30000 });
-    await capabilityResult.click();
-
-    // NodeConfigDialog opens in create mode — click Save inside the form
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible({ timeout: 5000 });
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    // Click the "+" on the Start node and pick the "Random Double" capability
+    // from the step picker; the step dialog opens in create mode — save it.
+    await builder.addFirstCanvasStep(randomDoubleStep);
 
     // Verify the node appears on the canvas
     await expect(
@@ -128,14 +79,7 @@ test.describe.serial('Workflow Lifecycle (UI)', () => {
     ).toBeVisible({ timeout: 10000 });
 
     // Now save the workflow via toolbar (the graph is dirty after adding a step)
-    const saveButton = page.getByTitle('Save changes');
-    await expect(saveButton).toBeVisible({ timeout: 5000 });
-    await saveButton.click();
-
-    // Wait for save to complete
-    await expect(page.getByTitle('No changes to save')).toBeVisible({
-      timeout: 15000,
-    });
+    await builder.saveWorkflow();
   });
 
   test('execute and verify completion', async ({ page }) => {
@@ -169,10 +113,14 @@ test.describe.serial('Workflow Lifecycle (UI)', () => {
     // Click "View execution details" to switch to History tab
     await page.getByTitle('View execution details').click();
 
-    // Wait for the "Completed" badge in the history panel
-    await expect(page.getByText('Completed').first()).toBeVisible({
-      timeout: 60000,
-    });
+    // Wait for the "Completed" badge in the history panel's list of recent
+    // executions (the toolbar shows the same word, so scope to the panel)
+    const recentExecutions = page
+      .getByText('Recent Executions', { exact: true })
+      .locator('xpath=../..');
+    await expect(
+      recentExecutions.getByText('Completed', { exact: true }).first()
+    ).toBeVisible({ timeout: 60000 });
   });
 
   test('verify version in Versions panel', async ({ page }) => {
@@ -185,31 +133,26 @@ test.describe.serial('Workflow Lifecycle (UI)', () => {
     // Click Versions tab (auto-expands the panel)
     await page.getByRole('button', { name: /Versions/ }).click();
 
-    // Verify a "Compiled" badge is visible
-    await expect(page.getByText('Compiled').first()).toBeVisible({
-      timeout: 10000,
-    });
+    const versionsPanel = page
+      .getByText('Workflow Versions', { exact: true })
+      .locator('xpath=../..');
+
+    // Verify a "Compiled" badge is visible (exact: "Not compiled" is a
+    // different badge, and the toolbar has its own compile indicator)
+    await expect(
+      versionsPanel.getByText('Compiled', { exact: true }).first()
+    ).toBeVisible({ timeout: 10000 });
 
     // Verify an active version exists
-    await expect(page.getByRole('button', { name: /Active/ })).toBeVisible();
+    await expect(
+      versionsPanel.getByRole('button', { name: /Active/ })
+    ).toBeVisible();
   });
 
   test('delete workflow from list', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    // Find the workflow card by its unique name
-    const card = page.locator('article').filter({ hasText: WORKFLOW_NAME });
-    await expect(card).toBeVisible({ timeout: 10000 });
-
-    // Click the delete button (.first() because EntityTile renders actions twice)
-    await card.getByTitle('Delete').first().click();
-
-    // Confirm in the confirmation dialog
-    await page.getByRole('button', { name: 'Confirm' }).click();
-
-    // Verify the card disappears
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    // Find the workflow's row by its unique name, delete it from the row's
+    // actions, confirm, and verify the row disappears
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(WORKFLOW_NAME);
 
     // Clear workflowId so afterAll doesn't try to double-delete
     workflowId = '';

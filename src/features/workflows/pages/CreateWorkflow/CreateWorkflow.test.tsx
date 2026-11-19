@@ -10,7 +10,7 @@ const spies = vi.hoisted(() => ({
 }));
 
 // `main.tsx` mounts the app at import time; the page only needs its queryClient.
-vi.mock('@/bootstrap.tsx', () => ({
+vi.mock('@/shared/queries/query-client', () => ({
   queryClient: { invalidateQueries: vi.fn() },
 }));
 
@@ -72,7 +72,6 @@ describe('CreateWorkflow', () => {
 
     await waitFor(() => expect(spies.createWorkflow).toHaveBeenCalledOnce());
     expect(spies.createWorkflow).toHaveBeenCalledWith(
-      'test-token',
       expect.objectContaining({ name: 'My workflow', path: '/Demo/Test/' })
     );
   });
@@ -86,7 +85,6 @@ describe('CreateWorkflow', () => {
 
     await waitFor(() => expect(spies.createWorkflow).toHaveBeenCalledOnce());
     expect(spies.createWorkflow).toHaveBeenCalledWith(
-      'test-token',
       expect.objectContaining({ name: 'Root workflow', path: '/' })
     );
   });
@@ -100,7 +98,6 @@ describe('CreateWorkflow', () => {
 
     await waitFor(() => expect(spies.createWorkflow).toHaveBeenCalledOnce());
     expect(spies.createWorkflow).toHaveBeenCalledWith(
-      'test-token',
       expect.objectContaining({ path: '/' })
     );
   });

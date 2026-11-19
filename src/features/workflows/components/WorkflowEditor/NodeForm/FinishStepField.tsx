@@ -171,7 +171,6 @@ export function FinishStepField({ name }: FinishStepFieldProps) {
 
   // Auto-populate required fields when creating a new Finish step
   useEffect(() => {
-    if (stepType !== 'Finish') return;
     if (isEdit) return; // Don't auto-populate in edit mode
     if (autoPopulatedRef.current) return;
     if (outputSchemaFields.length === 0) return;
@@ -204,7 +203,6 @@ export function FinishStepField({ name }: FinishStepFieldProps) {
   // while the schema says number/boolean) don't coerce values to the wrong
   // type at runtime. Custom rows keep their user-editable hint.
   useEffect(() => {
-    if (stepType !== 'Finish') return;
     fieldArray.forEach((row: any, index: number) => {
       if (!row?.type) return;
       const fieldInfo = schemaFieldMap.get(row.type);
@@ -217,9 +215,6 @@ export function FinishStepField({ name }: FinishStepFieldProps) {
   }, [stepType, fieldArray, schemaFieldMap, form, name]);
 
   // Early return after all hooks are called
-  if (stepType !== 'Finish') {
-    return null;
-  }
 
   const schemaPreview = inferSchemaFromMapping(fieldArray as any);
 

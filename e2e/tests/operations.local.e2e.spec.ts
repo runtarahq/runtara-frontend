@@ -98,11 +98,47 @@ test('Operations: edit separate bulk answers in place, resume runs, and inspect 
     fullPage: true,
   });
   // Approval needs no extra input, even when rejection requires a reason.
-  await page.goto(
-    appPath(`/operations/queues/${fixture.workflow}/new_approval`)
+  // Inline answers are offered by a saved queue (a workflow's action has no
+  // page of its own), so the replayed run's request gets one for this check.
+  const queueResponse = await request.post(
+    `${fixture.baseUrl}/api/runtime/operations/views`,
+    {
+      data: {
+        configuration: {
+          name: `[E2E test] Operations new approval ${Date.now()}`,
+          workflow: fixture.workflow,
+          columns: ['order', 'amount'],
+          where: { openRequest: 'new_approval', state: [] },
+          roles: { key: 'order' },
+          answers: { inline: 'decision', bulk: false },
+          formats: {},
+        },
+      },
+    }
   );
-  await page.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(page.getByText('Answered', { exact: true })).toBeVisible();
+  expect(queueResponse.status()).toBe(201);
+  const newApprovalQueue: { id: string; revision: number } = (
+    await queueResponse.json()
+  ).data;
+  try {
+    await page.goto(appPath(`/operations/queues/${newApprovalQueue.id}`));
+    const replayed = page.getByRole('row').filter({
+      has: page.getByRole('link', { name: 'ORDER-123', exact: true }),
+    });
+    await expect(replayed).toHaveCount(1);
+    await replayed
+      .getByRole('button', { name: 'Approve', exact: true })
+      .click();
+    await expect(replayed.getByText('Answered', { exact: true })).toBeVisible();
+    await expect(replayed.getByLabel('Reason', { exact: false })).toHaveCount(
+      0
+    );
+  } finally {
+    const removed = await request.delete(
+      `${fixture.baseUrl}/api/runtime/operations/views/${newApprovalQueue.id}?revision=${newApprovalQueue.revision}`
+    );
+    expect(removed.ok()).toBe(true);
+  }
   await page.goto(
     appPath(
       `/operations/runs?status=failed,timeout&workflowId=${fixture.failureWorkflow}`
@@ -111,12 +147,13 @@ test('Operations: edit separate bulk answers in place, resume runs, and inspect 
   await expect(
     page.getByRole('heading', { name: 'Runs', exact: true })
   ).toBeVisible();
+  // The row of the seeded failure: its label, and its own run behind it.
   const failed = page.getByRole('row').filter({
-    has: page.getByRole('button', {
-      name: `Copy run ID ${fixture.failureRun}`,
-      exact: true,
-    }),
+    has: page.getByRole('link', { name: fixture.failureLabel, exact: true }),
   });
+  await expect(
+    failed.getByRole('link', { name: 'Open execution', exact: true })
+  ).toHaveAttribute('href', new RegExp(`/${fixture.failureRun}$`));
   await expect(
     failed.getByText('Intentional E2E failure to verify Replay', {
       exact: true,

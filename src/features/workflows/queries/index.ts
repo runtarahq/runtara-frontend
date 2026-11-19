@@ -9,10 +9,13 @@ import {
   ListStepTypesResponse,
   MoveWorkflowRequest,
   RenameFolderRequest,
+  UpdateWorkflowRequest,
   WorkflowInstanceDto,
 } from '@/generated/RuntaraRuntimeApi.ts';
-import { executionGraphToReactFlow } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
-import { ExecutionGraphDto } from '@/features/workflows/types/execution-graph';
+import {
+  type ExecutionGraphDto,
+  workflowExecutionGraph,
+} from '@/features/workflows/types/execution-graph';
 import { parseSchema } from '@/features/workflows/utils/schema';
 import {
   mergeLogSteps,
@@ -25,7 +28,7 @@ import {
   getStaticStepTypesWithRust,
 } from '@/features/workflows/utils/rust-workflow-validation';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders, getRuntimeBaseUrl } from '@/shared/queries/utils';
+import { runtimeFetch } from '@/shared/queries/runtime-fetch';
 
 export interface StepEventsFilters {
   stepId?: string;
@@ -88,11 +91,12 @@ const WORKFLOW_PAGE_SIZE = 100;
  */
 const MAX_WORKFLOW_PAGES = 20;
 
-async function fetchWorkflowPage(token: string, page: number) {
-  const result = await RuntimeREST.api.listWorkflowsHandler(
-    { recursive: true, page, pageSize: WORKFLOW_PAGE_SIZE } as any,
-    createAuthHeaders(token)
-  );
+async function fetchWorkflowPage(page: number) {
+  const result = await RuntimeREST.api.listWorkflowsHandler({
+    recursive: true,
+    page,
+    pageSize: WORKFLOW_PAGE_SIZE,
+  } as any);
   return result.data;
 }
 
@@ -110,8 +114,8 @@ async function fetchWorkflowPage(token: string, page: number) {
  * Returns the same `{ data: { content, … }, message, success }` envelope as a
  * single page, with the pagination fields restated to describe the aggregate.
  */
-export async function getWorkflows(token: string) {
-  const first = await fetchWorkflowPage(token, 0);
+export async function getWorkflows() {
+  const first = await fetchWorkflowPage(0);
   const firstPage = (first as { data?: Record<string, any> } | undefined)?.data;
   const totalPages: number = firstPage?.totalPages ?? 1;
 
@@ -129,7 +133,7 @@ export async function getWorkflows(token: string) {
 
   const laterPages = await Promise.all(
     Array.from({ length: pagesToFetch - 1 }, (_, index) =>
-      fetchWorkflowPage(token, index + 1)
+      fetchWorkflowPage(index + 1)
     )
   );
 
@@ -157,30 +161,27 @@ export async function getWorkflows(token: string) {
   } as typeof first;
 }
 
-export async function createWorkflow(
-  token: string,
-  workflow: { name: string; description?: string; path?: string }
-) {
-  const result = await RuntimeREST.api.createWorkflowHandler(
-    {
-      name: workflow.name,
-      description: workflow.description || '', // Runtime API requires description
-      // Folder to create in; omitted → the server defaults to the root.
-      ...(workflow.path ? { path: workflow.path } : {}),
-    },
-    createAuthHeaders(token)
-  );
+export async function createWorkflow(workflow: {
+  name: string;
+  description?: string;
+  path?: string;
+}) {
+  const result = await RuntimeREST.api.createWorkflowHandler({
+    name: workflow.name,
+    description: workflow.description || '', // Runtime API requires description
+    // Folder to create in; omitted → the server defaults to the root.
+    ...(workflow.path ? { path: workflow.path } : {}),
+  });
 
   // Return the full wrapped response (ApiResponseWorkflowDto)
   // The response structure is: { data: WorkflowDto, message: string, success: boolean }
   return result.data;
 }
 
-export async function getWorkflow(token: string, workflowId: string) {
+export async function getWorkflow(workflowId: string) {
   const result = await RuntimeREST.api.getWorkflowHandler(
     workflowId,
-    undefined,
-    createAuthHeaders(token)
+    undefined
   );
 
   // Return the full wrapped response { data: WorkflowDto, message, success }
@@ -263,7 +264,6 @@ export async function holdForQueuedRow(
 }
 
 export async function getWorkflowInstance(
-  token: string,
   workflowId: string,
   instanceId: string,
   options?: { full?: boolean }
@@ -272,10 +272,9 @@ export async function getWorkflowInstance(
   // the byte-complete input/output (copy-to-clipboard, download) get the real
   // value. Default fetches stay elided/lean. The query field is serialized at
   // runtime even though the generated `RequestParams` type omits it.
-  const params = {
-    ...createAuthHeaders(token),
-    ...(options?.full ? { query: { full: 'true' } } : {}),
-  };
+  const params = (
+    options?.full ? { query: { full: 'true' } } : {}
+  ) as Parameters<typeof RuntimeREST.api.getInstanceHandler>[2];
   const result = await RuntimeREST.api.getInstanceHandler(
     workflowId,
     instanceId,
@@ -310,11 +309,8 @@ export async function getWorkflowInstance(
 // Using the WorkflowVersionInfoDto from the Runtime API client
 export type { WorkflowVersionInfoDto } from '@/generated/RuntaraRuntimeApi.ts';
 
-export async function getWorkflowVersions(token: string, workflowId: string) {
-  const result = await RuntimeREST.api.listWorkflowVersionsHandler(
-    workflowId,
-    createAuthHeaders(token)
-  );
+export async function getWorkflowVersions(workflowId: string) {
+  const result = await RuntimeREST.api.listWorkflowVersionsHandler(workflowId);
 
   // Return the full wrapped response { data: WorkflowVersionInfoDto[], message, success }
   // UI components will extract the data array
@@ -322,14 +318,12 @@ export async function getWorkflowVersions(token: string, workflowId: string) {
 }
 
 export async function getWorkflowWorkflow(
-  token: string,
   workflowId: string,
   versionNumber?: number
 ) {
   const result = await RuntimeREST.api.getWorkflowHandler(
     workflowId,
-    versionNumber ? { versionNumber } : undefined,
-    createAuthHeaders(token)
+    versionNumber ? { versionNumber } : undefined
   );
 
   // Runtime API returns wrapped response: ApiResponseWorkflowDto
@@ -337,10 +331,7 @@ export async function getWorkflowWorkflow(
   const responseData = result.data as ApiResponseWorkflowDto;
   const workflowData = responseData.data;
 
-  const { executionGraph = {} } = workflowData;
-
-  // Backend now always provides Start and Finish steps
-  const { nodes, edges } = executionGraphToReactFlow(executionGraph);
+  const executionGraph = workflowExecutionGraph(workflowData);
 
   // Parse variables from API format to array format used by the UI
   // Variables are now inside executionGraph (moved from workflow root)
@@ -389,8 +380,9 @@ export async function getWorkflowWorkflow(
       ...workflowData,
       name,
       description,
-      nodes,
-      edges,
+      // The graph as the server holds it. The editor draws it from here
+      // (workflowStore.setExecutionGraph); the cache holds no canvas nodes.
+      executionGraph,
       variables,
       inputSchemaFields,
       outputSchemaFields,
@@ -407,48 +399,38 @@ export async function getWorkflowWorkflow(
   };
 }
 
-export async function updateWorkflow(
-  token: string,
-  newWorkflow: {
-    id: string;
-    data: ExecutionGraphDto; // name and description are now inside the execution graph
-    memoryMb?: number | null;
-    trackEvents?: boolean | null;
-  }
-) {
+export async function updateWorkflow(newWorkflow: {
+  id: string;
+  data: ExecutionGraphDto; // name and description are now inside the execution graph
+  memoryMb?: number | null;
+  trackEvents?: boolean | null;
+}) {
   const { id, data, memoryMb, trackEvents } = newWorkflow;
 
-  const result = await RuntimeREST.api.updateWorkflowHandler(
-    id,
-    {
-      executionGraph: data,
-      ...(memoryMb !== undefined ? { memoryMb } : {}),
-      ...(trackEvents !== undefined ? { trackEvents } : {}),
-    },
-    createAuthHeaders(token)
-  );
+  const result = await RuntimeREST.api.updateWorkflowHandler(id, {
+    // The editor saves a graph as it stands, unfinished or not: the server's
+    // validator, not this type, says what it lacks.
+    executionGraph: data as UpdateWorkflowRequest['executionGraph'],
+    ...(memoryMb !== undefined ? { memoryMb } : {}),
+    ...(trackEvents !== undefined ? { trackEvents } : {}),
+  });
 
   // Return the full wrapped response (ApiResponseWorkflowDto)
   // The response structure is: { data: WorkflowDto, message: string, success: boolean }
   return result.data;
 }
 
-export async function removeWorkflow(token: string, workflowId: string) {
-  await RuntimeREST.api.deleteWorkflowHandler(
-    workflowId,
-    createAuthHeaders(token)
-  );
+export async function removeWorkflow(workflowId: string) {
+  await RuntimeREST.api.deleteWorkflowHandler(workflowId);
 }
 
 export async function getCompilationProgress(
-  token: string,
   workflowId: string,
   version: number
 ): Promise<CompilationProgressResponse> {
   const result = await RuntimeREST.api.compilationProgressHandler(
     workflowId,
-    version,
-    createAuthHeaders(token)
+    version
   );
   return result.data;
 }
@@ -464,24 +446,23 @@ export async function getCompilationProgress(
  * progress poll keyed on `watchedCompilationVersion` reflects status live.
  */
 export async function rebuildWorkflowVersion(
-  token: string,
   workflowId: string,
   version: number
 ): Promise<void> {
-  const base = getRuntimeBaseUrl();
-  const url = `${base}/workflows/${encodeURIComponent(
-    workflowId
-  )}/versions/${version}/compile?forceRecompile=true`;
   // Intentionally not awaiting on the UI thread — the backend blocks its
   // HTTP response until the compile finishes (~30 s), but the toolbar
-  // polling endpoint already drives status, including the failure case.
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  void fetch(url, { method: 'POST', headers });
+  // polling endpoint already drives status, including the failure case. A
+  // request that never reaches the server is not seen by that poll, so it is
+  // logged here rather than dropped.
+  void runtimeFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/versions/${version}/compile?forceRecompile=true`,
+    { method: 'POST' }
+  ).catch((error) => {
+    console.warn('[workflows] the rebuild request was not sent', error);
+  });
 }
 
 export async function scheduleWorkflow(
-  token: string,
   workflowId: string,
   inputs?: Record<string, unknown>,
   version?: number,
@@ -496,19 +477,15 @@ export async function scheduleWorkflow(
   const result = await RuntimeREST.api.executeWorkflowHandler(
     workflowId,
     { inputs: formattedInputs, ...(debug ? { debug: true } : {}) },
-    version !== undefined ? { version } : undefined,
-    createAuthHeaders(token)
+    version !== undefined ? { version } : undefined
   );
 
   // Return simplified response (ExecuteWorkflowResponse now only has instanceId and status)
   return result.data;
 }
 
-export async function resumeInstance(token: string, instanceId: string) {
-  const result = await RuntimeREST.api.resumeInstanceHandler(
-    instanceId,
-    createAuthHeaders(token)
-  );
+export async function resumeInstance(instanceId: string) {
+  const result = await RuntimeREST.api.resumeInstanceHandler(instanceId);
 
   return result.data;
 }
@@ -519,19 +496,13 @@ export async function resumeInstance(token: string, instanceId: string) {
  * POST /api/runtime/workflows/instances/{instanceId}/pause
  * (api/handlers/workflows.rs::pause_instance_handler). Only instances in the
  * 'running' state can be paused; already-suspended instances are a no-op 200
- * and any other state returns 400 "Instance not pausable". The generated API
- * client does not expose this handler yet, so call it with a raw fetch like
- * rebuildWorkflowVersion does.
+ * and any other state returns 400 "Instance not pausable".
  */
-export async function pauseInstance(token: string, instanceId: string) {
-  const base = getRuntimeBaseUrl();
-  const url = `${base}/workflows/instances/${encodeURIComponent(
-    instanceId
-  )}/pause`;
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const response = await fetch(url, { method: 'POST', headers });
+export async function pauseInstance(instanceId: string) {
+  const response = await runtimeFetch(
+    `/workflows/instances/${encodeURIComponent(instanceId)}/pause`,
+    { method: 'POST' }
+  );
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -543,59 +514,46 @@ export async function pauseInstance(token: string, instanceId: string) {
   return payload;
 }
 
-export async function cloneWorkflow(
-  token: string,
-  workflowId: string,
-  name?: string
-) {
-  const result = await RuntimeREST.api.cloneWorkflowHandler(
-    workflowId,
-    { name: name || `Copy ${Date.now()}` },
-    createAuthHeaders(token)
-  );
+export async function cloneWorkflow(workflowId: string, name?: string) {
+  const result = await RuntimeREST.api.cloneWorkflowHandler(workflowId, {
+    name: name || `Copy ${Date.now()}`,
+  });
 
   return result.data;
 }
 
-export async function setCurrentVersion(
-  token: string,
-  params: { workflowId: string; versionNumber: number }
-) {
+export async function setCurrentVersion(params: {
+  workflowId: string;
+  versionNumber: number;
+}) {
   const { workflowId, versionNumber } = params;
   const result = await RuntimeREST.api.setCurrentVersionHandler(
     workflowId,
-    versionNumber,
-    createAuthHeaders(token)
+    versionNumber
   );
 
   return result.data;
 }
 
-export async function getWorkflowStepTypes(
-  token: string
-): Promise<ListStepTypesResponse> {
+export async function getWorkflowStepTypes(): Promise<ListStepTypesResponse> {
   try {
     return await getStaticStepTypesWithRust();
   } catch (error) {
     console.warn('Static WASM step metadata unavailable; using HTTP', error);
-    const result = await RuntimeREST.api.listStepTypesHandler(
-      createAuthHeaders(token)
-    );
+    const result = await RuntimeREST.api.listStepTypesHandler();
 
     return result.data;
   }
 }
 
 // Helper function to fetch agent details using path parameter
-async function fetchAgentDetails(token: string, agentId: string) {
-  const url = `${getRuntimeBaseUrl()}/agents/${encodeURIComponent(agentId)}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
+async function fetchAgentDetails(agentId: string) {
+  const response = await runtimeFetch(
+    `/agents/${encodeURIComponent(agentId)}`,
+    {
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch agent details: ${response.statusText}`);
@@ -605,7 +563,6 @@ async function fetchAgentDetails(token: string, agentId: string) {
 }
 
 export async function getAgents(
-  token: string,
   // Optional entitlement allowlist. When provided, the per-agent details
   // fan-out skips any agent whose module ID is not in the set. Without this,
   // the HTTP fallback below fires `GET /api/runtime/agents/<id>` for *every*
@@ -625,16 +582,14 @@ export async function getAgents(
     };
   } catch (error) {
     console.warn('Static WASM agent metadata unavailable; using HTTP', error);
-    const result = await RuntimeREST.api.listAgentsHandler(
-      createAuthHeaders(token)
-    );
+    const result = await RuntimeREST.api.listAgentsHandler();
 
     // Fetch full details for each *enabled* agent to get capability schemas.
     // Disabled agents would 403 here (the management-plane allowlist gate) —
     // skip them to avoid the round-trip and the console noise.
     const enabledSummaries = result.data.agents.filter((a) => isEnabled(a.id));
     const agentDetailsPromises = enabledSummaries.map((agentSummary) =>
-      fetchAgentDetails(token, agentSummary.id)
+      fetchAgentDetails(agentSummary.id)
     );
 
     const agentsWithDetails = await Promise.all(agentDetailsPromises);
@@ -644,7 +599,6 @@ export async function getAgents(
 }
 
 export async function getAgentDetails(
-  token: string,
   agentId: string
 ): Promise<AgentInfo | null> {
   if (!agentId) {
@@ -660,29 +614,22 @@ export async function getAgentDetails(
     console.warn('Static WASM agent metadata unavailable; using HTTP', error);
   }
 
-  return fetchAgentDetails(token, agentId);
+  return fetchAgentDetails(agentId);
 }
 
-export async function replayWorkflow(token: string, instanceId: string) {
-  const result = await RuntimeREST.api.replayInstanceHandler(
-    instanceId,
-    createAuthHeaders(token)
-  );
+export async function replayWorkflow(instanceId: string) {
+  const result = await RuntimeREST.api.replayInstanceHandler(instanceId);
 
   return result.data;
 }
 
-export async function stopInstance(token: string, instanceId: string) {
-  const result = await RuntimeREST.api.stopInstanceHandler(
-    instanceId,
-    createAuthHeaders(token)
-  );
+export async function stopInstance(instanceId: string) {
+  const result = await RuntimeREST.api.stopInstanceHandler(instanceId);
 
   return result.data;
 }
 
 export async function testAgent(
-  token: string,
   agentId: string,
   capabilityId: string,
   input: Record<string, unknown>,
@@ -696,15 +643,13 @@ export async function testAgent(
     // ahead of `params` — we always want the default engine selection, so
     // pass `undefined` to skip it and slot the auth headers into the right
     // arg position.
-    undefined,
-    createAuthHeaders(token)
+    undefined
   );
 
   return result.data;
 }
 
 export async function getStepEvents(
-  token: string,
   workflowId: string,
   instanceId: string,
   filters?: StepEventsFilters
@@ -712,8 +657,7 @@ export async function getStepEvents(
   const result = await RuntimeREST.api.getStepEvents(
     workflowId,
     instanceId,
-    filters ?? {},
-    createAuthHeaders(token)
+    filters ?? {}
   );
 
   // Return the full wrapped response { data: StepEventsData, message, success }
@@ -737,19 +681,13 @@ const LOG_EVENT_FETCH_LIMIT = 1000;
  * views, and it works for runs that already happened.
  */
 export async function getStepSummaries(
-  token: string,
   workflowId: string,
   instanceId: string,
   filters?: StepSummariesFilters
 ) {
   const [result, logEvents] = await Promise.all([
-    RuntimeREST.api.getStepSummaries(
-      workflowId,
-      instanceId,
-      filters ?? {},
-      createAuthHeaders(token)
-    ),
-    fetchWorkflowLogEvents(token, workflowId, instanceId, filters),
+    RuntimeREST.api.getStepSummaries(workflowId, instanceId, filters ?? {}),
+    fetchWorkflowLogEvents(workflowId, instanceId, filters),
   ]);
 
   const response = result.data as unknown as {
@@ -789,13 +727,12 @@ export async function getStepSummaries(
  * views is a smaller problem than the views failing to render.
  */
 async function fetchWorkflowLogEvents(
-  token: string,
   workflowId: string,
   instanceId: string,
   filters?: StepSummariesFilters
 ): Promise<WorkflowLogEvent[]> {
   try {
-    const response = await getStepEvents(token, workflowId, instanceId, {
+    const response = await getStepEvents(workflowId, instanceId, {
       subtype: 'workflow_log',
       limit: LOG_EVENT_FETCH_LIMIT,
       sortOrder: 'asc',
@@ -814,16 +751,16 @@ async function fetchWorkflowLogEvents(
   }
 }
 
-export async function toggleTrackEvents(
-  token: string,
-  params: { workflowId: string; version: number; trackEvents: boolean }
-) {
+export async function toggleTrackEvents(params: {
+  workflowId: string;
+  version: number;
+  trackEvents: boolean;
+}) {
   const { workflowId, version, trackEvents } = params;
   const result = await RuntimeREST.api.toggleTrackEventsHandler(
     workflowId,
     version,
-    { trackEvents },
-    createAuthHeaders(token)
+    { trackEvents }
   );
 
   // Return the full wrapped response (ApiResponseWorkflowDto)
@@ -835,51 +772,42 @@ export async function toggleTrackEvents(
 /**
  * Fetch all distinct folder paths for the current tenant
  */
-export async function getFolders(token: string): Promise<FoldersResponse> {
-  const result = await RuntimeREST.api.listFoldersHandler(
-    createAuthHeaders(token)
-  );
+export async function getFolders(): Promise<FoldersResponse> {
+  const result = await RuntimeREST.api.listFoldersHandler();
   return result.data;
 }
 
 /**
  * Fetch workflows with optional folder filtering and pagination
  */
-export async function getWorkflowsInFolder(
-  token: string,
-  params: {
-    path?: string;
-    recursive?: boolean;
-    page?: number;
-    pageSize?: number;
-    search?: string;
-  }
-) {
-  const result = await RuntimeREST.api.listWorkflowsHandler(
-    {
-      path: params.path,
-      recursive: params.recursive ?? false,
-      page: params.page,
-      pageSize: params.pageSize,
-      search: params.search || undefined,
-    } as any,
-    createAuthHeaders(token)
-  );
+export async function getWorkflowsInFolder(params: {
+  path?: string;
+  recursive?: boolean;
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}) {
+  const result = await RuntimeREST.api.listWorkflowsHandler({
+    path: params.path,
+    recursive: params.recursive ?? false,
+    page: params.page,
+    pageSize: params.pageSize,
+    search: params.search || undefined,
+  } as any);
   return result.data;
 }
 
 /**
  * Move a workflow to a different folder
  */
-export async function moveWorkflowToFolder(
-  token: string,
-  params: { workflowId: string; path: string }
-) {
+export async function moveWorkflowToFolder(params: {
+  workflowId: string;
+  path: string;
+}) {
   const request: MoveWorkflowRequest = { path: params.path };
   const result = await RuntimeREST.api.moveWorkflowHandler(
     params.workflowId,
-    request,
-    createAuthHeaders(token)
+    request
   );
   return result.data;
 }
@@ -887,18 +815,15 @@ export async function moveWorkflowToFolder(
 /**
  * Rename a folder (updates all workflows with matching path prefix)
  */
-export async function renameFolder(
-  token: string,
-  params: { currentPath: string; newPath: string }
-) {
+export async function renameFolder(params: {
+  currentPath: string;
+  newPath: string;
+}) {
   const request: RenameFolderRequest = {
     oldPath: params.currentPath,
     newPath: params.newPath,
   };
-  const result = await RuntimeREST.api.renameFolderHandler(
-    request,
-    createAuthHeaders(token)
-  );
+  const result = await RuntimeREST.api.renameFolderHandler(request);
   return result.data;
 }
 
@@ -906,7 +831,7 @@ export async function renameFolder(
  * Delete a folder by moving all its workflows to root
  * (This is a convention - actual deletion moves workflows to root)
  */
-export async function deleteFolder(token: string, folderPath: string) {
+export async function deleteFolder(folderPath: string) {
   // To delete a folder, we rename it to root (which effectively removes the folder)
   // Or we can move all workflows in the folder to root
   // For now, we'll use rename to move everything to root
@@ -914,10 +839,7 @@ export async function deleteFolder(token: string, folderPath: string) {
     oldPath: folderPath,
     newPath: '/',
   };
-  const result = await RuntimeREST.api.renameFolderHandler(
-    request,
-    createAuthHeaders(token)
-  );
+  const result = await RuntimeREST.api.renameFolderHandler(request);
   return result.data;
 }
 
@@ -927,21 +849,14 @@ export type PendingInput =
   import('@/generated/RuntaraRuntimeApi').PendingInputResponse;
 
 export async function getPendingInput(
-  token: string,
   workflowId: string,
   instanceId: string,
   signal?: AbortSignal
 ): Promise<PendingInput[]> {
-  const url = `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/instances/${encodeURIComponent(instanceId)}/pending-input`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await runtimeFetch(
+    `/workflows/${encodeURIComponent(workflowId)}/instances/${encodeURIComponent(instanceId)}/pending-input`,
+    { signal, headers: { 'Content-Type': 'application/json' } }
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch pending input: ${response.statusText}`);
@@ -955,21 +870,15 @@ export async function getPendingInput(
   return json.data.pendingInputs;
 }
 
-export async function deliverSignal(
-  token: string,
-  instanceId: string,
-  body: InputSubmission
-) {
-  const url = `${getRuntimeBaseUrl()}/signals/${encodeURIComponent(instanceId)}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+export async function deliverSignal(instanceId: string, body: InputSubmission) {
+  const response = await runtimeFetch(
+    `/signals/${encodeURIComponent(instanceId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
 
   const result = await response.json().catch(() => null);
   if (!response.ok) {

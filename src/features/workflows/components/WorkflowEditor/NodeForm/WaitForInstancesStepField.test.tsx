@@ -5,6 +5,8 @@ import { FormProvider, useForm, type UseFormReturn } from 'react-hook-form';
 import { NodeFormContext, NodeFormContextContextData } from './NodeFormContext';
 import { WaitForInstancesStepField } from './WaitForInstancesStepField';
 import { canStepHaveErrorHandler } from '@/features/workflows/utils/step-error-support';
+import { STEP_TYPE_UI } from '@/features/workflows/step-types/ui';
+import { STEP_TYPE_NAMES } from '@/features/workflows/types/execution-graph';
 
 type FormValues = Record<string, unknown>;
 
@@ -136,12 +138,14 @@ describe('WaitForInstancesStepField', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders nothing for another step type', () => {
-    const { container } = renderField({
-      stepType: 'WaitForSignal',
-      inputMapping: [],
-    });
-    expect(container).toBeEmptyDOMElement();
+  it('is the form of its own step type, and of no other', () => {
+    // The node form picks a step's form from this table; the field no longer
+    // checks the step type itself.
+    const owners = STEP_TYPE_NAMES.filter(
+      (stepType) =>
+        STEP_TYPE_UI[stepType].FormField === WaitForInstancesStepField
+    );
+    expect(owners).toEqual(['WaitForInstances']);
   });
 
   it('offers the error route under both spellings of the step type', () => {

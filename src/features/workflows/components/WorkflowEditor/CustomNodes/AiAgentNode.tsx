@@ -1,3 +1,4 @@
+import { memoryProviderInputs } from '../NodeForm/memory-provider';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Handle, Node, NodeProps, Position } from '@xyflow/react';
 import { Plus, CheckCircle2, XCircle, Pause } from 'lucide-react';
@@ -8,7 +9,6 @@ import { StepTypeIcon } from '@/features/workflows/components/StepTypeIcon';
 import * as form from '@/features/workflows/components/WorkflowEditor/NodeForm/NodeFormItem.tsx';
 import {
   generateStepId,
-  dirtied,
   useWorkflowStore,
 } from '@/features/workflows/stores/workflowStore.ts';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
@@ -101,10 +101,8 @@ function AiAgentNodeComponent({
   const hasUnsavedChanges = useWorkflowStore((state) =>
     state.stagedNodeIds.has(id)
   );
-  const hasValidationError = useWorkflowStore((state) =>
-    state.stepsWithErrors.has(id)
-  );
-  const hasValidationErrorFromPanel = useValidationStore((state) =>
+  // Whether a problem in the panel names this step.
+  const showValidationError = useValidationStore((state) =>
     state.stepsWithErrors.has(id)
   );
   const hasValidationWarning = useValidationStore((state) =>
@@ -113,7 +111,6 @@ function AiAgentNodeComponent({
   const validationMessage = useValidationStore((state) =>
     getFirstValidationMessage(state, id)
   );
-  const showValidationError = hasValidationError || hasValidationErrorFromPanel;
 
   // Extract tool names from inputMapping
   const toolNames = useMemo(() => {
@@ -253,11 +250,9 @@ function AiAgentNodeComponent({
           data: { ...n.data, inputMapping: currentMapping },
         };
       });
-      useWorkflowStore.setState((state) => ({
-        nodes: updatedNodes,
-        ...dirtied(state),
-        isStructurallyDirty: true,
-      }));
+      useWorkflowStore
+        .getState()
+        .editNodes(() => updatedNodes, { structural: true });
 
       // Create hidden tool step node positioned off to the right
       const currentPosAbsX =
@@ -343,23 +338,11 @@ function AiAgentNodeComponent({
         storeNodes.map((n) => n.id)
       );
 
-      // Pre-populate memory provider step with required inputs
-      // (conversation_id and messages are normally filled at runtime by the AI Agent,
-      //  but the static validation requires them in inputMapping)
-      const memoryStepInputMapping = [
-        {
-          type: 'conversation_id',
-          value: '',
-          valueType: 'reference',
-          typeHint: 'string',
-        },
-        {
-          type: 'messages',
-          value: '',
-          valueType: 'reference',
-          typeHint: 'json',
-        },
-      ];
+      // The provider's inputs, mapped for the validator (the agent fills
+      // them at run time): the ones its capability has.
+      const memoryStepInputMapping = memoryProviderInputs(
+        result.capabilityInputs
+      );
 
       const nodeData = {
         ...form.initialValues,
@@ -411,11 +394,9 @@ function AiAgentNodeComponent({
           data: { ...n.data, inputMapping: currentMapping },
         };
       });
-      useWorkflowStore.setState((state) => ({
-        nodes: updatedNodes,
-        ...dirtied(state),
-        isStructurallyDirty: true,
-      }));
+      useWorkflowStore
+        .getState()
+        .editNodes(() => updatedNodes, { structural: true });
 
       const afterAdd = useWorkflowStore.getState().dirtyRevision;
       setStepPickerMode(null);
@@ -427,14 +408,15 @@ function AiAgentNodeComponent({
         // Nothing else changed since: back to the state before the pick.
         const untouched = store.dirtyRevision === afterAdd;
         store.removeNode(newNodeId);
-        useWorkflowStore.setState((state) => ({
-          nodes: state.nodes.map((n) =>
-            n.id === id
-              ? { ...n, data: { ...n.data, inputMapping: previousMapping } }
-              : n
-          ),
-          ...(untouched ? wasDirty : {}),
-        }));
+        store.revertNodes(
+          (nodes) =>
+            nodes.map((n) =>
+              n.id === id
+                ? { ...n, data: { ...n.data, inputMapping: previousMapping } }
+                : n
+            ),
+          untouched ? wasDirty : undefined
+        );
       });
     },
     [id, addNode, addStoreEdge, configureNewMemory]
@@ -468,6 +450,10 @@ function AiAgentNodeComponent({
     <>
       <BaseNode
         id={id}
+        // The card draws its own header, so it names itself here, as every
+        // other step on the canvas is named.
+        data-step-name={String((data as { name?: string }).name ?? '')}
+        data-step-type="AiAgent"
         selected={selected}
         executionStatus={executionStatus}
         hasUnsavedChanges={hasUnsavedChanges}

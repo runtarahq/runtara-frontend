@@ -114,7 +114,7 @@ export const NodeFormProvider = ({
   );
   const agentsQuery = useCustomQuery({
     queryKey: queryKeys.agents.all,
-    queryFn: (token: string) => getAgents(token, enabledAgentIds),
+    queryFn: () => getAgents(enabledAgentIds),
     placeholderData: { agents: [] },
   });
 

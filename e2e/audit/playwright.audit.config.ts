@@ -4,8 +4,13 @@ import { fileURLToPath } from 'url';
 
 /**
  * Runs the implicit-state audit (docs/implicit-state.md) on its own, outside
- * the mocked PR gate: these specs assert defects that exist today, so a passing
- * spec means "reproduced", and they must not gate pull requests.
+ * the mocked PR gate. Each spec states the correct behaviour of one claim; the
+ * defects are fixed, so these are regression tests, and a failure is a
+ * regression. The one that still wraps its assertions in `knownDefect()`
+ * (SH-3, kept by decision) passes while that defect is there.
+ *
+ * About 16 minutes, so CI runs it on main and nightly
+ * (.github/workflows/audit.yml) rather than on every pull request.
  *
  *   npx playwright test -c e2e/audit/playwright.audit.config.ts
  */
@@ -16,7 +21,8 @@ export default defineConfig({
   testMatch: /.*\.audit\.spec\.ts/,
   fullyParallel: true,
   workers: 4,
-  retries: 0,
+  // A spec that waits on a held response can lose a race on a busy runner.
+  retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
   outputDir: path.join(dir, '../../e2e-results/audit'),
   timeout: 60_000,

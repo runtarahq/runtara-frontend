@@ -193,11 +193,8 @@ function SwitchNodeComponent({
     state.stagedNodeIds.has(id)
   );
 
-  // Check if this node has validation errors
-  const hasValidationError = useWorkflowStore((state) =>
-    state.stepsWithErrors.has(id)
-  );
-  const hasValidationErrorFromPanel = useValidationStore((state) =>
+  // Whether a problem in the panel names this step.
+  const showValidationError = useValidationStore((state) =>
     state.stepsWithErrors.has(id)
   );
   const hasValidationWarning = useValidationStore((state) =>
@@ -206,7 +203,6 @@ function SwitchNodeComponent({
   const validationMessage = useValidationStore((state) =>
     getFirstValidationMessage(state, id)
   );
-  const showValidationError = hasValidationError || hasValidationErrorFromPanel;
 
   // Extract cases and routing mode from inputMapping
   const inputMapping = data.inputMapping || [];

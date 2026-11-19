@@ -1,6 +1,6 @@
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
-import { useVersionStateSchema } from '@/features/operations/state-schema';
-import { stateLabel } from '@/features/operations/state-label';
+import { useVersionStateSchema } from '@/features/runs/hooks/useVersionStateSchema';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import { PayloadExplorer } from '@/shared/components/PayloadExplorer';
 import { formatRelativeTime } from '@/lib/utils';
 import {
@@ -20,7 +20,6 @@ import {
   type PendingInput,
 } from '@/features/workflows/queries';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useToken } from '@/shared/hooks';
 import { HumanInputCard } from '@/features/workflows/components/ExecutionPanel/HumanInputCard';
 import { PauseButton } from '@/features/workflows/components/PauseButton';
 import { ReplayButton } from '@/features/workflows/components/ReplayButton';
@@ -44,8 +43,8 @@ import {
 } from '@/features/workflows/components/ExecutionTimeline';
 import { RunOverviewCard } from './RunOverviewCard';
 import { GuestOutputCard } from './GuestOutputCard';
-import { canResume } from '@/features/workflows/utils/suspension';
-import { ChildRunsCard } from '@/features/invocation-history/components/RunLinks';
+import { canResume } from '@/features/runs/utils/suspension';
+import { ChildRunsCard } from '@/features/runs/components/RunLinks';
 
 /** Outputs may be stored as a JSON string; show them parsed when they are. */
 function parseRunOutputs(outputs: unknown): unknown {
@@ -74,13 +73,11 @@ function WorkflowHistoryContent() {
     null
   );
 
-  const token = useToken();
   const submissions = useManagedInputSubmissions();
 
   const { data, isLoading, isError, refetch } = useCustomQuery({
     queryKey: queryKeys.workflows.instance(workflowId ?? '', instanceId ?? ''),
-    queryFn: (token: string) =>
-      getWorkflowInstance(token, workflowId!, instanceId!),
+    queryFn: () => getWorkflowInstance(workflowId!, instanceId!),
     enabled: !!workflowId && !!instanceId,
     refetchInterval: (query): number | false =>
       isActiveStatus(query.state.data?.status) ? 10000 : false,
@@ -94,8 +91,7 @@ function WorkflowHistoryContent() {
       workflowId ?? '',
       instanceId ?? ''
     ),
-    queryFn: (token: string) =>
-      getPendingInput(token, workflowId!, instanceId!),
+    queryFn: () => getPendingInput(workflowId!, instanceId!),
     enabled: !!workflowId && !!instanceId,
     placeholderData: undefined,
     refetchInterval: () => {
@@ -161,14 +157,14 @@ function WorkflowHistoryContent() {
   // Elided placeholders (large uploads) are re-fetched in full on request.
   const loadFullRunValue = useCallback(
     async (sectionId: string) => {
-      const full = await getWorkflowInstance(token, workflowId!, instanceId!, {
+      const full = await getWorkflowInstance(workflowId!, instanceId!, {
         full: true,
       });
       if (sectionId === 'input') return full.inputs;
       if (sectionId === 'output') return parseRunOutputs(full.outputs);
       return full.state;
     },
-    [token, workflowId, instanceId]
+    [workflowId, instanceId]
   );
 
   // Set page title with workflow name from metadata if available

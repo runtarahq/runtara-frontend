@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ExecutionHistoryFilters } from '../types';
+import type { ExecutionHistoryFilters } from '@/features/runs/types';
 import { InvocationHistoryTable } from './InvocationHistoryTable';
 
 const query = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/hooks/api', () => ({ useCustomQuery: query }));
-vi.mock('../queries', () => ({ getAllExecutions: vi.fn() }));
+vi.mock('@/features/runs/queries/executions', () => ({
+  getAllExecutions: vi.fn(),
+}));
 vi.mock('./OperationsRunColumns', () => ({ operationsRunColumns: () => [] }));
 vi.mock('./RunRow', () => ({
   RunIdentity: () => null,
@@ -20,7 +22,7 @@ vi.mock('./RunRow', () => ({
     onReplay: (run: unknown) => void;
   }) => <button onClick={() => onReplay(run)}>Open replay</button>,
 }));
-vi.mock('@/features/operations/pages/shared', () => ({
+vi.mock('@/features/runs/components/RunActions', () => ({
   ReplayButton: ({ run }: { run: { id: string } }) => (
     <p>Replay snapshot: {run.id}</p>
   ),

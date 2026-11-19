@@ -23,7 +23,7 @@ vi.mock('@/features/workflows/utils/form-schema-adapter', () => ({
 vi.mock('@/features/workflows/hooks/useManagedInputSubmissions', () => ({
   useManagedInputSubmissions: () => ({ inputs: [], submit }),
 }));
-vi.mock('../answer-options', () => ({
+vi.mock('@/features/operations/utils/answer-options', () => ({
   inlineOptions: () => ({ field: 'decision', values: ['approve', 'reject'] }),
 }));
 

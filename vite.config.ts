@@ -1,51 +1,22 @@
-import path from 'path';
 import react from '@vitejs/plugin-react';
-import { defineConfig, type Plugin } from 'vite';
-
-const editionDir = process.env.RUNTARA_EDITION_DIR
-  ? path.resolve(process.env.RUNTARA_EDITION_DIR)
-  : undefined;
-
-/**
- * Resolves the packages an edition outside this directory imports (react,
- * lucide-react, ...) from this frontend, as if it sat in src: it has no
- * node_modules of its own, and it must share this build's one React.
- */
-function editionPackages(dir: string): Plugin {
-  const fromSrc = path.resolve(__dirname, 'src/main.tsx');
-  return {
-    name: 'runtara-edition-packages',
-    enforce: 'pre',
-    resolveId(source, importer, options) {
-      const bare =
-        !source.startsWith('.') &&
-        !source.startsWith('/') &&
-        !source.startsWith('\0') &&
-        !source.startsWith('@/') &&
-        source !== '@edition';
-      if (!bare || !importer?.startsWith(dir + path.sep)) return null;
-      return this.resolve(source, fromSrc, { ...options, skipSelf: true });
-    },
-  };
-}
+import { defineConfig } from 'vite';
+import { editionAlias, editionPlugins } from './edition.config';
 
 export default defineConfig({
   // Relative base: assets resolve against index.html's `<base href="/">`, so
   // one bundle serves every mount path (`/ui/`, `/ui/<tenant-id>/`, ...).
   base: './',
-  plugins: [react(), ...(editionDir ? [editionPackages(editionDir)] : [])],
+  plugins: [react(), ...editionPlugins],
 
   resolve: {
-    alias: {
-      // The console's edition (src/shared/edition/types.ts): this repository's
-      // by default, a distribution's module when RUNTARA_EDITION_DIR names one.
-      '@edition': path.resolve(__dirname, editionDir ?? './src/edition'),
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: editionAlias,
   },
 
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router'],
+    // `react-dom/client` by name: left to be discovered on the first page
+    // load, it is bundled in a second pass under another version stamp, and
+    // a cold dev server (CI's, for the audit specs) reloads mid-test.
+    include: ['react', 'react-dom', 'react-dom/client', 'react-router'],
     exclude: ['@vite/client', '@vite/env'],
   },
 

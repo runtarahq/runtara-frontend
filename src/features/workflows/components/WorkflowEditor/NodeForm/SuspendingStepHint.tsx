@@ -14,6 +14,7 @@ import { NodeFormContext } from './NodeFormContext';
  * long-polling agent): the step must stay durable (E028) and set a timeout
  * above 0 ms (E029). Turns into a warning while either requirement is unmet.
  */
+import { stepTakesAgent } from '@/features/workflows/step-types/catalog';
 export function SuspendingStepHint() {
   const form = useFormContext();
   const { agents } = useContext(NodeFormContext);
@@ -26,7 +27,7 @@ export function SuspendingStepHint() {
   const durable = useWatch({ name: 'durable', control: form.control });
   const timeout = useWatch({ name: 'timeout', control: form.control });
 
-  if (stepType !== 'Agent' || !agentId || !capabilityId) return null;
+  if (!stepTakesAgent(stepType) || !agentId || !capabilityId) return null;
   const capability = findAgentById(agents, agentId)?.supportedCapabilities?.[
     capabilityId
   ];

@@ -32,7 +32,6 @@ export function ErrorStepField({ name }: ErrorStepFieldProps) {
 
   // Initialize Error step fields when first created
   useEffect(() => {
-    if (stepType !== 'Error') return;
     if (nodeId) return; // Don't reset in edit mode
 
     // Set default values if not already set
@@ -76,9 +75,6 @@ export function ErrorStepField({ name }: ErrorStepFieldProps) {
   });
 
   // Early return after all hooks are called
-  if (stepType !== 'Error') {
-    return null;
-  }
 
   // Helper to get current value from inputMapping array
   const getValue = (fieldName: string) => {

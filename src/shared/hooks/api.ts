@@ -21,16 +21,14 @@ interface PaginatedResponse<T = unknown> {
   totalPages: number;
 }
 
-// Token type uses 'any' because existing queryFn/mutationFn callbacks expect 'string'
-// but hooks provide 'string | undefined'. This maintains backwards compatibility.
-type QueryFnType<TData> = (token: any, context?: any) => Promise<TData>;
-type MutationFnType<TData, TVariables> = (
-  token: any,
-  data: TVariables
+// A query or mutation function takes no token: the API clients send the
+// signed-in user's themselves (see attachAccessToken in shared/queries).
+type QueryFnType<TData> = (
+  context: QueryFunctionContext<QueryKey>
 ) => Promise<TData>;
+type MutationFnType<TData, TVariables> = (data: TVariables) => Promise<TData>;
 type TableQueryFnType<T> = (
-  token: any,
-  context?: any
+  context: QueryFunctionContext<QueryKey>
 ) => Promise<PaginatedResponse<T>>;
 
 interface CustomQueryOptions<TData = unknown> extends Omit<
@@ -39,6 +37,29 @@ interface CustomQueryOptions<TData = unknown> extends Omit<
 > {
   queryKey: QueryKey;
   queryFn: QueryFnType<TData>;
+}
+
+export { keepPreviousData };
+
+/**
+ * `placeholderData` for a list: keeps the previous answer on screen while the
+ * next loads, as long as both are of the same thing. `scope` is the leading
+ * part of the key the two must share (the list's schema, its folder); what
+ * follows it in the key (the page, the filters) may differ. A list of
+ * another thing starts clean.
+ */
+export function keepPreviousWithin<TData>(scope: QueryKey) {
+  return (
+    previous: TData | undefined,
+    previousQuery: { queryKey: QueryKey } | undefined
+  ): TData | undefined =>
+    previousQuery &&
+    scope.every(
+      (part, index) =>
+        JSON.stringify(previousQuery.queryKey[index]) === JSON.stringify(part)
+    )
+      ? previous
+      : undefined;
 }
 
 export function useCustomQuery<TData = unknown>({
@@ -51,12 +72,16 @@ export function useCustomQuery<TData = unknown>({
   const token = auth.user?.access_token;
 
   const customQueryFn = async (context: QueryFunctionContext<QueryKey>) => {
-    return queryFn(token, context);
+    return queryFn(context);
   };
 
+  // No placeholder by default: a query whose key changes shows nothing until
+  // its own answer arrives. Keeping the previous answer on screen is right
+  // for a list that is paged or filtered, and wrong for anything keyed by
+  // what it is about, where it showed one thing's data under another's
+  // name. A list asks for it (`keepPreviousData`, `keepPreviousWithin`).
   const customOptions = {
     refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
     ...options,
   };
 
@@ -247,12 +272,7 @@ export function useCustomMutation<TData = unknown, TVariables = unknown>({
   suppressNotFoundToasts = false,
   ...options
 }: CustomMutationOptions<TData, TVariables>) {
-  const auth = useAuth();
-
-  const customMutationFn = async (data: TVariables) => {
-    const token = auth.user?.access_token;
-    return mutationFn(token, data);
-  };
+  const customMutationFn = async (data: TVariables) => mutationFn(data);
 
   const handleError = (error: ApiError) => {
     const validationErrors = error.response?.data?.validationErrors;
@@ -381,7 +401,7 @@ export function useTableQuery<T = unknown>({
   const token = auth.user?.access_token;
 
   const customQueryFn = async (context: QueryFunctionContext<QueryKey>) => {
-    return queryFn(token, context);
+    return queryFn(context);
   };
 
   const customOptions = {

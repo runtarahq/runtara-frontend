@@ -19,7 +19,7 @@ interface UncertainResponse {
 }
 
 /** Discovery is independent of optional SSE/debug events and the stream lifetime. */
-export function useChatInputs(workflowId: string, token: string) {
+export function useChatInputs(workflowId: string) {
   const instanceId = useChatStore((state) => state.instanceId);
   const conversationKey = useChatStore((state) => state.conversationKey);
   const generation = useRef(0);
@@ -56,7 +56,6 @@ export function useChatInputs(workflowId: string, token: string) {
         const page = {
           instanceId: owner.instanceId,
           pendingInputs: await getPendingInput(
-            token,
             workflowId,
             owner.instanceId,
             signal
@@ -95,7 +94,7 @@ export function useChatInputs(workflowId: string, token: string) {
         return false;
       }
     },
-    [workflowId, token]
+    [workflowId]
   );
 
   useEffect(() => {
@@ -165,7 +164,7 @@ export function useChatInputs(workflowId: string, token: string) {
       submitting.current = true;
       owner.setError(null);
       try {
-        await deliverSignal(token, targetInstanceId, submission);
+        await deliverSignal(targetInstanceId, submission);
         if (!isCurrent()) return false;
         uncertain.current.delete(retryKey);
         owner.setPendingInputs(
@@ -216,7 +215,7 @@ export function useChatInputs(workflowId: string, token: string) {
         if (isCurrent()) void refresh();
       }
     },
-    [refresh, token, workflowId]
+    [refresh, workflowId]
   );
 
   return {

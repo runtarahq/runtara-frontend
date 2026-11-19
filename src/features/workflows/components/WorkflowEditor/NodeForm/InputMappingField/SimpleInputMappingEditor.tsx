@@ -650,13 +650,8 @@ export function SimpleInputMappingEditor({
 
   // Called when any field value changes - mark node as staged for highlighting and sync to parent
   const handleFieldChange = useCallback(() => {
-    // Directly mark this node as having staged changes for visual highlighting
-    const currentStagedIds = useWorkflowStore.getState().stagedNodeIds;
-    if (!currentStagedIds.has(nodeId)) {
-      const newStagedIds = new Set(currentStagedIds);
-      newStagedIds.add(nodeId);
-      useWorkflowStore.getState().setStagedNodeIds(newStagedIds);
-    }
+    // Mark this node as having staged changes, for its card's highlight.
+    useWorkflowStore.getState().markNodeStaged(nodeId);
     // Sync changes to react-hook-form so they are included in staged changes
     syncToParent();
   }, [nodeId, syncToParent]);

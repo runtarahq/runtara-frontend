@@ -499,7 +499,7 @@ test.describe('Editor audit B', () => {
 
     // The real component, same React, no remount: only the prop changes.
     const seen = await page.evaluate(async (cond) => {
-      const url = '/src/shared/components/ui/condition-editor.tsx';
+      const url = '/src/shared/conditions/ConditionEditor.tsx';
       const src = await (await fetch(url)).text();
       const react = src.match(
         /"(\/node_modules\/\.vite\/deps\/react\.js[^"]*)"/

@@ -77,7 +77,6 @@ export function SplitStepField({ name }: SplitStepFieldProps) {
   const [structuredPickerIndex, setStructuredPickerIndex] = useState<
     number | null
   >(null);
-  const stepType = useWatch({ name: 'stepType', control: form.control });
 
   // Variables fields (variables to pass to subgraph)
   const {
@@ -283,10 +282,6 @@ export function SplitStepField({ name }: SplitStepFieldProps) {
       shouldDirty: true,
     });
   }, [form, outputSchemaSignature, outputSchemaValues]);
-
-  if (stepType !== 'Split') {
-    return null;
-  }
 
   return (
     <div className="space-y-6">

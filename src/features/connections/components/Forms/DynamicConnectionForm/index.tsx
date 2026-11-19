@@ -11,8 +11,7 @@ import type {
   RateLimitConfigDto,
   RateLimitStatusDto,
 } from '@/generated/RuntaraRuntimeApi';
-import { NextForm } from '@/shared/components/NextForm';
-import { reportFirstFormError } from '@/shared/components/NextForm/form-errors';
+import { FormSection, FormShell, reportFirstFormError } from '@/shared/forms';
 import { ServiceIcon } from '@/shared/components/service-icon';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import {
@@ -23,7 +22,6 @@ import {
 
 import { ConnectionPageShell } from '../ConnectionPageShell';
 import { ConnectionSaveBar } from '../ConnectionSaveBar';
-import { CollapsedSection } from '../CollapsedSection';
 import { DangerZoneSection } from '../DangerZoneSection';
 import { ConnectionStatusCard } from '../../ConnectionStatusCard';
 import { DeleteConnectionDialog } from '../../DeleteConnectionDialog';
@@ -46,6 +44,7 @@ import {
 } from './adapter';
 import { ConnectionFieldFrame } from './ConnectionFieldFrame';
 
+import { useWarnBeforeUnload } from '@/shared/hooks/useWarnBeforeUnload';
 const EMPTY_SECRET_STATE: NonNullable<EditProjection['secretState']> = {};
 
 type DynamicConnectionFormProps = {
@@ -274,14 +273,7 @@ export function DynamicConnectionForm({
     return () => setBlocker(false);
   }, [hasPendingChanges, setBlocker, form]);
 
-  useEffect(() => {
-    if (!hasPendingChanges) return;
-    const handler = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [hasPendingChanges]);
+  useWarnBeforeUnload(hasPendingChanges);
 
   const handleDiscard = () => {
     // The controlled FieldControls read from useWatch, and with
@@ -391,185 +383,182 @@ export function DynamicConnectionForm({
     mode === 'create' || hasPendingChanges || Boolean(isLoading);
 
   return (
-    <NextForm
+    <FormShell
       form={form}
       onSubmit={handleSubmit}
       onInvalid={handleInvalid}
       className="w-full"
-      renderActions={() => null}
-      renderContent={() => (
-        <ConnectionPageShell
-          mode={mode}
-          integrationIcon={
-            <ServiceIcon
-              serviceId={connectionType.integrationId || undefined}
-              category={connectionType.category || undefined}
+    >
+      <ConnectionPageShell
+        mode={mode}
+        integrationIcon={
+          <ServiceIcon
+            serviceId={connectionType.integrationId || undefined}
+            category={connectionType.category || undefined}
+          />
+        }
+        integrationName={connectionType.displayName || undefined}
+        integrationCategory={connectionType.category || undefined}
+        footer={
+          showSaveBar ? (
+            <ConnectionSaveBar
+              isLoading={isLoading}
+              isSubmitDisabled={analysis?.wasmAvailable === false}
+              submitLabel={
+                mode === 'edit'
+                  ? hasReauthChanges
+                    ? 'Save & Reconnect'
+                    : 'Save changes'
+                  : oauthCreateHint
+                    ? 'Create & Connect'
+                    : 'Create connection'
+              }
+              loadingLabel={mode === 'edit' ? 'Saving...' : 'Creating...'}
+              dirtyCount={dirtyCount}
+              clearedCount={clearedSecrets.size}
+              showDiscard={mode === 'edit' && hasPendingChanges}
+              onDiscard={handleDiscard}
             />
-          }
-          integrationName={connectionType.displayName || undefined}
-          integrationCategory={connectionType.category || undefined}
-          footer={
-            showSaveBar ? (
-              <ConnectionSaveBar
-                isLoading={isLoading}
-                isSubmitDisabled={analysis?.wasmAvailable === false}
-                submitLabel={
-                  mode === 'edit'
-                    ? hasReauthChanges
-                      ? 'Save & Reconnect'
-                      : 'Save changes'
-                    : oauthCreateHint
-                      ? 'Create & Connect'
-                      : 'Create connection'
-                }
-                loadingLabel={mode === 'edit' ? 'Saving...' : 'Creating...'}
-                dirtyCount={dirtyCount}
-                clearedCount={clearedSecrets.size}
-                showDiscard={mode === 'edit' && hasPendingChanges}
-                onDiscard={handleDiscard}
-              />
-            ) : undefined
-          }
-        >
-          <div className="space-y-6">
-            {conflictNotice}
-            {reconnectNotice}
-            {mode === 'create' && managedApps.length > 0 && (
-              <PlatformAppChoice
-                provider={connectionType.displayName || 'the provider'}
-                apps={managedApps}
-                chosen={chosenPlatformApp}
-                onChoose={setChosenPlatformApp}
-              />
-            )}
-            {mode === 'edit' && existingPlatformApp && (
-              <PlatformAppNotice
-                provider={connectionType.displayName || 'the provider'}
-                app={
-                  managedApps.find((app) => app.id === existingPlatformApp)
-                    ?.displayName ?? existingPlatformApp
-                }
-              />
-            )}
-            {mode === 'create' && oauthCreateHint && (
-              <div className="rounded-lg border border-info/40 bg-info/10 px-4 py-3 text-sm text-foreground">
-                After creating, a {connectionType.displayName || 'provider'}{' '}
-                window opens to authorize the connection.
-              </div>
-            )}
-            {mode === 'edit' && (
-              <ConnectionStatusCard
-                status={
-                  ((initValues as { status?: ConnectionStatus })?.status ??
-                    'UNKNOWN') as ConnectionStatus
-                }
-                connectionType={connectionType as ConnectionTypeWithForm}
-                values={editProjection?.values as Record<string, unknown>}
-                configuredSecretCount={configuredSecretCount}
-                updatedAt={(initValues as { updatedAt?: string })?.updatedAt}
-                grantState={
-                  (initValues as { grantState?: ConnectionGrantState | null })
-                    ?.grantState
-                }
-                isOAuth={Boolean(showReconnect)}
-                onReconnect={onReconnect}
-                onSaveAndReconnect={() => {
-                  saveAndReconnectRef.current = true;
-                  void form.handleSubmit(handleSubmit, handleInvalid)();
-                }}
-                isReconnecting={isReconnecting}
-                hasParamChanges={hasParamChanges}
-                hasReauthChanges={hasReauthChanges}
-              />
-            )}
-            <FormRenderer
-              definition={definition}
-              value={formValue}
-              onChange={(next) => {
-                for (const [name, value] of Object.entries(next)) {
-                  form.setValue(name, value, { shouldDirty: true });
-                }
-              }}
-              frame={{
-                commitField: ({ fieldName, value }) => {
-                  form.setValue(fieldName, value, { shouldDirty: true });
-                  if (value !== '' && value !== null && value !== undefined) {
-                    setClearedSecrets((current) => {
-                      if (!current.has(fieldName)) return current;
-                      const next = new Set(current);
-                      next.delete(fieldName);
-                      return next;
-                    });
-                  }
-                },
-              }}
-              onAnalysisChange={setAnalysis}
-              submitAttempt={submitAttempt}
-              fieldAnnotations={Object.fromEntries(
-                Object.entries(secretState).map(([name, state]) => {
-                  const field = definition.fields[name];
-                  const behavior = connectionType.fieldBehaviors[name];
-                  const label = field?.label ?? name.replace(/_/g, ' ');
-                  return [
-                    name,
-                    <ConnectionFieldFrame
-                      key={name}
-                      label={label}
-                      configured={state.configured}
-                      clearable={state.clearable}
-                      cleared={clearedSecrets.has(name)}
-                      requiresReauthorization={
-                        behavior?.requiresReauthorization
-                      }
-                      onClear={() => {
-                        setClearedSecrets((current) =>
-                          new Set(current).add(name)
-                        );
-                        form.setValue(name, '', { shouldDirty: true });
-                      }}
-                      onUndoClear={() => {
-                        setClearedSecrets((current) => {
-                          const next = new Set(current);
-                          next.delete(name);
-                          return next;
-                        });
-                      }}
-                    />,
-                  ];
-                })
-              )}
+          ) : undefined
+        }
+      >
+        <div className="space-y-6">
+          {conflictNotice}
+          {reconnectNotice}
+          {mode === 'create' && managedApps.length > 0 && (
+            <PlatformAppChoice
+              provider={connectionType.displayName || 'the provider'}
+              apps={managedApps}
+              chosen={chosenPlatformApp}
+              onChoose={setChosenPlatformApp}
             />
-            <DefaultForSection connectionType={connectionType} />
-            <CollapsedSection
-              label="Advanced"
-              description="Rate limiting and retry behavior"
-              forceOpen={Boolean(watched.rateLimitEnabled)}
-            >
-              <RateLimitSection
-                defaultConfig={connectionType.defaultRateLimitConfig}
-                liveStatus={rateLimitStatus}
-              />
-            </CollapsedSection>
-            {mode === 'edit' && onDelete && (
-              <DangerZoneSection
-                isOAuth={Boolean(showReconnect)}
-                isDeleting={Boolean(isDeleting)}
-                onRequestDelete={() => setDeleteDialogOpen(true)}
-              />
+          )}
+          {mode === 'edit' && existingPlatformApp && (
+            <PlatformAppNotice
+              provider={connectionType.displayName || 'the provider'}
+              app={
+                managedApps.find((app) => app.id === existingPlatformApp)
+                  ?.displayName ?? existingPlatformApp
+              }
+            />
+          )}
+          {mode === 'create' && oauthCreateHint && (
+            <div className="rounded-lg border border-info/40 bg-info/10 px-4 py-3 text-sm text-foreground">
+              After creating, a {connectionType.displayName || 'provider'}{' '}
+              window opens to authorize the connection.
+            </div>
+          )}
+          {mode === 'edit' && (
+            <ConnectionStatusCard
+              status={
+                ((initValues as { status?: ConnectionStatus })?.status ??
+                  'UNKNOWN') as ConnectionStatus
+              }
+              connectionType={connectionType as ConnectionTypeWithForm}
+              values={editProjection?.values as Record<string, unknown>}
+              configuredSecretCount={configuredSecretCount}
+              updatedAt={(initValues as { updatedAt?: string })?.updatedAt}
+              grantState={
+                (initValues as { grantState?: ConnectionGrantState | null })
+                  ?.grantState
+              }
+              isOAuth={Boolean(showReconnect)}
+              onReconnect={onReconnect}
+              onSaveAndReconnect={() => {
+                saveAndReconnectRef.current = true;
+                void form.handleSubmit(handleSubmit, handleInvalid)();
+              }}
+              isReconnecting={isReconnecting}
+              hasParamChanges={hasParamChanges}
+              hasReauthChanges={hasReauthChanges}
+            />
+          )}
+          <FormRenderer
+            definition={definition}
+            value={formValue}
+            onChange={(next) => {
+              for (const [name, value] of Object.entries(next)) {
+                form.setValue(name, value, { shouldDirty: true });
+              }
+            }}
+            frame={{
+              commitField: ({ fieldName, value }) => {
+                form.setValue(fieldName, value, { shouldDirty: true });
+                if (value !== '' && value !== null && value !== undefined) {
+                  setClearedSecrets((current) => {
+                    if (!current.has(fieldName)) return current;
+                    const next = new Set(current);
+                    next.delete(fieldName);
+                    return next;
+                  });
+                }
+              },
+            }}
+            onAnalysisChange={setAnalysis}
+            submitAttempt={submitAttempt}
+            fieldAnnotations={Object.fromEntries(
+              Object.entries(secretState).map(([name, state]) => {
+                const field = definition.fields[name];
+                const behavior = connectionType.fieldBehaviors[name];
+                const label = field?.label ?? name.replace(/_/g, ' ');
+                return [
+                  name,
+                  <ConnectionFieldFrame
+                    key={name}
+                    label={label}
+                    configured={state.configured}
+                    clearable={state.clearable}
+                    cleared={clearedSecrets.has(name)}
+                    requiresReauthorization={behavior?.requiresReauthorization}
+                    onClear={() => {
+                      setClearedSecrets((current) =>
+                        new Set(current).add(name)
+                      );
+                      form.setValue(name, '', { shouldDirty: true });
+                    }}
+                    onUndoClear={() => {
+                      setClearedSecrets((current) => {
+                        const next = new Set(current);
+                        next.delete(name);
+                        return next;
+                      });
+                    }}
+                  />,
+                ];
+              })
             )}
-            {mode === 'edit' && onDelete && (
-              <DeleteConnectionDialog
-                open={deleteDialogOpen}
-                onOpenChange={setDeleteDialogOpen}
-                title={connectionTitle}
-                isOAuth={Boolean(showReconnect)}
-                isDeleting={Boolean(isDeleting)}
-                onConfirm={onDelete}
-              />
-            )}
-          </div>
-        </ConnectionPageShell>
-      )}
-    />
+          />
+          <DefaultForSection connectionType={connectionType} />
+          <FormSection
+            collapsible
+            title="Advanced"
+            description="Rate limiting and retry behavior"
+            forceOpen={Boolean(watched.rateLimitEnabled)}
+          >
+            <RateLimitSection
+              defaultConfig={connectionType.defaultRateLimitConfig}
+              liveStatus={rateLimitStatus}
+            />
+          </FormSection>
+          {mode === 'edit' && onDelete && (
+            <DangerZoneSection
+              isOAuth={Boolean(showReconnect)}
+              isDeleting={Boolean(isDeleting)}
+              onRequestDelete={() => setDeleteDialogOpen(true)}
+            />
+          )}
+          {mode === 'edit' && onDelete && (
+            <DeleteConnectionDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              title={connectionTitle}
+              isOAuth={Boolean(showReconnect)}
+              isDeleting={Boolean(isDeleting)}
+              onConfirm={onDelete}
+            />
+          )}
+        </div>
+      </ConnectionPageShell>
+    </FormShell>
   );
 }

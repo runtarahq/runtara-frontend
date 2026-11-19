@@ -1,3 +1,4 @@
+import { withMemorySettings } from './NodeForm/memory-provider';
 import type { Edge, Node } from '@xyflow/react';
 
 import {
@@ -5,7 +6,7 @@ import {
   NODE_TYPES,
   STEP_TYPES,
 } from '@/features/workflows/config/workflow';
-import type { ExecutionGraphStepDto } from '@/features/workflows/types/execution-graph';
+import type { StepNodeData } from '@/features/workflows/types/execution-graph';
 import type { ValidationMessage } from '@/features/workflows/types/validation';
 import {
   validateExecutionGraphWithRust,
@@ -44,7 +45,7 @@ type WorkflowValidationContext = {
 
 export type PendingNodeCandidate = {
   id: string;
-  data: Partial<ExecutionGraphStepDto>;
+  data: StepNodeData;
   position: { x: number; y: number };
   parentId?: string;
   sourceNodeId?: string;
@@ -68,28 +69,43 @@ type ValidateNodeEditParams = {
   pendingNode?: PendingNodeCandidate | null;
 };
 
+/**
+ * Errors about the shape of the canvas, which no step's dialog can put
+ * right: a container with nothing in it yet, a Conditional without both its
+ * branches, a routing Switch without its default route. A step is added
+ * before its body and its routes can be, so these do not refuse a step edit.
+ * They are still listed as problems, and saving the workflow still refuses
+ * them.
+ */
+const CANVAS_SHAPE_ERROR_CODES = new Set(['E004', 'E140', 'E141']);
+
+function isCanvasShapeError(error: ValidationMessage): boolean {
+  const code = /^\[(E\d+)\]/.exec(error.message)?.[1];
+  return code !== undefined && CANVAS_SHAPE_ERROR_CODES.has(code);
+}
+
 export type NodeEditRustValidationResult = {
+  /** Whether the edit may be applied: nothing wrong that its dialog can fix. */
   canApply: boolean;
+  /** The first error that refuses the edit, when one does. */
+  blockingError?: string;
   messages: ValidationMessage[];
   rustValidation: RustWorkflowValidationResult;
 };
 
-function stepNodeType(data: Partial<ExecutionGraphStepDto>, fallback?: string) {
+function stepNodeType(data: StepNodeData, fallback?: string) {
   const stepType = data.stepType as keyof typeof STEP_TYPES | undefined;
   return stepType
     ? STEP_TYPES[stepType] || fallback || NODE_TYPES.BasicNode
     : fallback || NODE_TYPES.BasicNode;
 }
 
-function toNodeData(
-  nodeId: string,
-  data: form.SchemaType
-): Partial<ExecutionGraphStepDto> {
+function toNodeData(nodeId: string, data: form.SchemaType): StepNodeData {
   return {
     ...data,
     id: nodeId,
     inputMapping: data.inputMapping || [],
-  } as unknown as Partial<ExecutionGraphStepDto>;
+  } as unknown as StepNodeData;
 }
 
 function buildExistingNodeCandidate(
@@ -97,10 +113,7 @@ function buildExistingNodeCandidate(
   nodeId: string,
   data: form.SchemaType
 ): Node {
-  const nodeType = stepNodeType(
-    data as unknown as Partial<ExecutionGraphStepDto>,
-    node.type
-  );
+  const nodeType = stepNodeType(data as unknown as StepNodeData, node.type);
 
   return {
     ...node,
@@ -171,11 +184,8 @@ function buildPendingEdges(
   nodeId: string,
   data: form.SchemaType
 ): Edge[] {
-  const nodeType = stepNodeType(
-    data as unknown as Partial<ExecutionGraphStepDto>
-  );
-  const isConditional =
-    nodeType === NODE_TYPES.ConditionalNode || data.stepType === 'Conditional';
+  const nodeType = stepNodeType(data as unknown as StepNodeData);
+  const isConditional = nodeType === NODE_TYPES.ConditionalNode;
   let candidateEdges = [...edges];
 
   if (pendingNode.insertionEdge) {
@@ -314,6 +324,14 @@ export async function validateNodeEditWithRust({
     candidateEdges = edges;
   }
 
+  // An AI Agent's edit carries its memory provider's settings: validate the
+  // graph as it will be once they are copied over, as saving the edit does.
+  candidateNodes =
+    withMemorySettings(
+      candidateNodes,
+      data.inputMapping as Parameters<typeof withMemorySettings>[1]
+    ) ?? candidateNodes;
+
   const graphOptions = buildGraphOptions(workflow);
   if (pendingNode?.becomesEntryPoint) {
     graphOptions.entryPoint = nodeId;
@@ -343,8 +361,12 @@ export async function validateNodeEditWithRust({
     rustValidation.warningGraphPaths
   );
 
+  const blockingErrors = errors.filter((error) => !isCanvasShapeError(error));
+
   return {
-    canApply: rustValidation.status !== 'invalid',
+    canApply:
+      rustValidation.status !== 'invalid' || blockingErrors.length === 0,
+    blockingError: blockingErrors[0]?.message,
     messages: applyTargetFallback(
       [...errors, ...warnings],
       candidateNodes,

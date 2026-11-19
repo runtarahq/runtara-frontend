@@ -15,11 +15,17 @@ export type EditionRoute = {
  * (`RUNTARA_EDITION_DIR`) to add its pages, menu entries and controls without
  * carrying them in this repository.
  *
+ * `examples/edition` is one that fills in every part below; CI builds, tests
+ * and type-checks the console with it (`npm run test:edition`), so add to it
+ * what is added here.
+ *
  * The console reads `open` while it works out its own root
  * (`@/shared/config/appBase`), so an edition module must not import
  * `@/shared/config/appBase` or `@/shared/config/oidcConfig` at top level:
  * the cycle would read them before they are set. Import them where they are
  * used (in a component or hook), not when the module loads.
+ * `src/test/architecture.test.ts` holds this repository's editions to it,
+ * through everything they import.
  */
 export type Edition = {
   /** Pages, after the built-in ones. */

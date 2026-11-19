@@ -1,10 +1,11 @@
-import { test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   randomDoubleStep,
   WorkflowBuilderPage,
 } from '../../pages/WorkflowBuilderPage';
 
 const runId = Date.now();
+const apiBase = `${process.env.E2E_RUNTIME_URL || 'http://127.0.0.1:7001'}/api/runtime`;
 
 const stepType = (stepTypeName: string) =>
   ({
@@ -12,7 +13,7 @@ const stepType = (stepTypeName: string) =>
     stepType: stepTypeName,
   }) as const;
 
-test.describe.serial('Workflow builder local UI', () => {
+test.describe('Workflow builder local UI', () => {
   let createdWorkflowNames: string[] = [];
   let createdConnectionNames: string[] = [];
 
@@ -27,8 +28,16 @@ test.describe.serial('Workflow builder local UI', () => {
     createdWorkflowNames.push(name);
   };
 
-  test.afterEach(async ({ page }) => {
+  test.afterEach(async ({ page }, testInfo) => {
     const builder = new WorkflowBuilderPage(page);
+
+    // The cleanup below leaves the editor, so the failure screenshot Playwright
+    // takes afterwards shows the workflows list. Keep one of the editor.
+    if (testInfo.status !== testInfo.expectedStatus) {
+      await page
+        .screenshot({ path: testInfo.outputPath('editor-at-failure.png') })
+        .catch(() => undefined);
+    }
 
     for (const workflow of [...createdWorkflowNames].reverse()) {
       try {
@@ -78,15 +87,35 @@ test.describe.serial('Workflow builder local UI', () => {
     const builder = new WorkflowBuilderPage(page);
     await rememberWorkflow(builder, workflowName('conditional-branches'));
 
-    await builder.beginFirstCanvasStep(stepType('Conditional'));
+    // A Conditional needs both its edges from the moment it is added (E140),
+    // so it cannot be the first or the last step: it goes in before a step,
+    // which both its branches then lead to, and each branch gets its own step
+    // on its edge.
+    await builder.addFirstCanvasStep(randomDoubleStep, {
+      name: 'After decision',
+    });
+    await builder.beginCanvasStepOnRoute(
+      null,
+      'After decision',
+      'source',
+      stepType('Conditional')
+    );
     await builder.configureOpenCondition();
     await builder.saveOpenCanvasDialog({ name: 'Decision' });
-    await builder.addCanvasRouteStep('Decision', 'true', randomDoubleStep, {
-      name: 'Approved branch',
-    });
-    await builder.addCanvasRouteStep('Decision', 'false', randomDoubleStep, {
-      name: 'Rejected branch',
-    });
+    await builder.insertCanvasStepOnRoute(
+      'Decision',
+      'After decision',
+      'true',
+      randomDoubleStep,
+      { name: 'Approved branch' }
+    );
+    await builder.insertCanvasStepOnRoute(
+      'Decision',
+      'After decision',
+      'false',
+      randomDoubleStep,
+      { name: 'Rejected branch' }
+    );
 
     await builder.saveWorkflow();
     await builder.reloadAndWait();
@@ -96,11 +125,19 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.expectStepOnRoute('Approved branch', 'Decision', 'true');
     await builder.expectStepOnRoute('Rejected branch', 'Decision', 'false');
 
+    // Removing a branch's step leaves the Conditional without that edge, and
+    // the workflow no longer saves until the branch leads somewhere again.
     await builder.deleteCanvasStep('Rejected branch');
+    await builder.expectSaveValidationFailure();
+    await builder.addCanvasRouteStep('Decision', 'false', randomDoubleStep, {
+      name: 'Replacement branch',
+    });
+
     await builder.saveWorkflow();
     await builder.reloadAndWait();
     await builder.expectStepVisible('Approved branch');
     await builder.expectStepHidden('Rejected branch');
+    await builder.expectStepOnRoute('Replacement branch', 'Decision', 'false');
   });
 
   test('canvas adds switch case and default routes', async ({ page }) => {
@@ -167,11 +204,28 @@ test.describe.serial('Workflow builder local UI', () => {
     );
   });
 
-  test('canvas wires AI Agent tool and memory controls', async ({ page }) => {
+  test('canvas wires AI Agent tool and memory controls', async ({
+    page,
+    request,
+  }) => {
     const builder = new WorkflowBuilderPage(page);
     const connectionName = `E2E Workflow Builder OpenAI ${runId}`;
     await builder.createOpenAiConnection(connectionName);
     createdConnectionNames.push(connectionName);
+    // The memory provider keeps the conversation in a database: it needs a
+    // connection to one. The workflow is saved, not run, so it need not open.
+    const memoryConnection = `E2E Workflow Builder memory ${runId}`;
+    const created = await request.post(`${apiBase}/connections`, {
+      data: {
+        title: memoryConnection,
+        integrationId: 'postgres',
+        connectionParameters: {
+          database_url: 'postgres://user:pass@localhost:5432/memory',
+        },
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    createdConnectionNames.push(memoryConnection);
     await rememberWorkflow(builder, workflowName('ai-agent-routes'));
 
     await builder.beginFirstCanvasStep(stepType('AiAgent'));
@@ -180,7 +234,7 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.addCanvasAiTool('AI coordinator', randomDoubleStep, {
       name: 'Tool random double',
     });
-    await builder.addCanvasAiMemory('AI coordinator');
+    await builder.addCanvasAiMemory('AI coordinator', memoryConnection);
 
     await builder.saveWorkflow();
     await builder.reloadAndWait();
@@ -197,10 +251,11 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.addFirstCanvasStep(randomDoubleStep, {
       name: 'Prepare items',
     });
-    await builder.addCanvasStepAfter('Prepare items', stepType('Split'), {
-      name: 'For each item',
-    });
-    await builder.configureSplitSource('For each item');
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginCanvasStepAfter('Prepare items', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource();
+    await builder.saveOpenCanvasDialog({ name: 'For each item' });
     await builder.addNestedCanvasStep('For each item', randomDoubleStep, {
       name: 'Process item',
     });
@@ -240,10 +295,11 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.beginFirstCanvasStep(stepType('While'));
     await builder.configureOpenCondition();
     await builder.saveOpenCanvasDialog({ name: 'Retry loop' });
-    await builder.addNestedCanvasStep('Retry loop', stepType('Split'), {
-      name: 'Loop items',
-    });
-    await builder.configureSplitSource('Loop items');
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginNestedCanvasStep('Retry loop', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource();
+    await builder.saveOpenCanvasDialog({ name: 'Loop items' });
     await builder.addNestedCanvasStep('Loop items', randomDoubleStep, {
       name: 'Loop item work',
     });
@@ -299,14 +355,16 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.beginFirstCanvasStep(stepType('While'));
     await builder.configureOpenCondition();
     await builder.saveOpenCanvasDialog({ name: 'Outer while' });
-    await builder.addNestedCanvasStep('Outer while', stepType('Split'), {
-      name: 'Outer split',
-    });
-    await builder.configureSplitSource('Outer split', 'data.outerItems');
-    await builder.addNestedCanvasStep('Outer split', stepType('Split'), {
-      name: 'Inner split',
-    });
-    await builder.configureSplitSource('Inner split', 'data.innerItems');
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginNestedCanvasStep('Outer while', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource('data.outerItems');
+    await builder.saveOpenCanvasDialog({ name: 'Outer split' });
+    // A Split is given its array source as it is added: without one its
+    // dialog does not close.
+    await builder.beginNestedCanvasStep('Outer split', stepType('Split'));
+    await builder.configureOpenCanvasSplitSource('data.innerItems');
+    await builder.saveOpenCanvasDialog({ name: 'Inner split' });
     await builder.addNestedCanvasStep('Inner split', randomDoubleStep, {
       name: 'Deep child',
     });
@@ -339,15 +397,23 @@ test.describe.serial('Workflow builder local UI', () => {
     const builder = new WorkflowBuilderPage(page);
     await rememberWorkflow(builder, workflowName('invalid-containers'));
 
-    await builder.addFirstCanvasStep(stepType('Split'), {
-      name: 'Empty split',
-    });
+    // A Split with nothing in it can be added, and the workflow cannot be
+    // saved until it has a body.
+    await builder.beginFirstCanvasStep(stepType('Split'));
+    await builder.configureOpenCanvasSplitSource();
+    await builder.saveOpenCanvasDialog({ name: 'Empty split' });
     await builder.expectSaveValidationFailure();
     await builder.deleteCanvasStep('Empty split');
     await builder.clearValidationMessages();
 
+    // A While without a condition is refused by its own dialog, which can
+    // put that right. With a condition and nothing in it, it can be added,
+    // and the workflow cannot be saved until it has a body.
     await builder.beginFirstCanvasStep(stepType('While'));
-    await builder.saveOpenCanvasDialog({ name: 'Invalid while' });
+    await builder.expectOpenCanvasDialogRefused({ name: 'Invalid while' });
+    await builder.configureOpenCondition();
+    await builder.saveOpenCanvasDialog();
+    await builder.expectStepVisible('Invalid while');
     await builder.expectSaveValidationFailure();
     await builder.deleteCanvasStep('Invalid while');
   });
@@ -445,7 +511,20 @@ test.describe.serial('Workflow builder local UI', () => {
         name: 'Canvas rejected',
       }
     );
+    // Removing the branch's step leaves the Conditional without its false
+    // edge (E140): the workflow does not save until the branch leads
+    // somewhere again.
     await builder.deleteCanvasStep('Canvas rejected');
+    await builder.expectSaveValidationFailure();
+    await builder.addCanvasBranchStep(
+      'false',
+      'Canvas decision',
+      randomDoubleStep,
+      {
+        name: 'Canvas fallback',
+      }
+    );
+    await builder.expectStepVisible('Canvas fallback');
 
     await builder.saveWorkflow();
     await builder.reloadAndWait();

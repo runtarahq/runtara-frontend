@@ -8,7 +8,6 @@ import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { getWorkflow, getWorkflowInstance } from '@/features/workflows/queries';
 import { fetchChatHistory } from '@/features/workflows/queries/chat';
-import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
 import { useChatStream } from './useChatStream';
 import { ChatMessageList } from '@/features/workflows/components/ChatMessageList';
@@ -21,12 +20,11 @@ export function ChatPage() {
     instanceId?: string;
   }>();
   const navigate = useNavigate();
-  const token = useToken();
 
   // Fetch workflow details for the header
   const { data: workflowResponse } = useCustomQuery({
     queryKey: queryKeys.workflows.byId(workflowId ?? ''),
-    queryFn: (token: string) => getWorkflow(token, workflowId!),
+    queryFn: () => getWorkflow(workflowId!),
     enabled: !!workflowId,
   });
 
@@ -93,7 +91,7 @@ export function ChatPage() {
       // the stream carries on from there. A run nothing of the kind started
       // (one waiting for input, opened from Invocation History) has only
       // its own history.
-      getWorkflowInstance(token, workflowId, instanceId)
+      getWorkflowInstance(workflowId, instanceId)
         .then(async (instanceData) => {
           if (disposed) return;
           const key = instanceData?.inputs?.data?.conversation?.key as
@@ -103,7 +101,6 @@ export function ChatPage() {
             return;
           }
           const historyMessages = await fetchChatHistory(
-            token,
             workflowId,
             instanceId
           );

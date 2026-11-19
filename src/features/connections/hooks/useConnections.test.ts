@@ -83,7 +83,7 @@ describe('useConnections', () => {
       });
 
       expect(result.current.data).toEqual(mockConnections);
-      expect(mockGetConnections).toHaveBeenCalledWith('test-token');
+      expect(mockGetConnections).toHaveBeenCalled();
     });
 
     it('handles error when fetching connections', async () => {

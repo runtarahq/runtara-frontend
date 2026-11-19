@@ -139,6 +139,114 @@ test.describe('Workflow page audit: saving', () => {
     await expect(saveClean(page)).toBeVisible({ timeout: 10_000 });
   });
 
+  test('WF-8 A workflow with a container step opens with nothing to save, and stays so', async ({
+    page,
+    mockApi,
+  }) => {
+    // The canvas measures a container as it draws it. That is not an edit:
+    // the page used to wait 100 ms after a load and call the canvas clean
+    // again; loading now starts it clean and nothing but an edit changes that.
+    const wf = buildWorkflow({
+      id: 'wf_wf8',
+      name: 'Audit containers',
+      currentVersionNumber: 1,
+      lastVersionNumber: 1,
+      executionGraph: {
+        name: 'Audit containers',
+        entryPoint: 'each',
+        steps: {
+          each: {
+            id: 'each',
+            stepType: 'Split',
+            name: 'Each order',
+            config: {
+              value: { valueType: 'reference', value: 'data.items' },
+              parallelism: 4,
+            },
+            subgraph: {
+              entryPoint: 'inner',
+              steps: {
+                inner: {
+                  id: 'inner',
+                  stepType: 'Log',
+                  name: 'Inner log',
+                  message: 'item',
+                  level: 'info',
+                },
+              },
+              executionPlan: [],
+            },
+          },
+          after: {
+            id: 'after',
+            stepType: 'Log',
+            name: 'After',
+            message: 'done',
+            level: 'info',
+          },
+        },
+        executionPlan: [{ fromStep: 'each', toStep: 'after', label: 'next' }],
+      } as never,
+    });
+    await openWorkflow(page, mockApi, wf);
+    await expect(
+      page.locator('.react-flow__node').getByText('Inner log')
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.locator('.react-flow__node').getByText('After')
+    ).toBeVisible();
+
+    await expect(saveClean(page)).toBeVisible();
+    // Past any measuring and layout the canvas does after it first draws.
+    await page.waitForTimeout(1500);
+    await expect(saveClean(page)).toBeVisible();
+    await expect(saveEnabled(page)).toHaveCount(0);
+
+    // Leaving asks nothing.
+    await workflowsLink(page).first().click();
+    await expect(unsavedDialog(page)).toHaveCount(0);
+  });
+
+  test('WF-9 A canvas edit can be undone and redone, from the toolbar and the keyboard', async ({
+    page,
+    mockApi,
+  }) => {
+    const wf = logWorkflow('wf_wf9');
+    await openWorkflow(page, mockApi, wf);
+    const undo = page.getByRole('button', { name: 'Undo' });
+    const redo = page.getByRole('button', { name: 'Redo' });
+    const note = page.locator('.react-flow__node').getByText('to undo');
+
+    // Nothing to undo on a workflow just opened.
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+
+    await addNote(page, 'to undo');
+    await expect(undo).toBeEnabled();
+
+    // Placing the note and writing it, one after the other, are one step.
+    await undo.click();
+    await expect(undo).toBeDisabled();
+    await expect(note).toHaveCount(0);
+    await expect(redo).toBeEnabled();
+
+    await redo.click();
+    await expect(note).toBeVisible();
+    await expect(redo).toBeDisabled();
+
+    // The keyboard, with the focus on the page and not in a field.
+    await page.locator('h1').first().click();
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+z`);
+    await expect(note).toHaveCount(0);
+    await page.keyboard.press(`${modifier}+Shift+z`);
+    await expect(note).toBeVisible();
+
+    // An undo is a change to save.
+    await page.keyboard.press(`${modifier}+z`);
+    await expect(saveEnabled(page)).toBeVisible();
+  });
+
   test('WF-2 A settings edit made during a save is still counted as unsaved after the save succeeds', async ({
     page,
     mockApi,
@@ -707,7 +815,10 @@ test.describe('Execution audit: status and store', () => {
       .poll(() => polls.inst_running, { timeout: 10_000 })
       .toBeGreaterThan(0);
     await page.waitForTimeout(12_000);
-    const running = { ...polls, input: inputPolls.inst_running };
+    const running = {
+      inst_running: polls.inst_running,
+      input: inputPolls.inst_running,
+    };
 
     await page.goto(`/workflows/${wf.id}/history/inst_mystery`);
     await expect

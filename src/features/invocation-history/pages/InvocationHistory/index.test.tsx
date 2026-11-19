@@ -2,7 +2,7 @@ import { InvocationHistoryRedirect } from '@/router/InvocationHistoryRedirect';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
-import type { ExecutionHistoryFilters } from '../../types';
+import type { ExecutionHistoryFilters } from '@/features/runs/types';
 import { InvocationHistory } from './index';
 
 const table = vi.hoisted(() => vi.fn());

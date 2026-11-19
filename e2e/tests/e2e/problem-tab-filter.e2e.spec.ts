@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
+import {
+  WorkflowBuilderPage,
+  randomDoubleStep,
+} from '../../pages/WorkflowBuilderPage';
 
 /**
  * Problem Tab Filter Switching E2E Test (SYN-235)
@@ -15,39 +17,8 @@ import { fileURLToPath } from 'url';
  * Requires: full local stack running (gateway, runtime, management, frontend)
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const WORKFLOW_NAME = `E2E Problem Filter ${Date.now()}`;
-
-/** Read the access token from the Playwright auth state file. */
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-
-  throw new Error('No access token found in auth state file');
-}
-
-/** Build common headers for authenticated API calls. */
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
 
 test.describe.serial('Problem tab filter switching (SYN-235)', () => {
   let workflowId: string;
@@ -71,46 +42,19 @@ test.describe.serial('Problem tab filter switching (SYN-235)', () => {
   });
 
   test('create workflow', async ({ page }) => {
-    await page.goto('/workflows/create');
-    await page.waitForLoadState('networkidle');
-
-    await page.getByLabel('Name').fill(WORKFLOW_NAME);
-    await page.getByRole('button', { name: 'Save' }).click();
-
-    await page.waitForURL(
-      (url) => /\/workflows\/(?!create\b)[a-zA-Z0-9_-]+$/.test(url.pathname),
-      { timeout: 15000 }
+    workflowId = await new WorkflowBuilderPage(page).createWorkflow(
+      WORKFLOW_NAME
     );
-
-    workflowId = page.url().split('/workflows/').pop()!;
     expect(workflowId).toBeTruthy();
   });
 
   test('add step, save, and verify filter tabs work', async ({ page }) => {
-    await page.goto(`/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('.react-flow')).toBeVisible({ timeout: 15000 });
+    const builder = new WorkflowBuilderPage(page);
+    await builder.gotoWorkflow(workflowId);
 
-    // Add a Random Double step via "+" on Start node (requires no configuration)
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
-
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Random Double');
-
-    const capabilityResult = page.getByText('Random Double').first();
-    await expect(capabilityResult).toBeVisible({ timeout: 30000 });
-    await capabilityResult.click();
-
-    // Save the step in the config dialog
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible({ timeout: 5000 });
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    // Add a Random Double step from the canvas (requires no configuration)
+    // and save it in its config dialog
+    await builder.addFirstCanvasStep(randomDoubleStep);
 
     // Verify node appears on canvas
     await expect(
@@ -198,7 +142,7 @@ test.describe.serial('Problem tab filter switching (SYN-235)', () => {
       // Switch back to All — messages should reappear
       await allTab.click();
       // Use a locator for the message list area and check it has content
-      const messageItems = page.locator('.space-y-0\\.5 > div');
+      const messageItems = page.getByTestId('validation-message');
       await expect(messageItems.first()).toBeVisible({ timeout: 3000 });
     } else if (errorCount === 0) {
       await errorsTab.click();
@@ -208,7 +152,7 @@ test.describe.serial('Problem tab filter switching (SYN-235)', () => {
 
       // Switch back to All
       await allTab.click();
-      const messageItems = page.locator('.space-y-0\\.5 > div');
+      const messageItems = page.getByTestId('validation-message');
       await expect(messageItems.first()).toBeVisible({ timeout: 3000 });
     }
 
@@ -229,22 +173,13 @@ test.describe.serial('Problem tab filter switching (SYN-235)', () => {
 
     // Switch back to All — all messages should be visible again
     await allTab.click();
-    const allMessages = page.locator('.space-y-0\\.5 > div');
+    const allMessages = page.getByTestId('validation-message');
     const messageCount = await allMessages.count();
     expect(messageCount).toBe(totalCount);
   });
 
   test('delete workflow', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    const card = page.locator('article').filter({ hasText: WORKFLOW_NAME });
-    await expect(card).toBeVisible({ timeout: 10000 });
-
-    await card.getByTitle('Delete').first().click();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(WORKFLOW_NAME);
     workflowId = '';
   });
 });

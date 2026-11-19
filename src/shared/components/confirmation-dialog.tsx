@@ -26,7 +26,7 @@ interface ConfirmationDialogProps {
  * A confirmation dialog component for destructive or important actions.
  * Use this for delete confirmations, clone confirmations, etc.
  *
- * For simple dialogs that just wrap content, use SimpleDialog from next-dialog.
+ * For a dialog that only wraps content, use `Dialog` and `DialogContent`.
  * Use Dialog and DialogContent for custom form dialogs.
  */
 export function ConfirmationDialog(props: ConfirmationDialogProps) {

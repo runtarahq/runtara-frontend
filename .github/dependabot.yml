@@ -1,0 +1,26 @@
+# Weekly updates for what the console depends on and what its workflows run,
+# so pins (action commits, base image digests, package versions and the
+# overrides in package.json) do not go stale unseen.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # A tarball of a runtara release, bumped by hand with the client.
+      - dependency-name: runtara-validation-wasm
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

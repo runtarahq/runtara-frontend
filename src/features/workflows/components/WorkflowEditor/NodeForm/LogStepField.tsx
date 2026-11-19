@@ -29,7 +29,6 @@ export function LogStepField({ name }: LogStepFieldProps) {
 
   // Initialize Log step fields when first created
   useEffect(() => {
-    if (stepType !== 'Log') return;
     if (nodeId) return; // Don't reset in edit mode
 
     const currentMapping = form.getValues(name) || [];
@@ -57,10 +56,6 @@ export function LogStepField({ name }: LogStepFieldProps) {
     control: form.control,
     defaultValue: [],
   });
-
-  if (stepType !== 'Log') {
-    return null;
-  }
 
   const getValue = (fieldName: string) => {
     const mapping = inputMapping || [];

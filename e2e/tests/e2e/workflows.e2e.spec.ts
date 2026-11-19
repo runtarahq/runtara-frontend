@@ -16,11 +16,12 @@ test.describe('Workflows E2E', () => {
     await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
 
+    // The page's header is its breadcrumb, whose last item is the heading.
     await expect(
-      page.getByRole('main').getByText('Workflows', { exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: /build and iterate automation flows/i })
+      page
+        .getByRole('main')
+        .getByRole('navigation', { name: 'Breadcrumb' })
+        .getByRole('heading', { name: 'Workflows', exact: true, level: 1 })
     ).toBeVisible();
   });
 
@@ -28,9 +29,11 @@ test.describe('Workflows E2E', () => {
     await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
 
-    // Either empty state or workflow list should be visible
-    const emptyState = page.getByText(/no workflows yet/i);
-    const workflowList = page.locator('article').first();
+    // Either the empty state or the list (a table, one row per workflow or
+    // folder) should be visible
+    const main = page.getByRole('main');
+    const emptyState = main.getByText(/no workflows yet/i);
+    const workflowList = main.locator('table tbody tr').first();
     await expect(emptyState.or(workflowList)).toBeVisible();
   });
 

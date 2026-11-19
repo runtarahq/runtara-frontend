@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useCustomQuery } from '@/shared/hooks/api';
-import { useToken } from '@/shared/hooks';
+import {
+  useInfiniteQuery,
+  useQueries,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { getStepSummaries } from '@/features/workflows/queries';
-import { useTimelineStore } from '@/features/workflows/stores/timelineStore';
 import {
   HierarchicalStep,
   toHierarchicalStep,
@@ -11,8 +13,6 @@ import {
   calculateMaxTimestamp,
   isOpenEndedStep,
 } from '@/features/workflows/types/timeline';
-import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
 const ROOT_PAGE_SIZE = 50;
 const CHILDREN_PAGE_SIZE = 100;
@@ -24,82 +24,84 @@ interface UseHierarchicalTimelineOptions {
   enabled?: boolean;
 }
 
+type StepSummariesPage = Awaited<ReturnType<typeof getStepSummaries>>;
+type StepSummary = NonNullable<
+  NonNullable<StepSummariesPage['data']>['steps']
+>[number];
+
+/** stepId → the scope its children run in, for the steps opened. */
+type Expanded = ReadonlyMap<string, string | null>;
+const NONE_EXPANDED: Expanded = new Map();
+const NO_STEPS: StepSummary[] = [];
+
+interface ChildrenOfScope {
+  steps: StepSummary[] | undefined;
+  totalCount: number | undefined;
+  isLoading: boolean;
+}
+
+/**
+ * The steps of a run as a tree, loaded as it is opened: the top-level steps
+ * page after page, and a step's children when it is expanded. All of it is
+ * server state and lives in the query cache; which steps are open is the
+ * hook's own.
+ */
 export function useHierarchicalTimeline(
   workflowId: string | undefined,
   instanceId: string | undefined,
   options: UseHierarchicalTimelineOptions = {}
 ) {
   const { refetchInterval = 10000, enabled = true } = options;
-  const token = useToken();
+  const ready = !!workflowId && !!instanceId;
 
-  const {
-    rootSteps,
-    totalRootCount,
-    isLoadingRoot,
-    rootOffset,
-    minTimestamp,
-    totalDuration,
-    expandedStepIds,
-    loadingChildrenIds,
-    childrenCache,
-    childrenTotalCounts,
-    currentWorkflowId,
-    currentInstanceId,
-    setRootSteps,
-    appendRootSteps,
-    setLoadingRoot,
-    toggleExpanded,
-    setChildren,
-    setLoadingChildren,
-    setCurrentInstance,
-  } = useTimelineStore();
+  // Which steps are open belongs to the run: another run starts closed.
+  const run = `${workflowId ?? ''}/${instanceId ?? ''}`;
+  const [expandedIn, setExpandedIn] = useState<{
+    run: string;
+    steps: Expanded;
+  }>({ run, steps: NONE_EXPANDED });
+  const expanded = expandedIn.run === run ? expandedIn.steps : NONE_EXPANDED;
 
-  // Reset store when workflow or instance changes
-  useEffect(() => {
-    if (workflowId !== currentWorkflowId || instanceId !== currentInstanceId) {
-      setCurrentInstance(workflowId ?? null, instanceId ?? null);
-    }
-  }, [
-    workflowId,
-    instanceId,
-    currentWorkflowId,
-    currentInstanceId,
-    setCurrentInstance,
-  ]);
-
-  // Fetch root steps with rootScopesOnly=true
-  const rootFilters = useMemo(
-    () => ({
-      rootScopesOnly: true,
-      sortOrder: 'asc' as const,
-      limit: ROOT_PAGE_SIZE,
-      offset: 0,
-    }),
-    []
-  );
-
-  const {
-    data: rootData,
-    isFetching: isRootFetching,
-    refetch: refetchRoot,
-  } = useCustomQuery({
-    queryKey: queryKeys.workflows.stepSummaries(
+  // Top-level steps. Polled, every loaded page of them.
+  const roots = useInfiniteQuery({
+    queryKey: queryKeys.workflows.timelineRoots(
       workflowId ?? '',
-      instanceId ?? null,
-      rootFilters
+      instanceId ?? null
     ),
-    queryFn: (token: string) =>
-      getStepSummaries(token, workflowId!, instanceId!, rootFilters),
-    enabled: !!workflowId && !!instanceId && enabled,
+    queryFn: ({ pageParam }) =>
+      getStepSummaries(workflowId!, instanceId!, {
+        rootScopesOnly: true,
+        sortOrder: 'asc',
+        limit: ROOT_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce(
+        (count, page) => count + (page.data?.steps?.length ?? 0),
+        0
+      );
+      const total = lastPage.data?.totalCount ?? 0;
+      return lastPage.data?.steps?.length && loaded < total
+        ? loaded
+        : undefined;
+    },
+    enabled: ready && enabled,
     refetchInterval,
   });
+
+  const pages = roots.data?.pages;
+  const loadedSteps = useMemo(
+    () => pages?.flatMap((page) => page.data?.steps ?? []) ?? NO_STEPS,
+    [pages]
+  );
 
   // An unfinished (running or parked) step's bar runs up to now, so re-lay
   // the timeline on a clock while one is open, not only when the data changes.
   const [nowTick, setNowTick] = useState(0);
   const hasOpenEndedStep = useMemo(
-    () => rootData?.data?.steps?.some(isOpenEndedStep) ?? false,
-    [rootData]
+    () => loadedSteps.some(isOpenEndedStep),
+    [loadedSteps]
   );
   useEffect(() => {
     if (!hasOpenEndedStep || !refetchInterval) return;
@@ -110,148 +112,117 @@ export function useHierarchicalTimeline(
     return () => clearInterval(timer);
   }, [hasOpenEndedStep, refetchInterval]);
 
-  // Process root steps when data changes
-  useEffect(() => {
-    if (rootData?.data?.steps) {
+  const { rootSteps, totalRootCount, minTimestamp, totalDuration } =
+    useMemo(() => {
       const nowMs = Date.now();
-      const allSteps = rootData.data.steps;
-
-      // Filter to only root steps (those without parentScopeId)
-      // This is a fallback in case the backend doesn't properly filter with rootScopesOnly
-      const steps = allSteps.filter((step) => !step.parentScopeId);
-
-      // Use total count from filtered steps if backend returned non-root steps
+      // Only root steps (those without parentScopeId): a fallback in case the
+      // backend doesn't properly filter with rootScopesOnly.
+      const steps = loadedSteps.filter((step) => !step.parentScopeId);
+      const serverTotal = pages?.[pages.length - 1]?.data?.totalCount ?? 0;
+      // If the backend returned non-root steps, count what was kept.
       const totalCount =
-        steps.length !== allSteps.length
-          ? steps.length
-          : rootData.data.totalCount;
-
-      if (steps.length > 0) {
-        const minTs = calculateMinTimestamp(steps);
-        const maxTs = calculateMaxTimestamp(steps, nowMs);
-
-        const hierarchicalSteps = steps.map((step) =>
+        steps.length !== loadedSteps.length ? steps.length : serverTotal;
+      if (steps.length === 0) {
+        return {
+          rootSteps: [] as HierarchicalStep[],
+          totalRootCount: totalCount,
+          minTimestamp: 0,
+          totalDuration: 0,
+        };
+      }
+      const minTs = calculateMinTimestamp(steps);
+      const maxTs = calculateMaxTimestamp(steps, nowMs);
+      return {
+        rootSteps: steps.map((step) =>
           toHierarchicalStep(step, 0, minTs, nowMs)
-        );
+        ),
+        totalRootCount: totalCount,
+        minTimestamp: minTs,
+        totalDuration: maxTs - minTs,
+      };
+      // nowTick re-lays the timeline while a step is open-ended.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadedSteps, pages, nowTick]);
 
-        setRootSteps(hierarchicalSteps, totalCount, minTs, maxTs);
-      } else {
-        setRootSteps([], totalCount, 0, 0);
-      }
-    }
-    // nowTick re-runs this while a step is open-ended.
-  }, [rootData, setRootSteps, nowTick]);
-
-  // Update loading state
-  useEffect(() => {
-    setLoadingRoot(isRootFetching && rootSteps.length === 0);
-  }, [isRootFetching, rootSteps.length, setLoadingRoot]);
-
-  // Load more root steps
-  const loadMoreRoot = useCallback(async () => {
-    if (!workflowId || !instanceId || !token) return;
-
-    setLoadingRoot(true);
-
-    try {
-      const result = await RuntimeREST.api.getStepSummaries(
-        workflowId,
-        instanceId,
-        {
-          rootScopesOnly: true,
-          sortOrder: 'asc',
-          limit: ROOT_PAGE_SIZE,
-          offset: rootOffset,
-        },
-        createAuthHeaders(token)
-      );
-
-      if (result.data?.data?.steps) {
-        const newSteps = result.data.data.steps.map((step) =>
-          toHierarchicalStep(step, 0, minTimestamp)
-        );
-        appendRootSteps(newSteps);
-      }
-    } finally {
-      setLoadingRoot(false);
-    }
-  }, [
-    workflowId,
-    instanceId,
-    token,
-    rootOffset,
-    minTimestamp,
-    appendRootSteps,
-    setLoadingRoot,
-  ]);
-
-  // Fetch children for a step
-  const fetchChildren = useCallback(
-    async (step: HierarchicalStep) => {
-      const scopeIdForChildren = step.childrenScopeId;
-      if (!workflowId || !instanceId || !token || !scopeIdForChildren) return;
-
-      // Check if children are already cached
-      const cached = childrenCache.get(scopeIdForChildren);
-      if (cached && cached.length > 0) {
-        return;
-      }
-
-      setLoadingChildren(step.stepId, true);
-
-      try {
-        // Fetch children using parentScopeId filter
-        // The childrenScopeId is the scope that this step creates, children have it as parentScopeId
-        const result = await RuntimeREST.api.getStepSummaries(
-          workflowId,
-          instanceId,
+  // The children of each open step, by the scope they run in.
+  const openScopes = useMemo(
+    () => [
+      ...new Set(
+        [...expanded.values()].filter((scope): scope is string => !!scope)
+      ),
+    ],
+    [expanded]
+  );
+  const combineChildren = useCallback(
+    (results: UseQueryResult<StepSummariesPage>[]) =>
+      new Map<string, ChildrenOfScope>(
+        results.map((result, index) => [
+          openScopes[index],
           {
-            parentScopeId: scopeIdForChildren,
-            sortOrder: 'asc',
-            limit: CHILDREN_PAGE_SIZE,
+            steps: result.data?.data?.steps,
+            totalCount: result.data?.data?.totalCount,
+            isLoading: result.isLoading,
           },
-          createAuthHeaders(token)
-        );
+        ])
+      ),
+    [openScopes]
+  );
+  const childrenOf = useQueries({
+    queries: openScopes.map((scopeId) => ({
+      queryKey: queryKeys.workflows.timelineChildren(
+        workflowId ?? '',
+        instanceId ?? null,
+        scopeId
+      ),
+      // The scope this step creates: its children have it as parentScopeId.
+      queryFn: () =>
+        getStepSummaries(workflowId!, instanceId!, {
+          parentScopeId: scopeId,
+          sortOrder: 'asc',
+          limit: CHILDREN_PAGE_SIZE,
+        }),
+      enabled: ready && enabled,
+    })),
+    combine: combineChildren,
+  });
 
-        if (result.data?.data?.steps) {
-          const childSteps = result.data.data.steps.map((childStep) =>
-            toHierarchicalStep(childStep, step.depth + 1, minTimestamp)
-          );
-          setChildren(
-            scopeIdForChildren,
-            childSteps,
-            result.data.data.totalCount
-          );
-        }
-      } finally {
-        setLoadingChildren(step.stepId, false);
+  const childSteps = useMemo(() => {
+    const byScope = new Map<string, HierarchicalStep[]>();
+    for (const [scopeId, children] of childrenOf) {
+      if (children.steps) {
+        byScope.set(
+          scopeId,
+          children.steps.map((step) =>
+            toHierarchicalStep(step, 0, minTimestamp)
+          )
+        );
       }
+    }
+    return byScope;
+  }, [childrenOf, minTimestamp]);
+
+  const toggleExpand = useCallback(
+    (step: HierarchicalStep) => {
+      setExpandedIn((current) => {
+        const steps = new Map(current.run === run ? current.steps : []);
+        if (steps.has(step.stepId)) steps.delete(step.stepId);
+        else
+          steps.set(
+            step.stepId,
+            step.hasChildren ? step.childrenScopeId : null
+          );
+        return { run, steps };
+      });
     },
-    [
-      workflowId,
-      instanceId,
-      token,
-      minTimestamp,
-      childrenCache,
-      setChildren,
-      setLoadingChildren,
-    ]
+    [run]
   );
 
-  // Toggle expand and fetch children if needed
-  const handleToggleExpand = useCallback(
-    async (step: HierarchicalStep) => {
-      const isCurrentlyExpanded = expandedStepIds.has(step.stepId);
-
-      // Toggle the expansion state
-      toggleExpanded(step.stepId);
-
-      // If expanding and has children capability, fetch children
-      if (!isCurrentlyExpanded && step.hasChildren && step.childrenScopeId) {
-        await fetchChildren(step);
-      }
+  const isLoadingChildren = useCallback(
+    (stepId: string) => {
+      const scopeId = expanded.get(stepId);
+      return scopeId ? (childrenOf.get(scopeId)?.isLoading ?? false) : false;
     },
-    [expandedStepIds, toggleExpanded, fetchChildren]
+    [expanded, childrenOf]
   );
 
   // Build the flattened list of visible steps (with hierarchy)
@@ -260,26 +231,22 @@ export function useHierarchicalTimeline(
 
     const addStepsRecursively = (steps: HierarchicalStep[], depth: number) => {
       for (const step of steps) {
-        // Add current step with updated expansion state
-        const isExpanded = expandedStepIds.has(step.stepId);
-        const isLoadingChildrenForStep = loadingChildrenIds.has(step.stepId);
+        const isExpanded = expanded.has(step.stepId);
         const childrenScopeId = step.childrenScopeId;
         const children = childrenScopeId
-          ? childrenCache.get(childrenScopeId)
+          ? childSteps.get(childrenScopeId)
           : undefined;
 
-        const stepWithState: HierarchicalStep = {
+        result.push({
           ...step,
           isExpanded,
-          isLoadingChildren: isLoadingChildrenForStep,
+          isLoadingChildren: isLoadingChildren(step.stepId),
           children,
           childrenTotalCount: childrenScopeId
-            ? childrenTotalCounts.get(childrenScopeId)
+            ? childrenOf.get(childrenScopeId)?.totalCount
             : undefined,
           depth,
-        };
-
-        result.push(stepWithState);
+        });
 
         // If expanded and has children, add them recursively
         if (isExpanded && children && children.length > 0) {
@@ -290,13 +257,7 @@ export function useHierarchicalTimeline(
 
     addStepsRecursively(rootSteps, 0);
     return result;
-  }, [
-    rootSteps,
-    expandedStepIds,
-    loadingChildrenIds,
-    childrenCache,
-    childrenTotalCounts,
-  ]);
+  }, [rootSteps, expanded, childSteps, childrenOf, isLoadingChildren]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -319,7 +280,10 @@ export function useHierarchicalTimeline(
     };
   }, [visibleSteps, totalDuration, rootSteps.length]);
 
-  const hasMoreRootSteps = rootSteps.length < totalRootCount;
+  const { fetchNextPage } = roots;
+  const loadMoreRoot = useCallback(async () => {
+    await fetchNextPage();
+  }, [fetchNextPage]);
 
   return {
     // Data
@@ -331,17 +295,18 @@ export function useHierarchicalTimeline(
     stats,
 
     // Loading states
-    isLoadingRoot: isLoadingRoot || (isRootFetching && rootSteps.length === 0),
-    hasMoreRootSteps,
+    isLoadingRoot:
+      roots.isFetchingNextPage || (roots.isFetching && rootSteps.length === 0),
+    hasMoreRootSteps: roots.hasNextPage,
 
     // Actions
     loadMoreRoot,
-    toggleExpand: handleToggleExpand,
-    refetch: refetchRoot,
+    toggleExpand,
+    refetch: roots.refetch,
 
     // Helpers
-    isStepExpanded: (stepId: string) => expandedStepIds.has(stepId),
-    isLoadingChildren: (stepId: string) => loadingChildrenIds.has(stepId),
-    getChildren: (scopeId: string) => childrenCache.get(scopeId),
+    isStepExpanded: (stepId: string) => expanded.has(stepId),
+    isLoadingChildren,
+    getChildren: (scopeId: string) => childSteps.get(scopeId),
   };
 }

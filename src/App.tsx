@@ -8,7 +8,7 @@ import { useTenantUrlGuard } from '@/shared/hooks/useTenantUrlGuard';
 import { useUserGroups } from '@/shared/hooks/useUserGroups';
 import { MaintenancePage } from '@/shared/components/maintenance-page';
 import { useHealthCheck } from '@/shared/hooks/useHealthCheck';
-import { tenantIdFromUrl } from '@/shared/config/oidcConfig';
+import { tenantIdFromUrl } from '@/shared/config/appBase';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { TenantGate } from '@/shared/tenant/TenantGate';
 import {

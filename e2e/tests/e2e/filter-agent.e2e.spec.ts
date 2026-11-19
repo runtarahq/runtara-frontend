@@ -1,7 +1,5 @@
 import { test, expect, APIRequestContext, Page } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
 
 /**
  * Filter Agent Edge-Case E2E Tests (SYN-180)
@@ -29,38 +27,10 @@ import { fileURLToPath } from 'url';
  * Requires: full local stack (gateway, runtime, management, frontend)
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const API_BASE = `${GATEWAY_URL}/api/runtime/workflows`;
 
 // ── Auth helpers ──────────────────────────────────────────────────
-
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-  throw new Error('No access token found in auth state file');
-}
-
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
 
 // ── Condition builders ────────────────────────────────────────────
 
@@ -241,34 +211,29 @@ async function executeViaUI(
   await expect(historyTab).toBeVisible({ timeout: 5000 });
   await historyTab.click();
 
-  // Step events table should list all 3 steps
-  await expect(page.locator('text=Source Array').nth(0)).toBeVisible({
-    timeout: 10000,
-  });
-  await expect(page.locator('text=Filter').nth(0)).toBeVisible({
-    timeout: 5000,
-  });
-  await expect(page.locator('text=Finish').nth(0)).toBeVisible({
-    timeout: 5000,
-  });
+  // Step events table should list all 3 steps. The panel lists the run on
+  // its next poll (every 10 s) when the run was not there yet on opening.
+  const eventsTable = page
+    .locator('table')
+    .filter({ has: page.getByRole('columnheader', { name: 'Step Name' }) });
+  const eventRow = (stepName: string) =>
+    eventsTable
+      .locator('tbody tr')
+      .filter({ has: page.getByText(stepName, { exact: true }) });
+  await expect(eventRow('Source Array')).toBeVisible({ timeout: 20000 });
+  await expect(eventRow('Filter')).toBeVisible({ timeout: 5000 });
+  await expect(eventRow('Finish')).toBeVisible({ timeout: 5000 });
 
   // 5. Expand the Filter step row to show its inputs/outputs
-  //    Brief pause to let the events table fully render before clicking
-  await page.waitForTimeout(500);
-  const filterRow = page
-    .locator('tr')
-    .filter({
-      has: page.locator('text=Filter'),
-      hasNot: page.locator('text=Source Array'),
-    })
-    .filter({
-      has: page.locator('text=Completed'),
-    })
-    .first();
+  const filterRow = eventRow('Filter').filter({
+    has: page.getByText('Completed'),
+  });
   await filterRow.click({ timeout: 5000 });
 
-  // Wait for expanded content to render (shows inputs/outputs JSON)
-  await page.waitForTimeout(1000);
+  // Wait for expanded content to render (shows inputs/outputs)
+  await expect(page.getByRole('region', { name: 'Filter data' })).toBeVisible({
+    timeout: 5000,
+  });
 
   // 6. Fetch latest instance via API for assertions
   const instancesRes = await request.get(
@@ -296,8 +261,15 @@ async function executeViaUI(
     timeout: 15000,
   });
 
-  // Verify output data card is visible
-  await expect(page.getByText('Output Data')).toBeVisible({ timeout: 10000 });
+  // Verify the run's output is shown: the run data card opens on its Output
+  // section (what the "Output Data" card became)
+  const runData = page.getByRole('region', { name: 'Run data' });
+  await expect(runData.getByRole('tab', { name: /^Output/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+    { timeout: 10000 }
+  );
+  await expect(runData.getByRole('tree')).toBeVisible();
 
   // Brief pause so video captures the full history page
   await page.waitForTimeout(1500);

@@ -3,12 +3,20 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { TablePagination } from '@/shared/components/console';
-import { attentionQueues, queryAttentionRequests } from '../attention-requests';
-import { useOperations } from '../queries';
+import {
+  attentionQueues,
+  queryAttentionRequests,
+} from '@/features/operations/queries/attention-requests';
+import { useOperations } from '@/features/operations/queries';
 import { RequestRows } from '../components/RequestRows';
-import { OperationHeader, OperationSection, RefreshControls } from './shared';
-import { failedWithNothingToShow } from '../poll-errors';
+import {
+  OperationHeader,
+  OperationSection,
+} from '@/features/operations/components/shared';
+import { RefreshControls } from '@/features/runs/components/RunActions';
+import { failedWithNothingToShow } from '@/features/operations/utils/poll-errors';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function RequestsPage() {
   const [params, setParams] = useSearchParams();
   const overdue = params.get('filter') === 'overdue';
@@ -19,9 +27,8 @@ export function RequestsPage() {
   const client = useQueryClient();
   const scopes = attentionQueues(queues.data ?? [], views.data ?? []);
   const query = useCustomQuery({
-    queryKey: ['operations', tenant, 'request-list', scopes, overdue, page],
-    queryFn: (token: string) =>
-      queryAttentionRequests(token, scopes, overdue, page),
+    queryKey: queryKeys.operations.requestList(tenant, scopes, overdue, page),
+    queryFn: () => queryAttentionRequests(scopes, overdue, page),
     enabled: Boolean(queues.data && views.data),
     // The scopes carry each queue's count, so every count change is a new key.
     // Keep the rows on screen across that; a filter or page change still
@@ -51,7 +58,7 @@ export function RequestsPage() {
             updatedAt={query.dataUpdatedAt}
             onRefresh={() =>
               void client.invalidateQueries({
-                queryKey: ['operations', tenant],
+                queryKey: queryKeys.operations.tenant(tenant),
               })
             }
           />

@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
+import { WorkflowBuilderPage } from '../../pages/WorkflowBuilderPage';
 
 /**
  * HTTP Agent Connection Dropdown E2E Test
@@ -20,38 +19,10 @@ import { fileURLToPath } from 'url';
  * Requires: full local stack running (gateway, runtime, management, frontend)
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const RUNTIME_API = `${GATEWAY_URL}/api/runtime`;
 
 // ── Auth helpers ──────────────────────────────────────────────────
-
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-  throw new Error('No access token found in auth state file');
-}
-
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
 
 // ── Test ──────────────────────────────────────────────────────────
 
@@ -104,6 +75,8 @@ test.describe.serial('HTTP Agent Connection Dropdown', () => {
         integrationId: 'http_bearer',
         connectionParameters: {
           token: 'test-e2e-token-12345',
+          // Every HTTP connection is pinned to a base URL now.
+          base_url: 'https://api.example.com',
         },
       },
     });
@@ -133,29 +106,20 @@ test.describe.serial('HTTP Agent Connection Dropdown', () => {
     page,
   }) => {
     // 1. Navigate to workflow editor
-    await page.goto(`/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('.react-flow')).toBeVisible({ timeout: 15000 });
+    const builder = new WorkflowBuilderPage(page);
+    await builder.gotoWorkflow(workflowId);
 
-    // 2. Click "+" on Start node to add a step
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
+    // 2-4. Add the first step from the canvas: search the step picker for
+    //      HTTP Request and select that capability
+    await builder.beginFirstCanvasStep({
+      type: 'capability',
+      agentId: 'http',
+      capabilityId: 'http-request',
+      search: 'HTTP Request',
+    });
 
-    // 3. Search for HTTP Request in the step picker
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('HTTP Request');
-
-    // 4. Select the HTTP Request capability
-    const capabilityResult = page.getByText('HTTP Request').first();
-    await expect(capabilityResult).toBeVisible({ timeout: 30000 });
-    await capabilityResult.click();
-
-    // 5. NodeConfigDialog opens with "Select connection" button in the header
-    const dialog = page.getByRole('dialog');
+    // 5. The step's config panel opens with "Select connection" button in the header
+    const dialog = page.getByTestId('node-config-dialog');
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
     // The "Select connection" button is in the subtitle area

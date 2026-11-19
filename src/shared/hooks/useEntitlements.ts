@@ -44,7 +44,7 @@ export function useEntitlementsState(): {
 
   const query = useCustomQuery<EntitlementsSnapshot>({
     queryKey: ENTITLEMENTS_QUERY_KEY,
-    queryFn: (token) => fetchEntitlements(token),
+    queryFn: () => fetchEntitlements(),
     enabled: !inlined,
     staleTime: Infinity,
     gcTime: Infinity,

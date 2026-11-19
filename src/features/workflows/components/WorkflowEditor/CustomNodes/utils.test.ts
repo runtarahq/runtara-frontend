@@ -48,7 +48,9 @@ function makeGraph(
 /** Run graph through load→save and return the resulting graph's single step. */
 function roundTripStep(graph: ExecutionGraphDto & { entryPoint: string }) {
   const { nodes, edges } = executionGraphToReactFlow(graph as any);
-  const round = composeExecutionGraph(nodes, edges, { name: graph.name });
+  const round = composeExecutionGraph(nodes, edges, {
+    name: graph.name ?? undefined,
+  });
   expect(round).not.toBeNull();
   const stepId = graph.entryPoint;
   return (round!.steps as Record<string, any>)[stepId];
@@ -3535,7 +3537,7 @@ describe('WaitForInstances round-trip', () => {
 
   it('keeps an absent mode and timeout absent', () => {
     const graph = makeWaitInstancesGraph();
-    const raw = graph.steps!.waitRuns as Record<string, unknown>;
+    const raw = graph.steps!.waitRuns as unknown as Record<string, unknown>;
     delete raw.mode;
     delete raw.timeoutMs;
 

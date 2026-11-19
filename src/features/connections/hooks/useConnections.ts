@@ -17,6 +17,6 @@ interface EnrichedConnection extends ConnectionDto {
 export function useConnections() {
   return useCustomQuery<EnrichedConnection[]>({
     queryKey: queryKeys.connections.all,
-    queryFn: (token) => getConnections(token),
+    queryFn: () => getConnections(),
   });
 }

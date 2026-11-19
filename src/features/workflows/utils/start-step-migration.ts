@@ -1,6 +1,8 @@
-import type {
-  ExecutionGraphDto,
-  ExecutionGraphStepDto,
+import {
+  type ExecutionGraphDto,
+  type ExecutionGraphStepDto,
+  isLegacyStartStep,
+  stepInputMapping,
 } from '@/features/workflows/types/execution-graph';
 
 /**
@@ -41,8 +43,8 @@ export function migrateStartStep(
   } = executionGraph;
 
   // Find Start step(s) in the graph
-  const startStepEntries = Object.entries(steps).filter(
-    ([, step]) => step.stepType === 'Start'
+  const startStepEntries = Object.entries(steps).filter(([, step]) =>
+    isLegacyStartStep(step)
   );
 
   // If no Start step, return original graph unchanged
@@ -60,7 +62,7 @@ export function migrateStartStep(
   let extractedInputSchema: Record<string, any> | undefined;
   let extractedVariables: Record<string, any> | undefined;
 
-  const startInputMapping = startStep.inputMapping as any;
+  const startInputMapping = stepInputMapping(startStep) as any;
 
   // Check if Start step has inputSchema directly
   if ((startStep as any).inputSchema) {
@@ -160,5 +162,5 @@ export function needsStartStepMigration(
   executionGraph: ExecutionGraphDto
 ): boolean {
   const { steps = {} } = executionGraph;
-  return Object.values(steps).some((step) => step.stepType === 'Start');
+  return Object.values(steps).some(isLegacyStartStep);
 }

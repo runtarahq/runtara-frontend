@@ -1,17 +1,17 @@
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { Bug, CirclePlay, Copy, Eye, MessageSquare } from 'lucide-react';
-import type { ExecutionHistoryItem } from '../types';
+import type { ExecutionHistoryItem } from '@/features/runs/types';
 import { cn } from '@/lib/utils';
-import { RunStatusPill } from './RunLinks';
-import { describeFailure } from '@/features/operations/queries';
-import { StateValue } from '@/features/operations/components/StateValue';
+import { RunStatusPill } from '@/features/runs/components/RunLinks';
+import { describeFailure } from '@/features/runs/queries';
+import { StateValue } from '@/features/runs/components/StateValue';
 import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
 import { ResumeButton } from '@/features/workflows/components/ResumeButton';
 import { StopButton } from '@/features/workflows/components/StopButton';
-import { canResume } from '@/features/workflows/utils/suspension';
+import { canResume } from '@/features/runs/utils/suspension';
 import { formatDate } from '@/lib/utils';
 import { isActiveStatus } from '@/shared/utils/status-display';
 

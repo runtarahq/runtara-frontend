@@ -65,16 +65,11 @@ const VALUE_MODES: readonly ValueMode[] = [
 export function SetStateStepField({ name }: SetStateStepFieldProps) {
   const form = useFormContext();
   const { executionGraph, stateSchemaFields } = useContext(NodeFormContext);
-  const stepType = useWatch({ name: 'stepType', control: form.control });
   const rows: Row[] = useWatch({
     name,
     control: form.control,
     defaultValue: [],
   });
-
-  if (stepType !== 'SetState') {
-    return null;
-  }
 
   const stateSchema = declaredStateFields(stateSchemaFields, executionGraph);
   const fields = Object.entries(stateSchema).sort(([a], [b]) =>

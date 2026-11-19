@@ -1,4 +1,5 @@
-import { expect, Locator, Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
+import { expect, test, Locator, Page } from '@playwright/test';
 import { appPath } from '../utils/app-path';
 
 export abstract class BasePage {
@@ -49,16 +50,20 @@ export abstract class BasePage {
   }
 
   /**
-   * Take a deterministic screenshot for visual regression.
-   * Skipped unless E2E_VISUAL=true is set — snapshots are platform-specific
-   * (darwin vs linux font rendering differs), so they should only be generated
-   * and compared on one canonical platform (our CI ubuntu runners). Running
-   * without the env var keeps local runs fast and avoids committing darwin
-   * snapshots alongside linux ones. See e2e/README.md for the workflow.
+   * Compares the page with its baseline image, where there is one.
+   *
+   * A baseline is for one platform (fonts render differently on each), and
+   * the repository keeps only the CI runners': Linux. So the comparison runs
+   * wherever a baseline for this platform is committed, which is CI, and is
+   * skipped where there is none, which is a developer's machine. A run with
+   * `--update-snapshots` writes the baselines. See e2e/README.md.
    */
   async expectMatchesSnapshot(name: string): Promise<void> {
-    if (process.env.E2E_VISUAL !== 'true') return;
-    await expect(this.page).toHaveScreenshot(`${name}.png`, {
+    const file = `${name}.png`;
+    const info = test.info();
+    const writing = !['missing', 'none'].includes(info.config.updateSnapshots);
+    if (!writing && !existsSync(info.snapshotPath(file))) return;
+    await expect(this.page).toHaveScreenshot(file, {
       fullPage: true,
       maxDiffPixelRatio: 0.01,
       animations: 'disabled',

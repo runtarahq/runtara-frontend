@@ -3,6 +3,7 @@
 // contain JSX (renderFormField, renderComponent) which tightly couples them to components.
 // Separating would require complex refactoring with circular dependency resolution.
 import { z } from 'zod';
+import type { FieldConfig } from '@/shared/forms';
 import { useState, createContext, useContext, useCallback } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { InputMappingField } from './InputMappingField';
@@ -16,19 +17,14 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/shared/components/ui/tabs';
-import { FinishStepField } from './FinishStepField';
-import { SplitStepField } from './SplitStepField';
-import { ErrorStepField } from './ErrorStepField';
-import { FilterStepField } from './FilterStepField';
-import { GroupByStepField } from './GroupByStepField';
-import { AiAgentStepField } from './AiAgentStepField';
-import { WaitForSignalStepField } from './WaitForSignalStepField';
-import { WaitForInstancesStepField } from './WaitForInstancesStepField';
-import { SetStateStepField } from './SetStateStepField';
-import { LogStepField } from './LogStepField';
-import { WhileStepField } from './WhileStepField';
-import { DelayStepField } from './DelayStepField';
 import { SuspendingStepHint } from './SuspendingStepHint';
+import {
+  resolveStepType,
+  stepTypeTraits,
+  stepCallsWorkflow,
+} from '@/features/workflows/step-types/catalog';
+import { checkStepForm } from '@/features/workflows/step-types/form-rules';
+import { STEP_TYPE_UI } from '@/features/workflows/step-types/ui';
 import {
   Collapsible,
   CollapsibleContent,
@@ -41,6 +37,7 @@ import { Switch as ToggleSwitch } from '@/shared/components/ui/switch';
 import { jsonTextError } from '@/features/workflows/utils/mapping-serialization';
 
 // Wrapper component for EmbedWorkflowConfigField that uses react-hook-form
+import { isLegacyStartStep } from '@/features/workflows/types/execution-graph';
 function EmbedWorkflowFieldRenderer() {
   const form = useFormContext();
   const stepType = useWatch({ name: 'stepType', control: form.control });
@@ -81,7 +78,7 @@ function EmbedWorkflowFieldRenderer() {
   );
 
   // Only show for EmbedWorkflow steps
-  if (!stepType || stepType !== 'EmbedWorkflow') {
+  if (!stepCallsWorkflow(stepType)) {
     return null;
   }
 
@@ -138,16 +135,6 @@ function FormTabs() {
   );
 }
 
-const DURABLE_STEP_TYPES = new Set([
-  'Agent',
-  'Split',
-  'EmbedWorkflow',
-  'Delay',
-  'AiAgent',
-]);
-
-const RETRY_STEP_TYPES = new Set(['Agent', 'EmbedWorkflow']);
-
 /**
  * One-line answer to "is anything in here worth opening?".
  *
@@ -190,12 +177,17 @@ function StepAdvancedFields() {
   const retryDelay = useWatch({ name: 'retryDelay', control: form.control });
   const timeout = useWatch({ name: 'timeout', control: form.control });
 
-  if (activeTab !== 'main' || !stepType || stepType === 'Start') {
+  if (
+    activeTab !== 'main' ||
+    !stepType ||
+    isLegacyStartStep({ stepType: stepType })
+  ) {
     return null;
   }
 
-  const showDurable = DURABLE_STEP_TYPES.has(stepType);
-  const showRetries = RETRY_STEP_TYPES.has(stepType);
+  const traits = stepTypeTraits(stepType);
+  const showDurable = traits?.durable ?? false;
+  const showRetries = traits?.retries ?? false;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -322,7 +314,7 @@ function StepAdvancedFields() {
 }
 
 // Basic configuration fields (above tabs)
-const basicFieldsConfig = [
+const basicFieldsConfig: FieldConfig[] = [
   {
     type: 'hidden',
     label: '',
@@ -499,64 +491,12 @@ function InputMappingWrapper(config: Record<string, unknown>) {
     return null;
   }
 
-  if (stepType === 'Finish') {
-    return <FinishStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Split') {
-    return <SplitStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Error') {
-    return <ErrorStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Filter') {
-    return <FilterStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'GroupBy') {
-    return <GroupByStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'AiAgent') {
-    return <AiAgentStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'WaitForSignal') {
-    return <WaitForSignalStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'WaitForInstances') {
-    return (
-      <WaitForInstancesStepField {...config} name={config.name as string} />
-    );
-  }
-
-  if (stepType === 'SetState') {
-    return <SetStateStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'GetState') {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Reads the run&apos;s state as of this point:{' '}
-        <code>steps.&lt;id&gt;.outputs.&lt;field&gt;</code>. The read is
-        checkpointed, so a replay sees what the first execution read.
-      </p>
-    );
-  }
-
-  if (stepType === 'Log') {
-    return <LogStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'While') {
-    return <WhileStepField {...config} name={config.name as string} />;
-  }
-
-  if (stepType === 'Delay') {
-    return <DelayStepField {...config} name={config.name as string} />;
+  // A step type with a form of its own (step-types/ui.tsx); the others are
+  // configured by their input mapping.
+  const known = resolveStepType(stepType);
+  const StepFormField = known ? STEP_TYPE_UI[known].FormField : null;
+  if (StepFormField) {
+    return <StepFormField {...config} name={config.name as string} />;
   }
 
   return (
@@ -567,7 +507,7 @@ function InputMappingWrapper(config: Record<string, unknown>) {
 }
 
 // Main tab fields
-const mainTabFieldsConfig = [
+const mainTabFieldsConfig: FieldConfig[] = [
   {
     label: '',
     name: 'inputMapping',
@@ -600,7 +540,7 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
 }
 
 // Combined config for compatibility
-export const fieldsConfig = [
+export const fieldsConfig: FieldConfig[] = [
   ...basicFieldsConfig,
   {
     type: 'custom',
@@ -855,96 +795,11 @@ export const schema = () =>
       groupByKey: z.string().optional(),
       groupByExpectedKeys: z.array(z.string()).optional(),
     })
+    // What this step type's form refuses to save (step-types/form-rules.ts).
     .superRefine((inputs, ctx) => {
-      // Switch requires a value to switch on: SwitchConfig.value is mandatory
-      // on the backend (deny_unknown_fields serde struct), so an empty value
-      // must block the form save instead of failing with a raw serde error.
-      if (inputs.stepType !== 'Switch') return;
-      const valueItem = (inputs.inputMapping || []).find(
-        (item) => item.type === 'value'
+      checkStepForm(inputs, (path, message) =>
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path, message })
       );
-      const rawValue = valueItem?.value;
-      const isEmptyComposite =
-        valueItem?.valueType === 'composite' &&
-        rawValue !== null &&
-        typeof rawValue === 'object' &&
-        (Array.isArray(rawValue)
-          ? rawValue.length === 0
-          : Object.keys(rawValue as object).length === 0);
-      const hasValue =
-        valueItem !== undefined &&
-        rawValue !== undefined &&
-        (rawValue !== null || valueItem.valueType === 'immediate') &&
-        !(typeof rawValue === 'string' && rawValue.trim() === '') &&
-        !isEmptyComposite;
-
-      if (!hasValue) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['inputMapping'],
-          message: 'Value to Switch On is required',
-        });
-      }
-    })
-    .superRefine((inputs, ctx) => {
-      if (inputs.stepType !== 'Split') return;
-      const splitVariables = inputs.splitVariablesFields || [];
-      splitVariables.forEach((item, index) => {
-        const trimmedName = (item.name || '').trim();
-        const isComposite = item.valueType === 'composite';
-        const isEmptyComposite =
-          isComposite &&
-          item.value !== undefined &&
-          item.value !== null &&
-          typeof item.value === 'object' &&
-          (Array.isArray(item.value)
-            ? item.value.length === 0
-            : Object.keys(item.value as object).length === 0);
-        const hasValue =
-          item.value !== undefined &&
-          (item.value !== null || item.valueType === 'immediate') &&
-          !(typeof item.value === 'string' && item.value.trim() === '') &&
-          !isEmptyComposite;
-
-        if (hasValue && !trimmedName) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['splitVariablesFields', index, 'name'],
-            message: 'Variable name is required',
-          });
-        }
-
-        if (trimmedName && !hasValue) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['splitVariablesFields', index, 'value'],
-            message: 'Variable value is required',
-          });
-        }
-      });
-    })
-    .superRefine((inputs, ctx) => {
-      // Finish outputs serialize through Object.fromEntries, which silently
-      // collapses duplicate names last-wins before the server ever sees them.
-      // Block the save with a visible error on every duplicated row instead.
-      if (inputs.stepType !== 'Finish') return;
-      const nameCounts = new Map<string, number>();
-      (inputs.inputMapping || []).forEach((item) => {
-        const trimmedName = (item.type || '').trim();
-        if (!trimmedName) return;
-        nameCounts.set(trimmedName, (nameCounts.get(trimmedName) || 0) + 1);
-      });
-      (inputs.inputMapping || []).forEach((item, index) => {
-        const trimmedName = (item.type || '').trim();
-        if (!trimmedName) return;
-        if ((nameCounts.get(trimmedName) || 0) > 1) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['inputMapping', index, 'type'],
-            message: `Duplicate output name "${trimmedName}"`,
-          });
-        }
-      });
     });
 
 export type SchemaType = z.infer<ReturnType<typeof schema>>;
@@ -952,7 +807,7 @@ export type SchemaInput = z.input<ReturnType<typeof schema>>;
 
 export const initialValues: Partial<SchemaType> = {
   ...fieldsConfig.reduce((initValues: Record<string, any>, field) => {
-    initValues[field.name] = field.initialValue;
+    if (field.name) initValues[field.name] = field.initialValue;
     return initValues;
   }, {}),
   // Add advanced options default values

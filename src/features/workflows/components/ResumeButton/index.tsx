@@ -38,7 +38,7 @@ export function ResumeButton(props: Props) {
 
     setIsLoading(true);
     try {
-      await resumeInstance(token, instanceId);
+      await resumeInstance(instanceId);
       await refreshRunViews(queryClient);
       toast.success('Execution resumed from last checkpoint');
     } catch (error) {

@@ -1,10 +1,9 @@
-import { useContext, useMemo, useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { RotateCcw, Trash2 } from 'lucide-react';
-import { NextForm } from '@/shared/components/NextForm';
-import { SheetBase } from '@/shared/components/next-dialog/sheet-base.tsx';
-import { FormContent } from '@/shared/components/NextForm/form-content.tsx';
+import { PageLoader } from '@/shared/components/loader';
+import { FieldList, FormShell, type FieldConfig } from '@/shared/forms';
 import { Button } from '@/shared/components/ui/button';
 import { NodeFormContext } from './NodeFormContext.tsx';
 import { hasDirtyFields } from './dirty-state';
@@ -13,6 +12,7 @@ import { TabProvider, useTabContext } from './NodeFormItem.tsx';
 import { getTestHandler } from './TestAgentButton/TestAgentInline';
 import { Spinner } from '@/shared/components/ui/spinner';
 
+import { isLegacyStartStep } from '@/features/workflows/types/execution-graph';
 type Props = {
   isEdit?: boolean;
   values: form.SchemaType;
@@ -43,9 +43,7 @@ export function NodeForm({
   contentScrollable = true,
   hideActions = false,
 }: Props) {
-  const { stepTypes, agents, isLoading } = useContext(NodeFormContext);
-
-  const formProps = useMemo(() => ({ stepTypes, agents }), [stepTypes, agents]);
+  const { isLoading } = useContext(NodeFormContext);
 
   const entireForm = useForm<form.SchemaInput, unknown, form.SchemaType>({
     resolver: zodResolver(form.schema()),
@@ -125,60 +123,49 @@ export function NodeForm({
   const stepType = entireForm.watch('stepType');
 
   // Filter out fields that should be hidden for Start steps
-  const filteredFieldsConfig =
-    stepType === 'Start'
-      ? form.fieldsConfig.filter((field: any) => {
-          // Keep these fields for Start steps
-          if (field.name === 'stepType') return true;
-          if (field.name === 'name') return true;
-          if (field.name === 'inputMapping') return true;
-          if (field.name === 'childWorkflowId') return true;
-          if (field.name === 'childVersion') return true;
-          if (field.name === 'inputSchema') return true;
-          if (field.name === 'inputSchemaFields') return true;
-          if (field.name === 'startMode') return true;
-          if (field.name === 'selectedTriggerId') return true;
+  const filteredFieldsConfig = isLegacyStartStep({ stepType: stepType })
+    ? form.fieldsConfig.filter((field) => {
+        // Keep these fields for Start steps
+        if (field.name === 'stepType') return true;
+        if (field.name === 'name') return true;
+        if (field.name === 'inputMapping') return true;
+        if (field.name === 'childWorkflowId') return true;
+        if (field.name === 'childVersion') return true;
+        if (field.name === 'inputSchema') return true;
+        if (field.name === 'inputSchemaFields') return true;
+        if (field.name === 'startMode') return true;
+        if (field.name === 'selectedTriggerId') return true;
 
-          // Hide these fields for Start steps
-          if (field.name === 'agentId') return false;
-          if (field.name === 'capabilityId') return false;
-          if (field.name === 'connectionId') return false;
-          if (field.name === 'embedWorkflowConfig') return false;
-          if (field.name === 'formTabs') return false;
+        // Hide these fields for Start steps
+        if (field.name === 'agentId') return false;
+        if (field.name === 'capabilityId') return false;
+        if (field.name === 'connectionId') return false;
+        if (field.name === 'embedWorkflowConfig') return false;
+        if (field.name === 'formTabs') return false;
 
-          return true;
-        })
-      : form.fieldsConfig;
-
-  const renderContent = () => (
-    <FormContentWrapper
-      isLoading={isLoading}
-      fieldsConfig={filteredFieldsConfig}
-      contentScrollable={contentScrollable}
-    />
-  );
-
-  const renderActions = () => (
-    <FormActions
-      isEdit={isEdit}
-      hideActions={hideActions}
-      onReset={handleReset}
-      onDelete={onDelete}
-    />
-  );
+        return true;
+      })
+    : form.fieldsConfig;
 
   return (
     <TabProvider>
-      <NextForm
+      <FormShell
         className="flex h-full flex-col"
         form={entireForm}
-        formProps={formProps}
-        renderContent={renderContent}
-        renderActions={renderActions}
-        onSubmit={(data) => {
-          handleSubmit(data || entireForm.getValues());
-        }}
-      />
+        onSubmit={handleSubmit}
+      >
+        <FormContentWrapper
+          isLoading={isLoading}
+          fieldsConfig={filteredFieldsConfig}
+          contentScrollable={contentScrollable}
+        />
+        <FormActions
+          isEdit={isEdit}
+          hideActions={hideActions}
+          onReset={handleReset}
+          onDelete={onDelete}
+        />
+      </FormShell>
     </TabProvider>
   );
 }
@@ -289,17 +276,21 @@ export function FormActions({
 function FormContentWrapper({
   isLoading,
   fieldsConfig,
-  contentScrollable,
+  contentScrollable = true,
 }: {
   isLoading: boolean;
-  fieldsConfig: any[];
+  fieldsConfig: FieldConfig[];
   contentScrollable?: boolean;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <SheetBase loading={isLoading} contentScrollable={contentScrollable}>
-        <FormContent fieldsConfig={fieldsConfig} />
-      </SheetBase>
+      <div
+        className={`min-h-0 flex-1 space-y-4 ${
+          contentScrollable ? 'overflow-y-auto' : ''
+        }`}
+      >
+        {isLoading ? <PageLoader /> : <FieldList fields={fieldsConfig} />}
+      </div>
     </div>
   );
 }

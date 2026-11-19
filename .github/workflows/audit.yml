@@ -1,0 +1,50 @@
+name: Audit
+
+# The implicit-state audit (docs/implicit-state.md): 133 tests that drive the
+# real UI against mocked routes, one per claim. They are regression tests now
+# that the defects are fixed, and take about 16 minutes, so they run on main
+# and nightly rather than on every pull request.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Implicit-state audit
+    # The runner image carries Chrome, which the audit config drives
+    # (`channel: 'chrome'`), so no browser is downloaded.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Run the audit specs
+        env:
+          CI: 'true'
+        run: npm run test:e2e:audit
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-audit-results
+          path: e2e-results/audit/
+          retention-days: 14

@@ -38,6 +38,11 @@ import { getStepNodeSize } from './node-size';
 // Note: Node editing is now handled by the sidebar (EditorSidebar) via double-click on ReactFlow.
 // The dialogs below are only for creating new nodes via the + button handles.
 
+import {
+  stepTakesAgent,
+  stepEndsPath,
+} from '@/features/workflows/step-types/catalog';
+import { isLegacyStartStep } from '@/features/workflows/types/execution-graph';
 type BasicNodeProps = Node<form.SchemaType>;
 
 function BasicNodeComponent({
@@ -68,11 +73,8 @@ function BasicNodeComponent({
     state.stagedNodeIds.has(id)
   );
 
-  // Check if this node has validation errors (from workflowStore or validationStore)
-  const hasValidationError = useWorkflowStore((state) =>
-    state.stepsWithErrors.has(id)
-  );
-  const hasValidationErrorFromPanel = useValidationStore((state) =>
+  // Whether a problem in the panel names this step.
+  const showValidationError = useValidationStore((state) =>
     state.stepsWithErrors.has(id)
   );
 
@@ -85,9 +87,6 @@ function BasicNodeComponent({
   const validationMessage = useValidationStore((state) =>
     getFirstValidationMessage(state, id)
   );
-
-  // Combine error states from both stores
-  const showValidationError = hasValidationError || hasValidationErrorFromPanel;
 
   // Share the entitlement snapshot for both the stale-agent flag (below)
   // and the agents-list query filter. All getAgents() callers share
@@ -106,13 +105,13 @@ function BasicNodeComponent({
   // disabled modules (which would 403 at the management-plane gate).
   const agentsQuery = useCustomQuery({
     queryKey: queryKeys.agents.all,
-    queryFn: (token: string) => getAgents(token, enabledAgentIds),
+    queryFn: () => getAgents(enabledAgentIds),
     placeholderData: { agents: [] },
   });
 
   // Lookup agent name for Agent steps
   const agent = useMemo(() => {
-    if (data.stepType !== 'Agent' || !data.agentId) return undefined;
+    if (!stepTakesAgent(data.stepType) || !data.agentId) return undefined;
     const agents =
       (agentsQuery.data as { agents: ExtendedAgent[] })?.agents || [];
     return findAgentById(agents, data.agentId);
@@ -131,7 +130,7 @@ function BasicNodeComponent({
   // management-plane gate. Restoring the entitlement clears it without any
   // workflow mutation.
   const hasStaleAgent =
-    data.stepType === 'Agent' &&
+    stepTakesAgent(data.stepType) &&
     !!data.agentId &&
     !agentEnabled(entitlements, data.agentId);
 
@@ -396,8 +395,8 @@ function BasicNodeComponent({
     setShowStepPicker(true);
   };
 
-  const isFinishStep = data.stepType === 'Finish';
-  const isStartStep = data.stepType === 'Start';
+  const isFinishStep = stepEndsPath(data.stepType);
+  const isStartStep = isLegacyStartStep({ stepType: data.stepType });
 
   // Determine if this step can have error handlers based on its step type:
   // only the compiler-supported onError set (Agent, AiAgent, EmbedWorkflow,

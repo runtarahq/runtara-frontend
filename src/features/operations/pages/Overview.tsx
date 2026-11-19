@@ -9,27 +9,28 @@ import { useAuthStore } from '@/shared/stores/authStore';
 import {
   useOperations,
   queryRuns,
-  queryRunSummary,
-  operationsRequest,
   selectedFields,
-} from '../queries';
+} from '@/features/operations/queries';
+import { queryRunSummary, operationsRequest } from '@/features/runs/queries';
 import {
   attentionQueues,
   attentionRequest,
   overdueFilters,
-} from '../attention-requests';
+} from '@/features/operations/queries/attention-requests';
 import { OverviewAttention } from '../components/OverviewAttention';
-import { RefreshControls, RunRows } from './shared';
+import { RunRows } from '@/features/operations/components/shared';
+import { RefreshControls } from '@/features/runs/components/RunActions';
 import type { OperationRequestPage } from '@/generated/RuntaraRuntimeApi';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function OverviewPage() {
   const { queues, views } = useOperations({ includeProcesses: false });
   const tenant = useAuthStore((s) => s.orgId);
   const client = useQueryClient();
   const failures = useCustomQuery({
-    queryKey: ['operations', tenant, 'overview-failures'],
-    queryFn: (token: string) =>
-      queryRuns(token, {
+    queryKey: queryKeys.operations.overviewFailures(tenant),
+    queryFn: () =>
+      queryRuns({
         status: 'failed,timeout',
         completedFrom: new Date(Date.now() - 86_400_000).toISOString(),
         size: 1,
@@ -38,31 +39,31 @@ export function OverviewPage() {
     placeholderData: undefined,
   });
   const running = useCustomQuery({
-    queryKey: ['operations', tenant, 'running-count'],
-    queryFn: (token: string) => queryRunSummary(token, {}),
+    queryKey: queryKeys.operations.runningCount(tenant),
+    queryFn: () => queryRunSummary({}),
     refetchInterval: 30_000,
     placeholderData: undefined,
   });
   const recent = useCustomQuery({
-    queryKey: ['operations', tenant, 'invocations-24h'],
-    queryFn: (token: string) =>
-      queryRunSummary(token, {
+    queryKey: queryKeys.operations.invocations24h(tenant),
+    queryFn: () =>
+      queryRunSummary({
         createdFrom: new Date(Date.now() - 86_400_000).toISOString(),
       }),
     refetchInterval: 30_000,
     placeholderData: undefined,
   });
   const latest = useCustomQuery({
-    queryKey: ['operations', tenant, 'recent-runs'],
-    queryFn: (token: string) =>
-      queryRuns(token, { size: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
+    queryKey: queryKeys.operations.recentRuns(tenant),
+    queryFn: () =>
+      queryRuns({ size: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
     refetchInterval: 30_000,
     placeholderData: undefined,
   });
   const queueViews = attentionQueues(queues.data ?? [], views.data ?? []);
   const attention = useCustomQuery({
-    queryKey: ['operations', tenant, 'attention', queueViews],
-    queryFn: async (token: string) =>
+    queryKey: queryKeys.operations.attention(tenant, queueViews),
+    queryFn: async () =>
       Promise.all(
         queueViews.map(async ({ queue, view }) => {
           // One unfiltered query per queue; a saved view supplies presentation roles.
@@ -73,7 +74,6 @@ export function OverviewPage() {
             size: 3,
           };
           const page = await operationsRequest<OperationRequestPage>(
-            token,
             'operations/requests/query',
             'POST',
             { workflowId: queue.workflowId, actionKey: queue.actionKey, query }
@@ -81,7 +81,6 @@ export function OverviewPage() {
           const overdue = due
             ? (
                 await operationsRequest<OperationRequestPage>(
-                  token,
                   'operations/requests/query',
                   'POST',
                   {
@@ -150,7 +149,7 @@ export function OverviewPage() {
               busy={queues.isFetching || attention.isFetching}
               onRefresh={() =>
                 void client.invalidateQueries({
-                  queryKey: ['operations', tenant],
+                  queryKey: queryKeys.operations.tenant(tenant),
                 })
               }
             />

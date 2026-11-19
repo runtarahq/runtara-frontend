@@ -1,28 +1,10 @@
-import { useCallback, useMemo, useState, memo, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { RowSelectionState, SortingState } from '@tanstack/react-table';
 import { Button } from '@/shared/components/ui/button';
 import { Can } from '@/shared/components/Can';
-import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { DataTable } from '@/shared/components/table';
-import { clickLandedInGrid } from './click-target';
-import {
-  DRAFT_ID_PREFIX,
-  computeRecordTotals,
-  isDraftRow,
-  makeDraftInstance,
-  splitDraftIds,
-} from './draft-row';
-import {
-  dropEditsForRows,
-  isUnchangedFailure,
-  recordCellEdit,
-  restoreEditsForRows,
-  settleCreatedDraft,
-  settleSavedRow,
-  withSaveFailed,
-} from './pending-edits';
-import { createRowSaveQueue } from './row-save-queue';
+import { computeRecordTotals } from './draft-row';
 import {
   Breadcrumb,
   ConsoleTableShell,
@@ -32,129 +14,41 @@ import {
   TablePagination,
   TableStatusFooter,
 } from '@/shared/components/console';
-import { ObjectModelConnectionSelector } from '../ObjectModelConnectionSelector';
-import { Instance, Schema, Condition } from '@/generated/RuntaraRuntimeApi';
-import {
-  useBulkCreateObjectInstances,
-  useBulkDeleteObjectInstances,
-  useBulkUpdateObjectInstances,
-  useObjectInstanceDtos,
-  useUpdateObjectInstanceDto,
-  useCreateObjectInstanceDto,
-  useExportCsv,
-} from '@/features/objects/hooks/useObjectRecords.ts';
-import type {
-  BulkConflictMode,
-  BulkCreateResult,
-  BulkValidationMode,
-} from '../../queries';
+import { Schema } from '@/generated/RuntaraRuntimeApi';
+import { useObjectInstanceDtos } from '@/features/objects/hooks/useObjectRecords.ts';
 import { objectInstancesColumns } from './ObjectInstancesColumns';
 import { EditingCellContext } from './editing-cell-context';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/components/ui/alert-dialog';
 import { FilterComposer } from '../FilterComposer';
 import { ImportCsvDialog } from '../ImportCsvDialog';
+import { AddRowButton } from './AddRowButton';
+import { BulkDeleteDialog } from './BulkDeleteDialog';
 import { BulkEditDialog } from './BulkEditDialog';
 import { BulkInsertDialog } from './BulkInsertDialog';
+import { RecordsToolbarActions } from './RecordsToolbarActions';
+import { filterSchemaDefinition } from './filter-schema';
+import { useBulkActions } from './use-bulk-actions';
+import { useRecordsExport } from './use-records-export';
+import { useRecordsView } from './use-records-view';
+import { useRowEdits } from './use-row-edits';
 import { toast } from 'sonner';
-import { isNotFoundError } from '@/shared/hooks/api';
 import { Alert, AlertDescription } from '@/shared/components/ui/alert';
-import { Spinner } from '@/shared/components/ui/spinner';
-
-const AddRowButton = memo(({ onClick }: { onClick: () => void }) => {
-  const [isHovering, setIsHovering] = useState(false);
-
-  return (
-    <button
-      type="button"
-      className={`w-full cursor-pointer border-t border-border py-3 text-center transition-colors ${
-        isHovering ? 'bg-muted/80' : 'bg-muted/30'
-      }`}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
-      onClick={onClick}
-    >
-      <span
-        className={`text-xs font-medium ${
-          isHovering ? 'text-foreground' : 'text-muted-foreground'
-        }`}
-      >
-        {isHovering ? '+ Click to add a new row' : '+ Add row'}
-      </span>
-    </button>
-  );
-});
-
-AddRowButton.displayName = 'AddRowButton';
 
 interface ObjectInstanceDtosTableProps {
   objectSchemaDto: Schema;
   connectionId?: string | null;
 }
 
+// The records of an object type, edited in place. The table is assembled
+// here from its parts: which records are shown (use-records-view), editing
+// them in place (use-row-edits), acting on many (use-bulk-actions) and
+// exporting them (use-records-export).
 export function ObjectInstanceDtosTable({
   objectSchemaDto,
   connectionId,
 }: ObjectInstanceDtosTableProps) {
-  const [filterCondition, setFilterCondition] = useState<Condition | null>(
-    null
-  );
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  // A selection belongs to the rows on screen. It used to survive page, sort
-  // and filter changes, so Delete removed rows the user could no longer see
-  // (OB-11). Cleared in the render that sees the change.
-  const viewKey = JSON.stringify([filterCondition, page, pageSize, sorting]);
-  const [selectionView, setSelectionView] = useState(viewKey);
-  if (selectionView !== viewKey) {
-    setSelectionView(viewKey);
-    if (Object.keys(rowSelection).length) setRowSelection({});
-  }
-  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
-  const [showBulkEditDialog, setShowBulkEditDialog] = useState(false);
-  const [showBulkInsertDialog, setShowBulkInsertDialog] = useState(false);
-  const [pendingRecords, setPendingRecords] = useState<Instance[]>([]);
-  const [animatingRowId, setAnimatingRowId] = useState<string | null>(null);
-  // Rows whose last save failed: marked until a save succeeds (OB-3).
-  const [failedRowIds, setFailedRowIds] = useState<ReadonlySet<string>>(
-    () => new Set()
-  );
-  const markSaveFailed = useCallback((rowId: string, failed: boolean) => {
-    setFailedRowIds((prev) => withSaveFailed(prev, rowId, failed));
-  }, []);
-
-  // Track which row has unsaved changes
-  const [dirtyRows, setDirtyRows] = useState<Map<string, any>>(new Map());
-  const lastFocusedRowRef = useRef<string | null>(null);
-
-  // Track which cell is currently being edited (rowId-columnId)
-  const [editingCellId, setEditingCellId] = useState<string | null>(null);
-  const editingCellIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    editingCellIdRef.current = editingCellId;
-  }, [editingCellId]);
-
-  // Convert TanStack SortingState to API format
-  // Strip leading underscore from system column IDs (_createdAt -> createdAt)
-  const sortBy =
-    sorting.length > 0
-      ? sorting.map((s) => (s.id.startsWith('_') ? s.id.slice(1) : s.id))
-      : undefined;
-  const sortOrder =
-    sorting.length > 0
-      ? sorting.map((s) => (s.desc ? 'desc' : 'asc'))
-      : undefined;
+  const schemaId = objectSchemaDto.id || '';
+  const view = useRecordsView();
+  const { filterCondition, page, pageSize, sortBy, sortOrder } = view;
 
   // Check if schema has a name for filtering/sorting
   const hasFilteringOrSorting = filterCondition || sortBy || sortOrder;
@@ -180,527 +74,32 @@ export function ObjectInstanceDtosTable({
     }
   }, [isError, error]);
 
-  // What the server holds, for telling an edit from a revert.
-  const serverRecordsRef = useRef<Instance[]>([]);
-  serverRecordsRef.current = data?.content ?? [];
-
-  const records = useMemo(() => {
-    const content = data?.content || [];
-
-    // Apply dirty changes to display for existing records
-    const contentWithDirtyData = content.map((record) => {
-      const dirtyData = dirtyRows.get(record.id || '');
-      if (dirtyData) {
-        return {
-          ...record,
-          properties: {
-            ...record.properties,
-            ...dirtyData,
-          },
-        };
-      }
-      return record;
-    });
-
-    // Apply dirty changes to pending records as well
-    const pendingWithDirtyData = pendingRecords.map((record) => {
-      const dirtyData = dirtyRows.get(record.id || '');
-      if (dirtyData) {
-        return {
-          ...record,
-          properties: {
-            ...record.properties,
-            ...dirtyData,
-          },
-        };
-      }
-      return record;
-    });
-
-    return [...contentWithDirtyData, ...pendingWithDirtyData];
-  }, [data?.content, pendingRecords, dirtyRows]);
-
   // Totals come from the server page alone; draft rows must not count.
   const { totalPages, totalElements } = computeRecordTotals(data, pageSize);
-  const currentPage = page;
 
-  const [showImportDialog, setShowImportDialog] = useState(false);
-
-  const bulkDeleteMutation = useBulkDeleteObjectInstances(connectionId);
-  const bulkUpdateMutation = useBulkUpdateObjectInstances(connectionId);
-  const bulkCreateMutation = useBulkCreateObjectInstances(connectionId);
-
-  const handleBulkInsert = useCallback(
-    async (
-      instances: unknown[],
-      onConflict: BulkConflictMode,
-      onError: BulkValidationMode,
-      conflictColumns: string[]
-    ): Promise<BulkCreateResult | undefined> => {
-      try {
-        const result = await bulkCreateMutation.mutateAsync({
-          schemaId: objectSchemaDto.id || '',
-          instances,
-          options: { onConflict, onError, conflictColumns },
-        });
-        if (result.errors.length === 0) {
-          toast.success(
-            `Inserted ${result.createdCount}, skipped ${result.skippedCount}`
-          );
-        } else {
-          toast.warning(
-            `Inserted ${result.createdCount}, skipped ${result.skippedCount} (${result.errors.length} error${result.errors.length === 1 ? '' : 's'})`
-          );
-        }
-        return result;
-      } catch (error) {
-        const message =
-          (error as any)?.response?.data?.error ||
-          (error as any)?.response?.data?.message ||
-          (error as Error)?.message ||
-          'Failed to insert records';
-        toast.error('Unable to insert records', { description: message });
-        return undefined;
-      }
-    },
-    [bulkCreateMutation, objectSchemaDto.id]
-  );
-  // A deferred flush can lose the race with a delete and 404; that case is
-  // handled in saveDirtyRow, so the shared 404 toast stays off.
-  const { mutateAsync: updateRecord } = useUpdateObjectInstanceDto(
+  const edits = useRowEdits({
+    schemaId,
     connectionId,
-    {
-      suppressNotFoundToasts: true,
-    }
-  );
-  const { mutateAsync: createRecord } =
-    useCreateObjectInstanceDto(connectionId);
-  const exportCsvMutation = useExportCsv(connectionId);
-
-  const handleExportCsv = useCallback(async () => {
-    if (!objectSchemaDto.name) {
-      toast.error('Schema name is required for export');
-      return;
-    }
-
-    try {
-      const blob = await exportCsvMutation.mutateAsync({
-        schemaName: objectSchemaDto.name,
-        data: {
-          condition: filterCondition || undefined,
-          sortBy,
-          sortOrder,
-          includeSystemColumns: true,
-        },
-      });
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${objectSchemaDto.name}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('CSV exported successfully');
-    } catch {
-      // Error toast handled by useCustomMutation
-    }
-  }, [
-    objectSchemaDto.name,
+    serverRecords: data?.content,
+  });
+  const bulk = useBulkActions({
+    schemaId,
+    connectionId,
+    selectedIds: view.selectedIds,
+    clearSelection: view.clearSelection,
+    discardRows: edits.discardRows,
+  });
+  const { exportCsv, isExporting } = useRecordsExport({
+    schemaName: objectSchemaDto.name,
+    connectionId,
     filterCondition,
     sortBy,
     sortOrder,
-    exportCsvMutation,
-  ]);
+  });
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const selectedCount = view.selectedIds.length;
 
-  const handleRowAnimationTrigger = useCallback((rowId: string) => {
-    setAnimatingRowId(rowId);
-    setTimeout(() => {
-      setAnimatingRowId(null);
-    }, 1000);
-  }, []);
-
-  const dirtyRowsRef = useRef(dirtyRows);
-
-  useEffect(() => {
-    dirtyRowsRef.current = dirtyRows;
-  }, [dirtyRows]);
-
-  // One save per row at a time; a flush during one runs after it (OB-1).
-  const saveQueueRef = useRef(createRowSaveQueue());
-  const saveDirtyRowRef = useRef<(rowId: string) => Promise<void>>();
-
-  /** Sends one row's values; resolves to where they now live, or null. */
-  const saveRow = useCallback(
-    async (
-      rowId: string,
-      dirtyData: Record<string, unknown>
-    ): Promise<string | null> => {
-      if (isDraftRow(rowId)) {
-        // Save pending record
-        try {
-          const newInstance = await createRecord({
-            schemaId: objectSchemaDto.id || '',
-            data: {
-              properties: dirtyData,
-              schemaId: objectSchemaDto.id || '',
-            },
-          });
-          setPendingRecords((prev) => prev.filter((r) => r.id !== rowId));
-          // Values typed while the POST was in flight move to the record.
-          setDirtyRows((prev) => {
-            const updated = settleCreatedDraft(
-              prev,
-              rowId,
-              newInstance.id,
-              dirtyData
-            );
-            dirtyRowsRef.current = updated;
-            return updated;
-          });
-          if (newInstance.id && lastFocusedRowRef.current === rowId) {
-            lastFocusedRowRef.current = newInstance.id;
-          }
-          // Trigger animation with the server-returned ID
-          if (newInstance.id) {
-            handleRowAnimationTrigger(newInstance.id);
-          }
-          markSaveFailed(rowId, false);
-          return newInstance.id ?? null;
-        } catch {
-          markSaveFailed(rowId, true);
-          toast.error('Failed to create record');
-          return null;
-        }
-      } else {
-        // Save existing record
-        try {
-          await updateRecord({
-            schemaId: objectSchemaDto.id || '',
-            instanceId: rowId,
-            data: {
-              properties: dirtyData,
-            },
-          });
-          // Only what this request sent is saved: a value typed while it was
-          // in flight stays dirty for the next flush.
-          setDirtyRows((prev) => {
-            const updated = settleSavedRow(prev, rowId, dirtyData);
-            dirtyRowsRef.current = updated;
-            return updated;
-          });
-          markSaveFailed(rowId, false);
-          handleRowAnimationTrigger(rowId);
-          return rowId;
-        } catch (error) {
-          if (isNotFoundError(error)) {
-            // The row was deleted while this edit was pending. Its
-            // disappearance is already visible, so drop the edit rather than
-            // announce a failure — and clear it so nothing retries the write.
-            setDirtyRows((prev) => {
-              const updated = new Map(prev);
-              updated.delete(rowId);
-              dirtyRowsRef.current = updated;
-              return updated;
-            });
-            return null;
-          }
-          markSaveFailed(rowId, true);
-          toast.error('Failed to update record');
-          return null;
-        }
-      }
-    },
-    [
-      createRecord,
-      updateRecord,
-      objectSchemaDto.id,
-      handleRowAnimationTrigger,
-      markSaveFailed,
-    ]
-  );
-
-  // The values each row last failed to save. A flush does not send them again
-  // unless they changed: every click away used to repeat the rejected request
-  // (OB-4). A new edit makes a new object, so it does go out.
-  const failedValuesRef = useRef(new Map<string, Record<string, unknown>>());
-
-  const saveDirtyRow = useCallback(
-    async (rowId: string) => {
-      const dirtyData = dirtyRowsRef.current.get(rowId);
-      if (
-        !dirtyData ||
-        isUnchangedFailure(failedValuesRef.current, rowId, dirtyData) ||
-        !saveQueueRef.current.begin(rowId)
-      ) {
-        return;
-      }
-      let savedRowId: string | null = null;
-      try {
-        savedRowId = await saveRow(rowId, dirtyData);
-        if (savedRowId) failedValuesRef.current.delete(rowId);
-        else failedValuesRef.current.set(rowId, dirtyData);
-      } finally {
-        // A flush that waited runs once the state updates above have landed,
-        // and sends only what changed meanwhile; against the record's id if a
-        // draft was created. Not after a failure: a failed row is not re-sent.
-        if (saveQueueRef.current.end(rowId) && savedRowId) {
-          const next = savedRowId;
-          setTimeout(() => void saveDirtyRowRef.current?.(next), 0);
-        }
-      }
-    },
-    [saveRow]
-  );
-  saveDirtyRowRef.current = saveDirtyRow;
-
-  // Leaving with unsaved rows (OB-12). A reload or a closed tab warns; an
-  // in-app move with no click away (back or forward) used to drop the edits
-  // silently, so leaving the table saves them, as a clicked link already did.
-  const hasDirtyRows = dirtyRows.size > 0;
-  useEffect(() => {
-    if (!hasDirtyRows) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [hasDirtyRows]);
-  useEffect(
-    () => () => {
-      for (const rowId of dirtyRowsRef.current.keys()) {
-        void saveDirtyRowRef.current?.(rowId);
-      }
-    },
-    []
-  );
-
-  const handleUpdate = useCallback((instanceId: string, data: any) => {
-    const propertyEntries = Object.entries(data.properties || {});
-    const hasChanges = propertyEntries.length > 0;
-
-    if (isDraftRow(instanceId)) {
-      // Update pending record immediately in state
-      setPendingRecords((prev) => {
-        let didUpdate = false;
-        const next = prev.map((rec) => {
-          if (rec.id !== instanceId) return rec;
-          const nextProps = { ...rec.properties };
-          propertyEntries.forEach(([key, value]) => {
-            if (nextProps[key] !== value) {
-              didUpdate = true;
-              nextProps[key] = value;
-            }
-          });
-          return didUpdate
-            ? {
-                ...rec,
-                properties: nextProps,
-              }
-            : rec;
-        });
-        return didUpdate ? next : prev;
-      });
-    }
-
-    if (hasChanges) {
-      const serverProperties = isDraftRow(instanceId)
-        ? undefined
-        : serverRecordsRef.current.find((r) => r.id === instanceId)?.properties;
-      setDirtyRows((prev) => {
-        const updated = recordCellEdit(
-          prev,
-          instanceId,
-          data.properties,
-          serverProperties as Record<string, unknown> | undefined
-        );
-        // Update ref immediately so saveDirtyRow can see it
-        dirtyRowsRef.current = updated;
-        return updated;
-      });
-    }
-  }, []);
-
-  // Save when clicking away from the grid
-  const tableRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (!lastFocusedRowRef.current) return;
-
-      if (!clickLandedInGrid(e.target as Node | null, tableRef.current)) {
-        // Capture ref value before the async delay
-        const rowId = lastFocusedRowRef.current;
-        // Small delay to let any pending handleSave complete
-        setTimeout(() => {
-          if (rowId) saveDirtyRow(rowId);
-        }, 100);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [saveDirtyRow]);
-
-  const handleAddRow = useCallback(() => {
-    // Save current row before adding new one
-    if (lastFocusedRowRef.current) {
-      saveDirtyRow(lastFocusedRowRef.current);
-    }
-
-    const newId = `${DRAFT_ID_PREFIX}${Date.now()}`;
-    setPendingRecords((prev) => [...prev, makeDraftInstance(newId)]);
-  }, [saveDirtyRow]);
-
-  const handleFilterChange = (condition: Condition | null) => {
-    setFilterCondition(condition);
-    setPage(0);
-  };
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
-  };
-
-  const handlePageSizeChange = (newPageSize: number) => {
-    setPageSize(newPageSize);
-    setPage(0);
-  };
-
-  const handleSortingChange = useCallback(
-    (updater: SortingState | ((old: SortingState) => SortingState)) => {
-      const newSorting =
-        typeof updater === 'function' ? updater(sorting) : updater;
-      setSorting(newSorting);
-      setPage(0); // Reset to first page when sorting changes
-    },
-    [sorting]
-  );
-
-  const handleBulkDelete = useCallback(async () => {
-    const selectedIds = Object.keys(rowSelection).filter(
-      (key) => rowSelection[key]
-    );
-    if (selectedIds.length === 0) return;
-
-    // Confirming the delete makes unsaved inline edits to these rows moot.
-    // Drop them before the request goes out: flushes are deferred behind
-    // timeouts, so one can still be queued right now, and it must find
-    // nothing to write rather than target a row that is about to vanish.
-    const beforeDelete = {
-      dirtyRows: dirtyRowsRef.current,
-      lastFocusedRowId: lastFocusedRowRef.current,
-      editingCellId: editingCellIdRef.current,
-    };
-    const pruned = dropEditsForRows(beforeDelete, selectedIds);
-    dirtyRowsRef.current = pruned.dirtyRows;
-    setDirtyRows(pruned.dirtyRows);
-    lastFocusedRowRef.current = pruned.lastFocusedRowId;
-    setEditingCellId(pruned.editingCellId);
-
-    // Drafts exist only here: discard them, and send the server only records
-    // (OB-6). This is also how a draft is discarded at all (OB-7).
-    const { recordIds, draftIds } = splitDraftIds(selectedIds);
-    if (draftIds.length > 0) {
-      setPendingRecords((prev) =>
-        prev.filter((r) => !draftIds.includes(r.id ?? ''))
-      );
-    }
-    if (recordIds.length === 0) {
-      setRowSelection({});
-      setShowBulkDeleteDialog(false);
-      return;
-    }
-
-    try {
-      await bulkDeleteMutation.mutateAsync({
-        schemaId: objectSchemaDto.id || '',
-        instanceIds: recordIds,
-      });
-      setRowSelection({});
-      setShowBulkDeleteDialog(false);
-    } catch (error) {
-      // The records survived, so their unsaved edits are live again (OB-5).
-      const restored = restoreEditsForRows(
-        {
-          dirtyRows: dirtyRowsRef.current,
-          lastFocusedRowId: lastFocusedRowRef.current,
-        },
-        beforeDelete,
-        recordIds
-      );
-      dirtyRowsRef.current = restored.dirtyRows;
-      setDirtyRows(restored.dirtyRows);
-      lastFocusedRowRef.current = restored.lastFocusedRowId;
-
-      const message =
-        (error as any)?.response?.data?.message ||
-        (error as Error)?.message ||
-        'Failed to delete records';
-      toast.error('Unable to delete selected records', {
-        description: message,
-      });
-    }
-  }, [bulkDeleteMutation, objectSchemaDto.id, rowSelection]);
-
-  const handleBulkEdit = useCallback(
-    async (properties: Record<string, unknown>) => {
-      const selectedIds = Object.keys(rowSelection).filter(
-        (key) => rowSelection[key]
-      );
-      if (selectedIds.length === 0 || Object.keys(properties).length === 0) {
-        return;
-      }
-      try {
-        const updated = await bulkUpdateMutation.mutateAsync({
-          schemaId: objectSchemaDto.id || '',
-          instanceIds: selectedIds,
-          properties,
-        });
-        toast.success(`Updated ${updated} record${updated === 1 ? '' : 's'}`);
-        setRowSelection({});
-        setShowBulkEditDialog(false);
-      } catch (error) {
-        const message =
-          (error as any)?.response?.data?.error ||
-          (error as any)?.response?.data?.message ||
-          (error as Error)?.message ||
-          'Failed to update records';
-        toast.error('Unable to update selected records', {
-          description: message,
-        });
-      }
-    },
-    [bulkUpdateMutation, objectSchemaDto.id, rowSelection]
-  );
-
-  const selectedCount = Object.keys(rowSelection).filter(
-    (key) => rowSelection[key]
-  ).length;
-
-  const handleCellFocus = useCallback(
-    (rowId: string) => {
-      // If switching to a different row, save the previous row first
-      if (lastFocusedRowRef.current && lastFocusedRowRef.current !== rowId) {
-        saveDirtyRow(lastFocusedRowRef.current);
-      }
-
-      lastFocusedRowRef.current = rowId;
-    },
-    [saveDirtyRow]
-  );
-
-  // `handleUpdate` only records the edit; the write happens here. Deferring by
-  // a tick lets that state update land first, the same way the click-away
-  // handler waits before flushing.
-  const commitRow = useCallback(
-    (rowId: string) => {
-      setTimeout(() => saveDirtyRow(rowId), 0);
-    },
-    [saveDirtyRow]
-  );
-
+  const { handleUpdate, handleCellFocus, commitRow } = edits;
   const columns = useMemo(
     () =>
       objectInstancesColumns({
@@ -713,31 +112,13 @@ export function ObjectInstanceDtosTable({
     [objectSchemaDto, handleUpdate, handleCellFocus, commitRow]
   );
 
-  const editingCell = useMemo(
-    () => ({ editingCellId, setEditingCellId }),
-    [editingCellId]
+  const filterSchema = useMemo(
+    () => filterSchemaDefinition(objectSchemaDto.columns),
+    [objectSchemaDto.columns]
   );
 
-  // Convert schema columns to filter schema definition format
-  const filterSchemaDefinition = useMemo(() => {
-    const schemaColumns = objectSchemaDto.columns || [];
-    const definition: Record<string, { name?: string; dataType?: string }> = {};
-
-    // Add system fields
-    definition['id'] = { name: 'ID', dataType: 'STRING' };
-    definition['createdAt'] = { name: 'Created At', dataType: 'DATE' };
-    definition['updatedAt'] = { name: 'Updated At', dataType: 'DATE' };
-
-    // Add schema columns
-    schemaColumns.forEach((col) => {
-      definition[col.name] = {
-        name: col.name,
-        dataType: col.type?.toUpperCase() || 'STRING',
-      };
-    });
-
-    return definition;
-  }, [objectSchemaDto.columns]);
+  const { rowSelection } = view;
+  const { setDeleteOpen } = bulk;
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -751,16 +132,16 @@ export function ObjectInstanceDtosTable({
         ) {
           return;
         }
-        setShowBulkDeleteDialog(true);
+        setDeleteOpen(true);
       }
     },
-    [rowSelection]
+    [rowSelection, setDeleteOpen]
   );
 
   return (
-    <EditingCellContext.Provider value={editingCell}>
+    <EditingCellContext.Provider value={edits.editingCell}>
       <ConsoleTableShell
-        ref={tableRef}
+        ref={edits.tableRef}
         onKeyDown={handleKeyDown}
         tabIndex={0}
         className="outline-none"
@@ -779,58 +160,24 @@ export function ObjectInstanceDtosTable({
                 <FilterPopover
                   title="Filter records"
                   activeCount={filterCondition ? 1 : 0}
-                  onClear={() => handleFilterChange(null)}
+                  onClear={() => view.changeFilter(null)}
                   contentClassName="w-[480px]"
                 >
                   <FilterComposer
                     value={filterCondition}
-                    onChange={handleFilterChange}
-                    schemaDefinition={filterSchemaDefinition}
+                    onChange={view.changeFilter}
+                    schemaDefinition={filterSchema}
                   />
                 </FilterPopover>
               }
               actions={
-                <div className="flex items-center gap-2">
-                  <ObjectModelConnectionSelector />
-                  {objectSchemaDto.name && (
-                    <>
-                      <Button
-                        variant="secondary"
-                        bordered
-                        size="sm"
-                        onClick={handleExportCsv}
-                        disabled={exportCsvMutation.isPending}
-                      >
-                        {exportCsvMutation.isPending ? (
-                          <Spinner className="mr-2 size-4" />
-                        ) : (
-                          <Download className="mr-2 size-4" />
-                        )}
-                        Export
-                      </Button>
-                      <Can permission="database:create">
-                        <Button
-                          variant="secondary"
-                          bordered
-                          size="sm"
-                          onClick={() => setShowImportDialog(true)}
-                        >
-                          <Upload className="mr-2 size-4" />
-                          Import
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          bordered
-                          size="sm"
-                          onClick={() => setShowBulkInsertDialog(true)}
-                        >
-                          <Plus className="mr-2 size-4" />
-                          Bulk insert
-                        </Button>
-                      </Can>
-                    </>
-                  )}
-                </div>
+                <RecordsToolbarActions
+                  canTransfer={Boolean(objectSchemaDto.name)}
+                  isExporting={isExporting}
+                  onExport={exportCsv}
+                  onImport={() => setShowImportDialog(true)}
+                  onBulkInsert={() => bulk.setInsertOpen(true)}
+                />
               }
             />
             {isMissingSchemaName && (
@@ -847,14 +194,14 @@ export function ObjectInstanceDtosTable({
         selectionBar={
           <SelectionActionBar
             count={selectedCount}
-            onClear={() => setRowSelection({})}
+            onClear={view.clearSelection}
           >
             <Can permission="database:update">
               <Button
                 variant="secondary"
                 bordered
                 size="sm"
-                onClick={() => setShowBulkEditDialog(true)}
+                onClick={() => bulk.setEditOpen(true)}
               >
                 <Pencil className="mr-2 size-4" />
                 Edit
@@ -864,7 +211,7 @@ export function ObjectInstanceDtosTable({
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => setShowBulkDeleteDialog(true)}
+                onClick={() => bulk.setDeleteOpen(true)}
               >
                 <Trash2 className="mr-2 size-4" />
                 Delete
@@ -877,19 +224,19 @@ export function ObjectInstanceDtosTable({
             left={`${totalElements.toLocaleString()} record${
               totalElements === 1 ? '' : 's'
             }${
-              pendingRecords.length > 0
-                ? ` (+${pendingRecords.length} draft${
-                    pendingRecords.length === 1 ? '' : 's'
+              edits.draftCount > 0
+                ? ` (+${edits.draftCount} draft${
+                    edits.draftCount === 1 ? '' : 's'
                   })`
                 : ''
             }`}
             right={
               <TablePagination
-                pageIndex={currentPage}
+                pageIndex={page}
                 pageSize={pageSize}
                 pageCount={totalPages}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
+                onPageChange={view.changePage}
+                onPageSizeChange={view.changePageSize}
               />
             }
           />
@@ -897,80 +244,64 @@ export function ObjectInstanceDtosTable({
       >
         <DataTable
           columns={columns}
-          data={records}
+          data={edits.records}
           isFetching={isLoading}
           shouldRenderPagination={false}
           stickyHeader
           pagination={{
-            pageIndex: currentPage,
+            pageIndex: page,
             pageSize: pageSize,
             pageCount: totalPages,
             totalCount: totalElements,
-            onPageChange: handlePageChange,
-            onPageSizeChange: handlePageSizeChange,
+            onPageChange: view.changePage,
+            onPageSizeChange: view.changePageSize,
           }}
-          sorting={sorting}
-          onSortingChange={handleSortingChange}
+          sorting={view.sorting}
+          onSortingChange={view.changeSorting}
           manualSorting={true}
           enableRowSelection={true}
           rowSelection={rowSelection}
-          onRowSelectionChange={setRowSelection}
+          onRowSelectionChange={view.setRowSelection}
           getRowId={(row) => row.id || ''}
           getRowClassName={(row) =>
             cn(
-              row.original.id === animatingRowId && 'animate-row-flash',
+              row.original.id === edits.animatingRowId && 'animate-row-flash',
               // Not saved: the server rejected this row's last change.
-              failedRowIds.has(row.original.id ?? '') && 'bg-destructive/10'
+              edits.failedRowIds.has(row.original.id ?? '') &&
+                'bg-destructive/10'
             )
           }
           beforePaginationSlot={
             <Can permission="database:create">
-              <AddRowButton onClick={handleAddRow} />
+              <AddRowButton onClick={edits.handleAddRow} />
             </Can>
           }
         />
       </ConsoleTableShell>
 
       <BulkEditDialog
-        open={showBulkEditDialog}
-        onOpenChange={setShowBulkEditDialog}
+        open={bulk.editOpen}
+        onOpenChange={bulk.setEditOpen}
         selectedCount={selectedCount}
         schema={objectSchemaDto}
-        onSubmit={handleBulkEdit}
-        isSubmitting={bulkUpdateMutation.isPending}
+        onSubmit={bulk.editSelected}
+        isSubmitting={bulk.isEditing}
       />
 
       <BulkInsertDialog
-        open={showBulkInsertDialog}
-        onOpenChange={setShowBulkInsertDialog}
+        open={bulk.insertOpen}
+        onOpenChange={bulk.setInsertOpen}
         schema={objectSchemaDto}
-        onSubmit={handleBulkInsert}
-        isSubmitting={bulkCreateMutation.isPending}
+        onSubmit={bulk.insert}
+        isSubmitting={bulk.isInserting}
       />
 
-      <AlertDialog
-        open={showBulkDeleteDialog}
-        onOpenChange={setShowBulkDeleteDialog}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Bulk Delete</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete {selectedCount} selected record
-              {selectedCount !== 1 ? 's' : ''}? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBulkDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <BulkDeleteDialog
+        open={bulk.deleteOpen}
+        onOpenChange={bulk.setDeleteOpen}
+        selectedCount={selectedCount}
+        onConfirm={bulk.deleteSelected}
+      />
 
       <ImportCsvDialog
         open={showImportDialog}

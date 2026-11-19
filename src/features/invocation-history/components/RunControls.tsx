@@ -8,10 +8,10 @@ import {
   PopoverTrigger,
 } from '@/shared/components/ui/popover';
 import type { RunExtraColumn } from './OperationsRunColumns';
-import type { ExecutionHistoryFilters } from '../types';
+import type { ExecutionHistoryFilters } from '@/features/runs/types';
 import type { ExecutionSummary } from '@/generated/RuntaraRuntimeApi';
 import { runStatusFilters, selectedRunStatus } from '../utils/run-filters';
-import { RefreshControls } from '@/features/operations/pages/shared';
+import { RefreshControls } from '@/features/runs/components/RunActions';
 
 export function RunControls({
   filters,

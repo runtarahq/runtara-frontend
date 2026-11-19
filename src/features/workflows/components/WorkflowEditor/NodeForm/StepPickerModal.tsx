@@ -47,6 +47,8 @@ export interface StepPickerResult {
   stepType: string;
   agentId?: string;
   capabilityId?: string;
+  /** The chosen capability's input names, where the picker knows them. */
+  capabilityInputs?: string[];
   name: string;
 }
 
@@ -266,43 +268,39 @@ export function StepPickerPanel({
 
   const handleAgentSelect = (agentId: string, agentName: string) => {
     if (mode === 'memory') {
-      let capabilityId: string | undefined;
-      const agentData = agentCapabilitiesMap.get(agentId);
-
-      if (agentData?.capabilities.length) {
-        const bothTags = agentData.capabilities.find(
+      // The capability that keeps memory: one that reads and writes it,
+      // else any tagged for memory, else the agent's first.
+      const memoryCapability = <
+        T extends { id: string; tags?: string[] | null },
+      >(
+        capabilities: T[]
+      ): T | undefined =>
+        capabilities.find(
           (capability) =>
             capability.tags?.includes('memory:read') &&
             capability.tags?.includes('memory:write')
-        );
-        const anyMemoryTag = agentData.capabilities.find((capability) =>
+        ) ??
+        capabilities.find((capability) =>
           capability.tags?.some((tag) => tag.startsWith('memory:'))
-        );
-        capabilityId =
-          bothTags?.id ?? anyMemoryTag?.id ?? agentData.capabilities[0]?.id;
-      }
+        ) ??
+        capabilities[0];
 
-      if (!capabilityId) {
-        const agent = findAgentById(filteredAgents, agentId);
-        if (agent) {
-          const capabilities = Object.values(agent.supportedCapabilities);
-          const bothTags = capabilities.find(
-            (capability) =>
-              capability.tags?.includes('memory:read') &&
-              capability.tags?.includes('memory:write')
-          );
-          const anyMemoryTag = capabilities.find((capability) =>
-            capability.tags?.some((tag) => tag.startsWith('memory:'))
-          );
-          capabilityId =
-            bothTags?.id ?? anyMemoryTag?.id ?? capabilities[0]?.id;
-        }
-      }
+      const agent = findAgentById(filteredAgents, agentId);
+      const capability =
+        memoryCapability(
+          agentCapabilitiesMap.get(agentId)?.capabilities ?? []
+        ) ??
+        memoryCapability(Object.values(agent?.supportedCapabilities ?? {}));
+      const inputs = (capability as { inputs?: { name: string }[] } | undefined)
+        ?.inputs;
 
       onSelect({
         stepType: 'Agent',
         agentId,
-        capabilityId: capabilityId || '',
+        capabilityId: capability?.id || '',
+        ...(inputs
+          ? { capabilityInputs: inputs.map((input) => input.name) }
+          : {}),
         name: agentName,
       });
       return;

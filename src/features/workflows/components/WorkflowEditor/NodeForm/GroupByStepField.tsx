@@ -13,7 +13,6 @@ type GroupByStepFieldProps = {
 export function GroupByStepField({ name }: GroupByStepFieldProps) {
   const form = useFormContext();
   const { previousSteps } = useContext(NodeFormContext);
-  const stepType = useWatch({ name: 'stepType', control: form.control });
   const groupByKey = useWatch({ name: 'groupByKey', control: form.control });
   const groupByExpectedKeys = useWatch({
     name: 'groupByExpectedKeys',
@@ -51,10 +50,6 @@ export function GroupByStepField({ name }: GroupByStepFieldProps) {
 
     return suggestions;
   }, [previousSteps]);
-
-  if (stepType !== 'GroupBy') {
-    return null;
-  }
 
   return (
     <div className="space-y-6">

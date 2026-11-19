@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SavedOperationView } from '@/generated/RuntaraRuntimeApi';
-import { useToken } from '@/shared/hooks';
 import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
@@ -15,10 +14,10 @@ import {
 import {
   currentRevision,
   isRevisionConflict,
-  message,
-  operationsRequest,
-} from '../queries';
+} from '@/features/operations/queries';
+import { message, operationsRequest } from '@/features/runs/queries';
 
+import { queryKeys } from '@/shared/queries/query-keys';
 export function DeleteQueue({
   queue,
   icon = false,
@@ -32,14 +31,12 @@ export function DeleteQueue({
   const [target, setTarget] = useState(queue);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const token = useToken();
   const client = useQueryClient();
   async function remove() {
     setBusy(true);
     setError('');
     try {
       await operationsRequest(
-        token,
         `operations/views/${encodeURIComponent(target.id)}?revision=${target.revision}`,
         'DELETE'
       );
@@ -48,13 +45,13 @@ export function DeleteQueue({
       // first showed "Queue not found" there until the slowest list answered
       // (OP-8).
       onDeleted?.();
-      await client.invalidateQueries({ queryKey: ['operations'] });
+      await client.invalidateQueries({ queryKey: queryKeys.operations.all });
     } catch (e) {
       setError(message(e));
       // The user has now seen the conflict; a second confirm deletes the
       // queue as it is now (OP-11).
       if (isRevisionConflict(e)) {
-        const revision = await currentRevision(token, target.id).catch(
+        const revision = await currentRevision(target.id).catch(
           () => undefined
         );
         if (revision !== undefined) setTarget((t) => ({ ...t, revision }));

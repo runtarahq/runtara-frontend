@@ -82,7 +82,7 @@ describe('useCustomQuery', () => {
     vi.resetAllMocks();
   });
 
-  it('injects token into queryFn', async () => {
+  it('calls queryFn with the query context, and no token', async () => {
     const mockQueryFn = vi.fn().mockResolvedValue({ data: 'test' });
 
     const { result } = renderHook(
@@ -99,8 +99,7 @@ describe('useCustomQuery', () => {
     });
 
     expect(mockQueryFn).toHaveBeenCalledWith(
-      'test-token-123',
-      expect.any(Object)
+      expect.objectContaining({ queryKey: ['test'] })
     );
   });
 
@@ -147,7 +146,7 @@ describe('useCustomQuery', () => {
 
   it('fires without a token when the auth mode is not oidc', async () => {
     // trust_proxy / local setups have no browser-side token at all — the
-    // query must run anyway and pass the (undefined) token through.
+    // query must run anyway.
     authModeState.isOidcAuth = false;
     mockUseAuth.mockReturnValue({
       user: null,
@@ -165,7 +164,7 @@ describe('useCustomQuery', () => {
     );
 
     await waitFor(() => {
-      expect(mockQueryFn).toHaveBeenCalledWith(undefined, expect.any(Object));
+      expect(mockQueryFn).toHaveBeenCalledWith(expect.any(Object));
     });
   });
 
@@ -241,7 +240,7 @@ describe('useCustomMutation', () => {
     vi.resetAllMocks();
   });
 
-  it('injects token into mutationFn', async () => {
+  it('calls mutationFn with the variables, and no token', async () => {
     const mockMutationFn = vi.fn().mockResolvedValue({ success: true });
 
     const { result } = renderHook(
@@ -258,9 +257,7 @@ describe('useCustomMutation', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(mockMutationFn).toHaveBeenCalledWith('test-token-456', {
-      name: 'test',
-    });
+    expect(mockMutationFn).toHaveBeenCalledWith({ name: 'test' });
   });
 
   it('returns data from mutationFn on success', async () => {
@@ -616,7 +613,7 @@ describe('useTableQuery', () => {
     expect(result.current.isFetching).toBe(true);
   });
 
-  it('injects token into queryFn', async () => {
+  it('calls queryFn with the query context, and no token', async () => {
     const mockQueryFn = vi.fn().mockResolvedValue({
       content: [],
       number: 0,
@@ -639,8 +636,7 @@ describe('useTableQuery', () => {
     });
 
     expect(mockQueryFn).toHaveBeenCalledWith(
-      'test-token-789',
-      expect.any(Object)
+      expect.objectContaining({ queryKey: ['test-table-token'] })
     );
   });
 

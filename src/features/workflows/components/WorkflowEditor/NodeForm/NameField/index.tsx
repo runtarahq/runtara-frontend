@@ -33,6 +33,7 @@ import { findAgentById, sameAgentId } from '@/shared/utils/agent-id';
  * discards it. Applying it at once used to reset the panel's other edits
  * (ED-4) and survive Cancel (ED-5).
  */
+import { stepTakesAgent } from '@/features/workflows/step-types/catalog';
 function StepIdRow({ stepId }: { stepId: string }) {
   const form = useFormContext();
   const staged = useWatch({ name: 'renameStepTo', control: form.control });
@@ -211,7 +212,7 @@ export function NameField({ name }: { name: string }) {
   // Fetch connections for agent — use agent.id (module id), not display name
   const connectionsByAgent = useCustomQuery({
     queryKey: queryKeys.agents.connectionsByAgent(agentModuleId ?? ''),
-    queryFn: (token: string) => getConnectionsByOperator(token, agentModuleId!),
+    queryFn: () => getConnectionsByOperator(agentModuleId!),
     placeholderData: [],
     enabled: Boolean(agentModuleId && supportsConnections),
   });
@@ -224,7 +225,7 @@ export function NameField({ name }: { name: string }) {
   }, [connectionId, connectionsByAgent.data]);
 
   // Hide until capability is selected for Agent steps
-  if (stepType === 'Agent' && !capabilityId) {
+  if (stepTakesAgent(stepType) && !capabilityId) {
     return null;
   }
 
@@ -273,7 +274,7 @@ export function NameField({ name }: { name: string }) {
   );
 
   // Agent steps: editable name as title + agent/capability/connection subtitle
-  if (stepType === 'Agent' && capabilityId) {
+  if (stepTakesAgent(stepType) && capabilityId) {
     const agent = findAgentById(agents as any[], agentId);
 
     return (

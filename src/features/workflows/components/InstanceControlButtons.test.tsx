@@ -75,7 +75,7 @@ describe.each(cases)('$name button', ({ call, click }) => {
     auth.oidc = false;
     auth.token = '';
     click();
-    await waitFor(() => expect(call).toHaveBeenCalledWith('', 'run-1'));
+    await waitFor(() => expect(call).toHaveBeenCalledWith('run-1'));
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -91,13 +91,12 @@ describe.each(cases)('$name button', ({ call, click }) => {
     );
   });
 
-  it('sends the request with the OIDC token', async () => {
+  // The API client sends the token itself; the button only needs a session.
+  it('sends the request when signed in under OIDC', async () => {
     auth.oidc = true;
     auth.token = 'access-token';
     click();
-    await waitFor(() =>
-      expect(call).toHaveBeenCalledWith('access-token', 'run-1')
-    );
+    await waitFor(() => expect(call).toHaveBeenCalledWith('run-1'));
   });
 
   it('reports an expired OIDC session instead of doing nothing', async () => {

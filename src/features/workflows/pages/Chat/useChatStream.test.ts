@@ -12,7 +12,6 @@ const submitInput = vi.hoisted(() => vi.fn());
 vi.mock('./useChatInputs', () => ({
   useChatInputs: () => ({ refreshPendingInput: vi.fn(), submitInput }),
 }));
-vi.mock('@/shared/hooks/useToken', () => ({ useToken: () => 'token' }));
 vi.mock('../../queries/chat', () => ({
   sendConversationMessage: vi.fn(),
   streamConversationEvents: vi.fn(),
@@ -26,7 +25,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const sentMessage = (call: number) =>
-  vi.mocked(sendConversationMessage).mock.calls[call][3];
+  vi.mocked(sendConversationMessage).mock.calls[call][2];
 const queued = (messageId: string) => ({
   messageId,
   state: 'queued' as const,
@@ -137,7 +136,7 @@ it('treats a refused message as final: nothing kept, nothing to retry', async ()
 it('says so when the message was taken but no run could be started for it', async () => {
   const { result } = renderHook(() => useChatStream('workflow'));
   vi.mocked(sendConversationMessage).mockImplementation(
-    async (_token, _workflow, _key, message) => ({
+    async (_workflow, _key, message) => ({
       messageId: message.id,
       state: 'failed',
       detail: 'Workflow not found',
@@ -192,7 +191,7 @@ it('does not show a message it sent again when the conversation reports it', asy
   const events = stream();
   vi.mocked(streamConversationEvents).mockResolvedValue(events.response);
   vi.mocked(sendConversationMessage).mockImplementation(
-    async (_token, _workflow, _key, message) => ({
+    async (_workflow, _key, message) => ({
       messageId: message.id,
       state: 'started',
       duplicate: false,
@@ -240,8 +239,8 @@ it('reads on from the last event it saw when a stream ends', async () => {
       second.push('reply', { text: 'two' }, 8);
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(vi.mocked(streamConversationEvents).mock.calls[0][3]).toBe(0);
-    expect(vi.mocked(streamConversationEvents).mock.calls[1][3]).toBe(7);
+    expect(vi.mocked(streamConversationEvents).mock.calls[0][2]).toBe(0);
+    expect(vi.mocked(streamConversationEvents).mock.calls[1][2]).toBe(7);
     expect(transcript()).toEqual([
       ['assistant', 'one'],
       ['assistant', 'two'],

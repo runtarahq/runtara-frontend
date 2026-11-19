@@ -26,6 +26,7 @@ vi.mock('runtara-validation-wasm/runtara_validation_bg.wasm?url', () => ({
   default: '/validation.wasm',
 }));
 vi.mock('@/shared/config/runtimeConfig', () => ({
+  isOidcAuth: false,
   config: { oidc: { authority: '', clientId: '' } },
 }));
 vi.mock('@/shared/queries/utils', () => ({
@@ -52,6 +53,32 @@ describe('shared Rust validation initialization', () => {
 
     expect(wasm.init).toHaveBeenCalledOnce();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('preloads the validator once, however many callers ask', async () => {
+    const { preloadRustValidation, ensureRustValidationInitialized } =
+      await import('./rust-validation-wasm');
+
+    preloadRustValidation();
+    preloadRustValidation();
+    await ensureRustValidationInitialized();
+
+    expect(wasm.init).toHaveBeenCalledOnce();
+  });
+
+  it('only logs a preload that fails, and lets the next use try again', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    wasm.init.mockRejectedValueOnce(new Error('offline'));
+    const { preloadRustValidation, ensureRustValidationInitialized } =
+      await import('./rust-validation-wasm');
+
+    expect(() => preloadRustValidation()).not.toThrow();
+    await vi.waitFor(() => expect(warned).toHaveBeenCalled());
+
+    wasm.init.mockResolvedValueOnce(undefined);
+    await ensureRustValidationInitialized();
+    expect(wasm.init).toHaveBeenCalledTimes(2);
+    warned.mockRestore();
   });
 
   it('hydrates workflow validation from full agent detail payloads', async () => {

@@ -1,5 +1,5 @@
-import { stateLabel } from '../state-label';
-import { inlineOptions } from '../answer-options';
+import { stateLabel } from '@/features/runs/utils/state-label';
+import { inlineOptions } from '@/features/operations/utils/answer-options';
 import { Link } from 'react-router';
 import {
   forwardRef,

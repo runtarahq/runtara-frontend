@@ -1,4 +1,4 @@
-import { formatRunDuration } from '../utils/run-duration';
+import { formatRunDuration } from '@/features/runs/utils/run-duration';
 import { useMemo, useCallback, useEffect, useState } from 'react';
 import { SortingState } from '@tanstack/react-table';
 import { DataTable } from '@/shared/components/table';
@@ -15,8 +15,8 @@ import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { usePagination } from '@/shared/hooks/usePagination';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { getAllExecutions } from '../queries';
-import { queryRunSummary } from '@/features/operations/queries';
+import { getAllExecutions } from '@/features/runs/queries/executions';
+import { queryRunSummary } from '@/features/runs/queries';
 import { resolveRunFilters, summaryFilters } from '../utils/run-filters';
 import { RunControls } from './RunControls';
 import {
@@ -24,14 +24,17 @@ import {
   type RunExtraColumn,
 } from './OperationsRunColumns';
 import { RunIdentity, RunContext, RunActions, RunTime } from './RunRow';
-import { ReplayButton } from '@/features/operations/pages/shared';
+import { ReplayButton } from '@/features/runs/components/RunActions';
 import {
   Dialog,
   DialogContent,
   DialogTitle,
   DialogDescription,
 } from '@/shared/components/ui/dialog';
-import { ExecutionHistoryFilters, ExecutionHistoryItem } from '../types';
+import {
+  ExecutionHistoryFilters,
+  ExecutionHistoryItem,
+} from '@/features/runs/types';
 import {
   InvocationHistoryFilters,
   countActiveInvocationFilters,
@@ -114,10 +117,10 @@ export function InvocationHistoryTable({
       tenant,
       { ...pagination, filters },
     ],
-    queryFn: async (token: string) => {
+    queryFn: async () => {
       const resolved = resolveRunFilters(filters, Date.now());
       const [page, summary] = await Promise.allSettled([
-        getAllExecutions(token, {
+        getAllExecutions({
           queryKey: [
             {
               pageIndex: pagination.pageIndex,
@@ -126,7 +129,7 @@ export function InvocationHistoryTable({
             },
           ],
         }),
-        queryRunSummary(token, summaryFilters(resolved)),
+        queryRunSummary(summaryFilters(resolved)),
       ]);
       if (page.status === 'rejected') throw page.reason;
       return {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
-import { FormSection } from '@/shared/components/form-section';
+import { FormSection } from '@/shared/forms';
 import { ObjectSchemaFormLayout } from './ObjectSchemaFormLayout';
 import { FileText, Columns } from 'lucide-react';
 import {
@@ -443,6 +443,7 @@ export function ObjectSchemaDtoForm({
         <div className="space-y-5">
           {/* Basic Information */}
           <FormSection
+            variant="banded"
             title="Basic Information"
             description="Define the schema name and database table configuration"
             icon={FileText}
@@ -558,6 +559,7 @@ export function ObjectSchemaDtoForm({
 
           {/* Columns */}
           <FormSection
+            variant="banded"
             title="Columns"
             description="Define the structure and data types for this schema"
             icon={Columns}

@@ -1,0 +1,25 @@
+{
+  // The Playwright specs, their fixtures and configs. Playwright runs them
+  // without checking their types, so `tsc -b` does.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@edition": ["./src/edition"]
+    }
+  },
+  "include": ["e2e", "playwright.config.ts", "src/vite-env.d.ts"]
+}

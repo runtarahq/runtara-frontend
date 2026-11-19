@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { apiHeaders, getAccessToken } from '../../utils/api-auth';
+import {
+  WorkflowBuilderPage,
+  randomDoubleStep,
+} from '../../pages/WorkflowBuilderPage';
 
 /**
  * SYN-110: Required input validation for workflow execution
@@ -14,36 +16,7 @@ import { fileURLToPath } from 'url';
  * 5. Backend accepts empty values for required fields
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
-
-function getAccessToken(): string {
-  const authFile = path.resolve(__dirnameLocal, '../../.auth/user.json');
-  const raw = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-
-  for (const origin of raw.origins ?? []) {
-    for (const entry of origin.localStorage ?? []) {
-      if (entry.name.startsWith('oidc.user:')) {
-        const parsed =
-          typeof entry.value === 'string'
-            ? JSON.parse(entry.value)
-            : entry.value;
-        return parsed.access_token;
-      }
-    }
-  }
-
-  throw new Error('No access token found in auth state file');
-}
-
-function apiHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
 
 test.describe
   .serial('SYN-110: Required input validation for workflow execution', () => {
@@ -117,38 +90,23 @@ test.describe
     await page.getByRole('button', { name: 'Add Field' }).click();
     const row4 = rows.nth(3);
     await row4.getByPlaceholder('fieldName').fill('notes');
-    // Make it optional by unchecking Required
-    await row4.getByRole('checkbox').click();
+    // Make it optional by unchecking Required (the row's first checkbox; the
+    // second is Nullable)
+    const requiredCheckbox = row4.getByRole('checkbox').first();
+    await expect(requiredCheckbox).toBeChecked();
+    await requiredCheckbox.click();
+    await expect(requiredCheckbox).not.toBeChecked();
 
     // Add a random-double step so the workflow has a valid graph
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
-
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Random Double');
-    const capabilityResult = page.getByText('Random Double').first();
-    await expect(capabilityResult).toBeVisible({ timeout: 30000 });
-    await capabilityResult.click();
-
-    const configDialog = page.getByRole('dialog');
-    await expect(configDialog).toBeVisible({ timeout: 5000 });
-    await configDialog.getByRole('button', { name: 'Save' }).click();
+    const builder = new WorkflowBuilderPage(page);
+    await builder.addFirstCanvasStep(randomDoubleStep);
 
     await expect(
       page.locator('.react-flow__node').filter({ hasText: 'Random Double' })
     ).toBeVisible({ timeout: 10000 });
 
     // Save via toolbar
-    const saveButton = page.getByTitle('Save changes');
-    await expect(saveButton).toBeVisible({ timeout: 5000 });
-    await saveButton.click();
-    await expect(page.getByTitle('No changes to save')).toBeVisible({
-      timeout: 15000,
-    });
+    await builder.saveWorkflow();
   });
 
   // ── Frontend blocks unset required fields ──────────────────────────────
@@ -203,22 +161,37 @@ test.describe
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
     // Type in "name" field then clear to empty string (field is touched but empty)
-    const nameInput = dialog.getByLabel('name');
+    const nameInput = dialog
+      .locator('[data-field="name"]')
+      .getByRole('textbox');
     await nameInput.fill('temp');
     await nameInput.clear();
 
     // Enter 0 for "count"
-    const countInput = dialog.getByLabel('count');
+    const countInput = dialog
+      .locator('[data-field="count"]')
+      .getByRole('spinbutton');
     await countInput.fill('0');
 
-    // Click "Set value" for tags (creates empty array)
-    await dialog.getByRole('button', { name: 'Set value' }).click();
+    // Give "tags" as an empty list: add a tag, then take it away. A list
+    // nobody touched is not given at all, and is refused as missing.
+    const tagsInput = dialog
+      .locator('[data-field="tags"]')
+      .getByRole('textbox');
+    await tagsInput.fill('temp');
+    await tagsInput.press('Enter');
+    await expect(dialog.locator('[data-field="tags"]')).toContainText('temp');
+    await tagsInput.press('Backspace');
+    await expect(dialog.locator('[data-field="tags"]')).not.toContainText(
+      'temp'
+    );
 
     // Intercept the request to verify payload
     const executeRequestPromise = page.waitForRequest(
       (req) =>
         req.url().includes(`/workflows/${workflowId}/execute`) &&
-        req.method() === 'POST'
+        req.method() === 'POST',
+      { timeout: 15000 }
     );
 
     await dialog.getByRole('button', { name: 'Execute' }).click();
@@ -234,9 +207,9 @@ test.describe
     expect(inputData).not.toHaveProperty('notes');
   });
 
-  // ── Optional field clear button works ──────────────────────────────────
+  // ── An emptied optional field is not sent ──────────────────────────────────
 
-  test('optional field clear button removes field from payload', async ({
+  test('an optional field that is emptied is left out of the payload', async ({
     page,
   }) => {
     await page.goto(`/workflows/${workflowId}`);
@@ -251,22 +224,39 @@ test.describe
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
-    // Fill required fields
-    await dialog.getByLabel('name').fill('test');
-    await dialog.getByLabel('count').fill('5');
-    await dialog.getByRole('button', { name: 'Set value' }).click();
+    // Fill required fields; "tags" needs a value to count as given
+    const tagsInput = dialog
+      .locator('[data-field="tags"]')
+      .getByRole('textbox');
+    await tagsInput.fill('a');
+    await tagsInput.press('Enter');
+    await dialog
+      .locator('[data-field="name"]')
+      .getByRole('textbox')
+      .fill('test');
+    await dialog
+      .locator('[data-field="count"]')
+      .getByRole('spinbutton')
+      .fill('5');
 
     // Fill optional "notes" field
-    await dialog.getByLabel('notes').fill('some notes');
+    const notesInput = dialog
+      .locator('[data-field="notes"]')
+      .getByRole('textbox');
+    await notesInput.fill('some notes');
+    await expect(notesInput).toHaveValue('some notes');
 
-    // Now clear it with the X button
-    await dialog.getByTitle('Clear field').click();
+    // Now clear it again (the field has no separate clear button any more:
+    // emptying an optional field is what leaves it out)
+    await notesInput.clear();
+    await expect(notesInput).toHaveValue('');
 
     // Intercept the request
     const executeRequestPromise = page.waitForRequest(
       (req) =>
         req.url().includes(`/workflows/${workflowId}/execute`) &&
-        req.method() === 'POST'
+        req.method() === 'POST',
+      { timeout: 15000 }
     );
 
     await dialog.getByRole('button', { name: 'Execute' }).click();
@@ -329,14 +319,7 @@ test.describe
   // ── Cleanup ────────────────────────────────────────────────────────────
 
   test('delete workflow', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    const card = page.locator('article').filter({ hasText: workflowName });
-    await expect(card).toBeVisible({ timeout: 10000 });
-    await card.getByTitle('Delete').first().click();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(workflowName);
 
     workflowId = '';
   });

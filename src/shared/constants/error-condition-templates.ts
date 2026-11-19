@@ -1,4 +1,4 @@
-import type { Condition } from '@/shared/components/ui/condition-editor';
+import type { Condition } from '@/shared/conditions';
 
 /**
  * Pre-built condition templates for handling errors in workflow onError edges.

@@ -1,13 +1,14 @@
+import { stepEventsPollInterval } from './step-events-poll';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { useCustomQuery, useTableQuery } from '@/shared/hooks/api';
-import { getAllExecutions } from '@/features/invocation-history/queries';
+import { getAllExecutions } from '@/features/runs/queries/executions';
 import { getStepSummaries } from '@/features/workflows/queries';
 import {
   ExecutionHistoryFilters,
   ExecutionHistoryItem,
-} from '@/features/invocation-history/types';
+} from '@/features/runs/types';
 import { formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { Icons } from '@/shared/components/icons';
@@ -32,7 +33,7 @@ import { StepStatusBadge } from '@/features/workflows/components/StepStatusBadge
 import {
   canResume,
   suspendedStatusLabel,
-} from '@/features/workflows/utils/suspension';
+} from '@/features/runs/utils/suspension';
 
 interface HistoryPanelContentProps {
   workflowId: string;
@@ -123,16 +124,20 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
       selectedInstanceId,
       stepFilters
     ),
-    queryFn: (token: string) =>
-      getStepSummaries(token, workflowId, selectedInstanceId!, stepFilters),
+    queryFn: () =>
+      getStepSummaries(workflowId, selectedInstanceId!, stepFilters),
     enabled: !!selectedInstanceId,
-    refetchInterval: () => {
+    refetchInterval: (query) => {
       const selectedInstance = data?.find(
         (inst: ExecutionHistoryItem) => inst.instanceId === selectedInstanceId
       );
-      return selectedInstance && isActiveStatus(selectedInstance.status)
-        ? 2000
-        : false;
+      return stepEventsPollInterval({
+        runIsActive: Boolean(
+          selectedInstance && isActiveStatus(selectedInstance.status)
+        ),
+        stepsLoaded: query.state.data?.data?.steps?.length ?? 0,
+        fetches: query.state.dataUpdateCount,
+      });
     },
   });
 
