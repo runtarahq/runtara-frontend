@@ -104,8 +104,6 @@ const edgeTypes: EdgeTypes = {
 };
 
 type WorkflowEditorProps = {
-  nodes: Node[];
-  edges: Edge[];
   readOnly?: boolean;
   /** When true, allows selecting executed nodes for inspection (but not editing) */
   debugInspectMode?: boolean;
@@ -165,8 +163,6 @@ export function WorkflowEditor(props: WorkflowEditorProps) {
 }
 
 function WorkflowEditorContent({
-  nodes: initialNodes,
-  edges: initialEdges,
   readOnly = false,
   debugInspectMode = false,
   workflow,
@@ -272,9 +268,6 @@ function WorkflowEditorContent({
   const addStoreEdges = useWorkflowStore((state) => state.addEdges);
   const insertNodeBetween = useWorkflowStore(
     (state) => state.insertNodeBetween
-  );
-  const syncFromReactFlow = useWorkflowStore(
-    (state) => state.syncFromReactFlow
   );
   const setSelectedNodeId = useWorkflowStore(
     (state) => state.setSelectedNodeId
@@ -457,26 +450,6 @@ function WorkflowEditorContent({
     selectedEdgeId,
     setCreateStepContext,
   });
-
-  // Initialize store with provided nodes and edges
-  const lastSyncedDataRef = useRef<string>('');
-
-  useEffect(() => {
-    const dataHash = JSON.stringify({
-      nodeIds: initialNodes.map((n) => n.id).sort(),
-      edgeIds: initialEdges.map((e) => e.id).sort(),
-      nodeCount: initialNodes.length,
-      edgeCount: initialEdges.length,
-      // Include node data to detect content changes when switching versions
-      // (nodes may have same IDs but different step configurations)
-      nodeData: initialNodes.map((n) => ({ id: n.id, data: n.data })),
-    });
-
-    if (dataHash !== lastSyncedDataRef.current) {
-      syncFromReactFlow(initialNodes, initialEdges);
-      lastSyncedDataRef.current = dataHash;
-    }
-  }, [initialNodes, initialEdges, syncFromReactFlow]);
 
   const canvasLayoutKey = useMemo(
     () =>

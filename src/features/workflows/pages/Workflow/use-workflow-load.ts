@@ -10,6 +10,7 @@ import {
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
+import type { ExecutionGraphDto } from '@/features/workflows/types/execution-graph';
 import { buildSchemaFromFields } from '@/features/workflows/utils/schema';
 
 /**
@@ -42,34 +43,12 @@ export function useVersionSelection() {
 
 export type VersionSelection = ReturnType<typeof useVersionSelection>;
 
-function getWorkflowStoreContentHash(): string {
-  const { nodes, edges } = useWorkflowStore.getState();
-
-  return JSON.stringify({
-    nodes: nodes
-      .map((node) => ({
-        id: node.id,
-        parentId: node.parentId,
-        type: node.type,
-        data: node.data,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-    edges: edges
-      .map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-  });
-}
 /**
  * Loads the workflow at the selected version, and its list of versions.
  *
  * It also owns what loading implies: another workflow starts from clean
- * stores and no staged settings; a loaded workflow is not dirty; the current
+ * stores and no staged settings; the fetched graph is drawn in the editor,
+ * which starts clean; the current
  * version is selected until the user picks one; and switching version drops
  * what was unsaved and fetches the target afresh.
  */
@@ -110,21 +89,11 @@ export function useWorkflowLoad(
     queryKey: queryKeys.workflows.workflow(workflowId ?? '', queryVersion),
     queryFn: () => getWorkflowWorkflow(workflowId!, queryVersion),
     enabled: !!workflowId,
-    placeholderData: {
-      data: {
-        nodes: [],
-        edges: [],
-      },
-      message: '',
-      success: true,
-    } as any,
+    placeholderData: { data: {}, message: '', success: true } as any,
   });
 
   // Extract workflow data from wrapped response
-  const data = useMemo(
-    () => (response as any)?.data || { nodes: [], edges: [] },
-    [response]
-  );
+  const data = useMemo(() => (response as any)?.data || {}, [response]);
   const hasInputSchema = useMemo(
     () => ((data as any)?.inputSchemaFields ?? []).length > 0,
     [data]
@@ -169,19 +138,18 @@ export function useWorkflowLoad(
     };
   }, []);
 
-  // Clear dirty flag after workflow data is loaded and rendered
+  // Draw what was fetched. This is the one place a fetched graph enters the
+  // editor: the query cache holds the server's graph, and the store turns it
+  // into the canvas and starts it clean. Keyed by the graph itself, which the
+  // query client keeps the same object while its content is the same, so a
+  // refetch that brings nothing new leaves the canvas, and edits to it, alone.
+  const executionGraph = (data as { executionGraph?: ExecutionGraphDto })
+    .executionGraph;
   useEffect(() => {
-    if (!isFetching) {
-      const loadedContentHash = getWorkflowStoreContentHash();
-      // Use a small timeout to ensure React Flow has finished initializing
-      const timer = setTimeout(() => {
-        if (getWorkflowStoreContentHash() === loadedContentHash) {
-          useWorkflowStore.getState().clearDirtyFlag();
-        }
-      }, 100);
-      return () => clearTimeout(timer);
+    if (executionGraph) {
+      useWorkflowStore.getState().setExecutionGraph(executionGraph);
     }
-  }, [isFetching, workflowId, queryVersion]);
+  }, [executionGraph]);
 
   // Set the current version as the default selected version when data is loaded
   useEffect(() => {
@@ -207,15 +175,9 @@ export function useWorkflowLoad(
     setVersionsWithDebug(versions);
   }, [versions]);
 
-  // Reset isSwitchingVersion when fetching completes and dirty flag is cleared
-  // Use the same delay as the dirty flag clearing to prevent button flickering
+  // The switch is over when the target version has arrived.
   useEffect(() => {
-    if (!isFetching && isSwitchingVersion) {
-      const timer = setTimeout(() => {
-        setIsSwitchingVersion(false);
-      }, 150); // Slightly longer than the 100ms dirty flag clear timeout
-      return () => clearTimeout(timer);
-    }
+    if (!isFetching && isSwitchingVersion) setIsSwitchingVersion(false);
   }, [isFetching, isSwitchingVersion, setIsSwitchingVersion]);
 
   // Internal version change handler (bypasses unsaved changes check)

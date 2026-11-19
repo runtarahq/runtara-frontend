@@ -753,16 +753,6 @@ export const useWorkflowStore = create<WorkflowState>()(
         }),
 
       // Selection
-      // Synchronization
-      syncFromReactFlow: (nodes, edges) =>
-        set((state) => {
-          state.nodes = nodes;
-          state.edges = edges;
-          // Don't mark as dirty when syncing from external data (e.g., initial load)
-          state.isDirty = false;
-          state.isStructurallyDirty = false;
-        }),
-
       // Layout
       applyAutoLayout: () =>
         set((state) => {

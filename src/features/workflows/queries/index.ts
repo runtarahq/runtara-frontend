@@ -12,7 +12,6 @@ import {
   UpdateWorkflowRequest,
   WorkflowInstanceDto,
 } from '@/generated/RuntaraRuntimeApi.ts';
-import { executionGraphToReactFlow } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
 import {
   type ExecutionGraphDto,
   workflowExecutionGraph,
@@ -334,9 +333,6 @@ export async function getWorkflowWorkflow(
 
   const executionGraph = workflowExecutionGraph(workflowData);
 
-  // Backend now always provides Start and Finish steps
-  const { nodes, edges } = executionGraphToReactFlow(executionGraph);
-
   // Parse variables from API format to array format used by the UI
   // Variables are now inside executionGraph (moved from workflow root)
   // API returns variables as an object: { varName: { type, value, description }, ... }
@@ -384,8 +380,9 @@ export async function getWorkflowWorkflow(
       ...workflowData,
       name,
       description,
-      nodes,
-      edges,
+      // The graph as the server holds it. The editor draws it from here
+      // (workflowStore.setExecutionGraph); the cache holds no canvas nodes.
+      executionGraph,
       variables,
       inputSchemaFields,
       outputSchemaFields,

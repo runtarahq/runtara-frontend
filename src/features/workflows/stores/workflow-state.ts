@@ -65,6 +65,10 @@ export interface WorkflowState {
   lastStepRename: { oldId: string; newId: string } | null;
 
   // Actions - State Management
+  /**
+   * Loads a graph into the editor: draws it as the canvas's nodes and edges
+   * and starts it clean. The one way a fetched or imported graph gets in.
+   */
   setExecutionGraph: (graph: ExecutionGraphDto) => void;
   resetState: () => void;
   /** With `savedRevision`, clears only if nothing was edited since then. */
@@ -115,9 +119,8 @@ export interface WorkflowState {
     options?: { anchorStepId?: string | null; autoEdit?: boolean }
   ) => string;
   /**
-   * Edit a note's text or size. Marks the workflow changed — the note card
-   * used syncFromReactFlow, which is for loading and clears the dirty flag,
-   * so a note edit alone left nothing to save.
+   * Edit a note's text or size. Marks the workflow changed, as any edit
+   * does.
    */
   updateNote: (
     noteId: string,
@@ -148,11 +151,6 @@ export interface WorkflowState {
   // Actions - React Flow Integration
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
-
-  // Actions - Selection
-
-  // Actions - Synchronization
-  syncFromReactFlow: (nodes: Node[], edges: Edge[]) => void;
 
   // Actions - Layout
   applyAutoLayout: () => void;

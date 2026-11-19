@@ -824,8 +824,6 @@ export function Workflow() {
             </div>
           )}
           <WorkflowEditor
-            nodes={data.nodes}
-            edges={data.edges}
             readOnly={!!executingInstanceId}
             debugInspectMode={isSuspended}
             workflow={workflowForSettings}

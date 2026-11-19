@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import type { Node } from '@xyflow/react';
 import { NODE_TYPES } from '@/features/workflows/config/workflow';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import {
@@ -9,7 +8,7 @@ import {
 
 export type { WorkflowChanges, WorkflowVariable } from './workflow-settings';
 
-type WorkflowSettingsData = WorkflowChanges & { nodes?: Node[] };
+type WorkflowSettingsData = WorkflowChanges;
 
 /** Merge staged settings without losing explicit resets, nulls, or false values. */
 export function useWorkflowSettings(
@@ -19,9 +18,7 @@ export function useWorkflowSettings(
 ) {
   const currentEditorNodes = useWorkflowStore((state) => state.nodes);
   const entryPointOptions = useMemo(() => {
-    const nodesForOptions =
-      currentEditorNodes.length > 0 ? currentEditorNodes : data.nodes || [];
-    return nodesForOptions
+    return currentEditorNodes
       .filter(
         (node) =>
           node.type !== NODE_TYPES.NoteNode &&
@@ -34,7 +31,7 @@ export function useWorkflowSettings(
         name: String(node.data?.name || node.id),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [currentEditorNodes, data.nodes]);
+  }, [currentEditorNodes]);
 
   // Memoize workflow object to prevent unnecessary re-renders in WorkflowPropertiesDialog
   return useMemo(

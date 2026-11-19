@@ -73,6 +73,21 @@ describe('the source tree', () => {
     expect([...(dependencies.get('runs') ?? new Map()).entries()]).toEqual([]);
   });
 
+  it('keeps components out of the modules that talk to the server', () => {
+    // A query returns what the server holds. One that imported a component
+    // module was converting it into what a view draws, and caching that.
+    const queryModules = sourceFiles(SRC).filter((file) =>
+      /\/queries\//.test(file)
+    );
+    expect(queryModules.length).toBeGreaterThan(10);
+    const offenders = queryModules
+      .filter((file) =>
+        imports(file).some((imported) => /(^|\/)components\//.test(imported))
+      )
+      .map((file) => path.relative(SRC, file));
+    expect(offenders).toEqual([]);
+  });
+
   it('does not import the app entry from anywhere but main', () => {
     const offenders = sourceFiles(SRC)
       .filter((file) => path.relative(SRC, file) !== 'main.tsx')

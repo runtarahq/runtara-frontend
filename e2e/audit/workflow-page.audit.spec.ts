@@ -139,6 +139,74 @@ test.describe('Workflow page audit: saving', () => {
     await expect(saveClean(page)).toBeVisible({ timeout: 10_000 });
   });
 
+  test('WF-8 A workflow with a container step opens with nothing to save, and stays so', async ({
+    page,
+    mockApi,
+  }) => {
+    // The canvas measures a container as it draws it. That is not an edit:
+    // the page used to wait 100 ms after a load and call the canvas clean
+    // again; loading now starts it clean and nothing but an edit changes that.
+    const wf = buildWorkflow({
+      id: 'wf_wf8',
+      name: 'Audit containers',
+      currentVersionNumber: 1,
+      lastVersionNumber: 1,
+      executionGraph: {
+        name: 'Audit containers',
+        entryPoint: 'each',
+        steps: {
+          each: {
+            id: 'each',
+            stepType: 'Split',
+            name: 'Each order',
+            config: {
+              value: { valueType: 'reference', value: 'data.items' },
+              parallelism: 4,
+            },
+            subgraph: {
+              entryPoint: 'inner',
+              steps: {
+                inner: {
+                  id: 'inner',
+                  stepType: 'Log',
+                  name: 'Inner log',
+                  message: 'item',
+                  level: 'info',
+                },
+              },
+              executionPlan: [],
+            },
+          },
+          after: {
+            id: 'after',
+            stepType: 'Log',
+            name: 'After',
+            message: 'done',
+            level: 'info',
+          },
+        },
+        executionPlan: [{ fromStep: 'each', toStep: 'after', label: 'next' }],
+      } as never,
+    });
+    await openWorkflow(page, mockApi, wf);
+    await expect(
+      page.locator('.react-flow__node').getByText('Inner log')
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.locator('.react-flow__node').getByText('After')
+    ).toBeVisible();
+
+    await expect(saveClean(page)).toBeVisible();
+    // Past any measuring and layout the canvas does after it first draws.
+    await page.waitForTimeout(1500);
+    await expect(saveClean(page)).toBeVisible();
+    await expect(saveEnabled(page)).toHaveCount(0);
+
+    // Leaving asks nothing.
+    await workflowsLink(page).first().click();
+    await expect(unsavedDialog(page)).toHaveCount(0);
+  });
+
   test('WF-2 A settings edit made during a save is still counted as unsaved after the save succeeds', async ({
     page,
     mockApi,

@@ -21,6 +21,7 @@ vi.mock('react-oidc-context', () => ({
 vi.mock('@/features/workflows/queries', () => mocks);
 
 import { queryClient } from '@/shared/queries/query-client';
+import { queryKeys } from '@/shared/queries/query-keys';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useVersionSelection, useWorkflowLoad } from './use-workflow-load';
@@ -47,13 +48,25 @@ const advance = async (ms: number) => {
   }
 };
 
+/** A graph of one step, named so each version draws differently. */
+const graph = (name: string) => ({
+  entryPoint: 'log',
+  steps: {
+    log: { id: 'log', stepType: 'Log', name, message: 'hi', level: 'info' },
+  },
+  executionPlan: [],
+});
+const stepNames = () =>
+  useWorkflowStore
+    .getState()
+    .nodes.map((node) => (node.data as { name?: string }).name);
+
 const workflow = (version: number, over: Record<string, unknown> = {}) => ({
   success: true,
   data: {
     name: `Orders v${version}`,
     currentVersionNumber: 3,
-    nodes: [],
-    edges: [],
+    executionGraph: graph(`v${version}`),
     inputSchemaFields: [],
     ...over,
   },
@@ -109,33 +122,75 @@ describe('useWorkflowLoad', () => {
     ]);
   });
 
-  it('leaves a freshly loaded workflow clean', async () => {
-    load();
-    // Loading itself touched the canvas.
+  it('draws the fetched graph in the editor, which starts clean', async () => {
     act(() => useWorkflowStore.setState({ isDirty: true }));
-    await advance(300);
+    load();
+    await advance(100);
+
+    expect(stepNames()).toEqual(['v3']);
     expect(useWorkflowStore.getState().isDirty).toBe(false);
+    expect(useWorkflowStore.getState().isStructurallyDirty).toBe(false);
   });
 
-  it('keeps an edit made while the workflow was settling', async () => {
-    const { result } = load();
-    await advance(50);
-    expect(result.current.isFetching).toBe(false);
-    // Within the 100 ms the page waits before calling the canvas clean.
-    act(() =>
-      useWorkflowStore.setState({
-        isDirty: true,
-        nodes: [
-          {
-            id: 'a',
-            position: { x: 0, y: 0 },
-            data: { name: 'Edited' },
-          },
-        ],
-      })
-    );
-    await advance(300);
+  it('keeps an edit made after the load: nothing calls the canvas clean later', async () => {
+    load();
+    await advance(100);
+    act(() => useWorkflowStore.setState({ isDirty: true }));
+
+    await advance(500);
+
     expect(useWorkflowStore.getState().isDirty).toBe(true);
+  });
+
+  it('leaves the canvas and its edits alone when a refetch brings the same graph', async () => {
+    load();
+    await advance(100);
+    const drawn = useWorkflowStore.getState().nodes;
+    act(() => useWorkflowStore.setState({ isDirty: true }));
+
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    await advance(100);
+
+    expect(mocks.getWorkflowWorkflow.mock.calls.length).toBeGreaterThan(1);
+    expect(useWorkflowStore.getState().nodes).toBe(drawn);
+    expect(useWorkflowStore.getState().isDirty).toBe(true);
+  });
+
+  it('draws again when a refetch brings a different graph', async () => {
+    load();
+    await advance(100);
+    mocks.getWorkflowWorkflow.mockImplementation(async () =>
+      workflow(3, { executionGraph: graph('changed elsewhere') })
+    );
+
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    await advance(100);
+
+    expect(stepNames()).toEqual(['changed elsewhere']);
+  });
+
+  it('keeps what is drawn when settings in the cache are patched, as a save does', async () => {
+    const { result } = load();
+    await advance(100);
+    const drawn = useWorkflowStore.getState().nodes;
+
+    act(() => {
+      queryClient.setQueryData(
+        queryKeys.workflows.workflow('wf-1', 3),
+        (cached: { data: Record<string, unknown> }) => ({
+          ...cached,
+          data: { ...cached.data, name: 'Renamed' },
+        })
+      );
+    });
+    await advance(50);
+
+    expect(result.current.data.name).toBe('Renamed');
+    expect(useWorkflowStore.getState().nodes).toBe(drawn);
   });
 
   it('switches version: unsaved work goes, the target is fetched, the loader shows until it settles', async () => {
@@ -153,7 +208,8 @@ describe('useWorkflowLoad', () => {
     await advance(100);
     expect(mocks.getWorkflowWorkflow).toHaveBeenLastCalledWith('wf-1', 2);
     expect(result.current.data.name).toBe('Orders v2');
-    await advance(200);
+    // The target version is drawn, and with it the switch is over: no wait.
+    expect(stepNames()).toEqual(['v2']);
     expect(result.current.selection.isSwitchingVersion).toBe(false);
   });
 
