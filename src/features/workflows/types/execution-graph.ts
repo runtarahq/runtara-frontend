@@ -89,6 +89,25 @@ export type ExecutionGraphDto = Partial<
   executionPlan?: ExecutionGraphTransitionDto[];
 };
 
+/**
+ * The execution graph of a workflow the server returned.
+ *
+ * The generated client types `executionGraph` as `any` on the workflow DTOs:
+ * the server's OpenAPI schema describes the field as free-form there, though
+ * it holds an `ExecutionGraph`. This is the one place the field is given its
+ * type, so nothing past it handles the graph untyped. When the schema
+ * references `ExecutionGraph` and the client is regenerated, the cast in
+ * here becomes an identity and can go.
+ */
+export function workflowExecutionGraph(workflow: {
+  executionGraph?: unknown;
+}): ExecutionGraphDto {
+  const graph = workflow.executionGraph;
+  return graph && typeof graph === 'object' && !Array.isArray(graph)
+    ? (graph as ExecutionGraphDto)
+    : {};
+}
+
 /** The graph a step nests (a Split's or While's body), if it has one. */
 export function stepSubgraph(
   step: ExecutionGraphStepDto

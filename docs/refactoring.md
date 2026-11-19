@@ -170,7 +170,7 @@ into the saved DSL (_inferred_).
 3. Split `node.data` into `{ step, ui }` so serialization takes `step` and
    never has to strip.
 
-**Status: done, except what is runtara's to change.**
+**Status: done.**
 
 - `DslStep` is the generated `Step` union and `StepType` its discriminant
   (`WF/types/execution-graph.ts`); the hand-written step and config types are
@@ -198,10 +198,12 @@ alternatives were weighed and not taken:
   is meant to work one minor apart from the server, so it keeps what it does
   not know.
 
-Remaining, in runtara: `executionGraph` is `any` on the workflow DTOs of the
-generated client (step 1). It needs the server's OpenAPI schema to reference
-`ExecutionGraph` there, and a release; `src/generated` is not edited by hand.
-Until then the editor casts once where it reads a workflow.
+On step 1, `executionGraph` is still `any` on the workflow DTOs of the
+generated client, which is the server's schema to change. The console no
+longer handles it untyped: `workflowExecutionGraph()` gives the field its
+type where a workflow is read, the one place it is read. When the server's
+OpenAPI schema references `ExecutionGraph` there and the client is
+regenerated, that function's cast becomes an identity.
 
 ### H3. Three contracts are unenforced
 
@@ -243,24 +245,25 @@ exist today.
 4. Run the audit suite nightly, or on PRs if 16 minutes is acceptable, and
    update its config comment.
 
-**Status: done, except the management client.**
+**Status: done.**
 
 - `npm run check-api-runtime-release` regenerates the client aside and diffs
-  it; CI runs it on every pull request. It found drift at once: the client
-  checked in is ahead of runtara v10.0.0 (API key scopes, revoking a user's
-  keys). The job therefore reports without gating (`continue-on-error`) until
-  the pin moves to a release that has them. The file is not stamped yet.
+  it, and CI gates on it. It found drift at once: the client checked in is
+  ahead of runtara v10.0.0 (API key scopes, revoking a user's keys). What it
+  has beyond the release is recorded in `scripts/api-runtime.pending.patch`
+  (`npm run record-api-runtime-pending`), which the check applies first, so
+  the known difference passes and any other fails. Delete the patch with the
+  bump to the release that carries it; the check fails on one that no longer
+  applies.
+- The management client is gone. It could only be regenerated from a running
+  server, and was kept for two calls: the billing portal and the health
+  check. They are written out and tested in `src/shared/queries/server.ts`.
 - `examples/edition` fills in every part of `Edition`. `npm run test:edition`
   type-checks the console with it and runs its contract tests, and CI also
   bundles with it. `edition.config.ts` is the one place the build and the
   tests resolve an edition.
 - `.github/workflows/audit.yml` runs the audit suite on `main`, nightly and on
   demand.
-
-Remaining, in runtara: `RuntaraManagementApi.ts` can still only be
-regenerated from a local server (item 2). Billing has no route in the runtime
-API, so its one use cannot move to the runtime client; it needs the
-management `openapi.json` published with a release.
 
 ### H4. Two parallel HTTP stacks
 

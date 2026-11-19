@@ -12,7 +12,10 @@ import {
   WorkflowInstanceDto,
 } from '@/generated/RuntaraRuntimeApi.ts';
 import { executionGraphToReactFlow } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
-import { ExecutionGraphDto } from '@/features/workflows/types/execution-graph';
+import {
+  type ExecutionGraphDto,
+  workflowExecutionGraph,
+} from '@/features/workflows/types/execution-graph';
 import { parseSchema } from '@/features/workflows/utils/schema';
 import {
   mergeLogSteps,
@@ -328,7 +331,7 @@ export async function getWorkflowWorkflow(
   const responseData = result.data as ApiResponseWorkflowDto;
   const workflowData = responseData.data;
 
-  const { executionGraph = {} } = workflowData;
+  const executionGraph = workflowExecutionGraph(workflowData);
 
   // Backend now always provides Start and Finish steps
   const { nodes, edges } = executionGraphToReactFlow(executionGraph);
