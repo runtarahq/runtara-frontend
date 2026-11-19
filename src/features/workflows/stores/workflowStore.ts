@@ -18,7 +18,6 @@ import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import { applyEdgeChanges, applyNodeChanges, Edge, Node } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
-import { ValidationError } from '@/shared/hooks/api';
 import {
   canvasNodeStepId,
   composeExecutionGraph,
@@ -40,7 +39,6 @@ import {
   expandParentToFitChildren,
   insertStepBetween,
 } from './canvas-geometry';
-import { createGraphNodeResolver } from '@/features/workflows/utils/step-node-resolver';
 
 /** Marks the workflow edited. Every edit goes through here or `dirtied`. */
 function markDirty(state: { isDirty: boolean; dirtyRevision: number }) {
@@ -53,7 +51,7 @@ export function dirtied(state: { dirtyRevision: number }) {
   return { isDirty: true, dirtyRevision: state.dirtyRevision + 1 } as const;
 }
 
-// State holds Sets (stagedNodeIds, stepsWithErrors); renameStep reads them
+// State holds a Set (stagedNodeIds); renameStep reads it
 // inside an immer draft, which requires the MapSet plugin.
 enableMapSet();
 
@@ -69,8 +67,6 @@ const initialState = {
   stagedNodeIds: new Set<string>(),
   selectedNodeId: null,
   pendingCenterNodeId: null,
-  validationErrors: [] as ValidationError[],
-  stepsWithErrors: new Set<string>(),
   pendingNewNode: null,
   requestEditNodeId: null,
   resizeTracking: {},
@@ -133,50 +129,6 @@ export const useWorkflowStore = create<WorkflowState>()(
         set((state) => {
           state.requestEditNodeId = nodeId;
         }),
-
-      // Validation Errors
-      setValidationErrors: (errors: ValidationError[]) =>
-        set((state) => {
-          // Errors name DSL step ids; a step id may repeat across Split,
-          // While and onWait bodies, so resolve each to its canvas node by
-          // the body the validator reports.
-          const findStepNode = createGraphNodeResolver(state.nodes);
-          errors = errors.map((error) => ({
-            ...error,
-            stepId: error.stepId
-              ? (findStepNode(error.stepId, error.graphPath) ?? error.stepId)
-              : error.stepId,
-            relatedStepIds: error.relatedStepIds?.map(
-              (id) => findStepNode(id, error.graphPath) ?? id
-            ),
-          }));
-          state.validationErrors = errors;
-          // Build a Set of step IDs that have errors for quick lookup
-          const stepIds = new Set<string>();
-          errors.forEach((error) => {
-            if (error.stepId) {
-              stepIds.add(error.stepId);
-            }
-            // Also include related step IDs
-            if (error.relatedStepIds) {
-              error.relatedStepIds.forEach((id) => stepIds.add(id));
-            }
-          });
-          state.stepsWithErrors = stepIds;
-        }),
-
-      clearValidationErrors: () =>
-        set((state) => {
-          state.validationErrors = [];
-          state.stepsWithErrors = new Set<string>();
-        }),
-
-      getFirstErrorStepId: () => {
-        const state = get();
-        // Find the first validation error that has a stepId
-        const firstError = state.validationErrors.find((e) => e.stepId);
-        return firstError?.stepId || null;
-      },
 
       // Node Operations
       addNode: (step, position, parentId) => {
@@ -464,19 +416,6 @@ export const useWorkflowStore = create<WorkflowState>()(
             nextStaged.add(newId);
             state.stagedNodeIds = nextStaged;
           }
-          if (state.stepsWithErrors.has(oldId)) {
-            const nextErrors = new Set(state.stepsWithErrors);
-            nextErrors.delete(oldId);
-            nextErrors.add(newId);
-            state.stepsWithErrors = nextErrors;
-          }
-          state.validationErrors = state.validationErrors.map((error) => ({
-            ...error,
-            stepId: error.stepId === oldId ? newId : error.stepId,
-            relatedStepIds: error.relatedStepIds
-              ? error.relatedStepIds.map(remapId)
-              : error.relatedStepIds,
-          }));
           if (state.pendingNewNode) {
             const pending = state.pendingNewNode;
             if (pending.parentId === oldId) pending.parentId = newId;

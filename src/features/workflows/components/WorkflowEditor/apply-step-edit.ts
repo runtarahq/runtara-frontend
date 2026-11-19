@@ -2,6 +2,7 @@ import {
   dirtied,
   useWorkflowStore,
 } from '@/features/workflows/stores/workflowStore';
+import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import type { StepNodeData } from '@/features/workflows/types/execution-graph';
 import { canvasNodeStepId } from '@/features/workflows/utils/execution-graph/canvas-ids';
 import { withMemoryConversation } from './NodeForm/memory-conversation';
@@ -44,6 +45,8 @@ export function applyStepEdit(
       .renameStep(nodeId, renameStepTo);
     if (renameError) return { error: renameError };
     savedId = useWorkflowStore.getState().lastStepRename?.newId ?? renameStepTo;
+    // The problems that named the step follow it to its new id.
+    useValidationStore.getState().renameStep(nodeId, savedId);
   }
   useWorkflowStore.getState().updateNode(savedId, data as StepNodeData);
   const synced = withMemoryConversation(

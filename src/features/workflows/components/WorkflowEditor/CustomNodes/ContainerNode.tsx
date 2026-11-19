@@ -18,6 +18,7 @@ import {
   useWorkflowStore,
 } from '@/features/workflows/stores/workflowStore.ts';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
+import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import {
   STEP_TYPES,
   NODE_TYPES,
@@ -62,7 +63,7 @@ function Container({
   );
 
   // Check if this node has validation errors
-  const hasValidationError = useWorkflowStore((state) =>
+  const hasValidationError = useValidationStore((state) =>
     state.stepsWithErrors.has(id)
   );
 

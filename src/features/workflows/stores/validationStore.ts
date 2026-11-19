@@ -62,6 +62,11 @@ interface ValidationActions {
 
   /** Get first error step ID for navigation */
   getFirstErrorStepId: () => string | null;
+  /**
+   * Follows a step whose id changed: the problems that named it name it by
+   * its new id, so its card keeps its mark and the panel still leads to it.
+   */
+  renameStep: (oldId: string, newId: string) => void;
 }
 
 type ValidationStore = ValidationState & ValidationActions;
@@ -245,6 +250,22 @@ export const useValidationStore = create<ValidationStore>()(
         );
         return firstError?.stepId || null;
       },
+
+      renameStep: (oldId, newId) =>
+        set((state) => {
+          if (oldId === newId) return;
+          const renamed = (id: string) => (id === oldId ? newId : id);
+          state.messages = state.messages.map((message) => ({
+            ...message,
+            stepId: message.stepId ? renamed(message.stepId) : message.stepId,
+            relatedStepIds: message.relatedStepIds?.map(renamed),
+          }));
+          const { stepsWithErrors, stepsWithWarnings } = rebuildStepSets(
+            state.messages
+          );
+          state.stepsWithErrors = stepsWithErrors;
+          state.stepsWithWarnings = stepsWithWarnings;
+        }),
     })),
     { name: 'validation-store' }
   )

@@ -73,11 +73,8 @@ function BasicNodeComponent({
     state.stagedNodeIds.has(id)
   );
 
-  // Check if this node has validation errors (from workflowStore or validationStore)
-  const hasValidationError = useWorkflowStore((state) =>
-    state.stepsWithErrors.has(id)
-  );
-  const hasValidationErrorFromPanel = useValidationStore((state) =>
+  // Whether a problem in the panel names this step.
+  const showValidationError = useValidationStore((state) =>
     state.stepsWithErrors.has(id)
   );
 
@@ -90,9 +87,6 @@ function BasicNodeComponent({
   const validationMessage = useValidationStore((state) =>
     getFirstValidationMessage(state, id)
   );
-
-  // Combine error states from both stores
-  const showValidationError = hasValidationError || hasValidationErrorFromPanel;
 
   // Share the entitlement snapshot for both the stale-agent flag (below)
   // and the agents-list query filter. All getAgents() callers share

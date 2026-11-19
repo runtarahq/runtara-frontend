@@ -3,7 +3,6 @@ import type {
   ExecutionGraphDto,
   StepNodeData,
 } from '@/features/workflows/types/execution-graph';
-import type { ValidationError } from '@/shared/hooks/api';
 
 export interface WorkflowState {
   // Core workflow data (backend format)
@@ -30,12 +29,6 @@ export interface WorkflowState {
 
   // Node ID that should be centered in viewport (for newly created nodes)
   pendingCenterNodeId: string | null;
-
-  // Validation errors from last save attempt (for highlighting steps with issues)
-  validationErrors: ValidationError[];
-
-  // Step IDs that have validation errors (derived from validationErrors for quick lookup)
-  stepsWithErrors: Set<string>;
 
   // Pending new node (for deferred creation until user confirms in dialog)
   pendingNewNode: {
@@ -91,9 +84,6 @@ export interface WorkflowState {
   setRequestEditNodeId: (nodeId: string | null) => void;
 
   // Actions - Validation Errors
-  setValidationErrors: (errors: ValidationError[]) => void;
-  clearValidationErrors: () => void;
-  getFirstErrorStepId: () => string | null;
 
   // Actions - Node Operations
   addNode: (

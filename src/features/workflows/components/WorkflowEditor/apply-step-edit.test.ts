@@ -1,5 +1,6 @@
 import type { Node } from '@xyflow/react';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { applyStepEdit, stepEditOf } from './apply-step-edit';
 
@@ -71,6 +72,25 @@ describe('applyStepEdit', () => {
     expect(nodeData('fetch_orders')).toMatchObject({ name: 'Fetch orders' });
     // The edge follows the step.
     expect(useWorkflowStore.getState().edges[0].source).toBe('fetch_orders');
+  });
+
+  it('takes the problems that named the step along to its new id', () => {
+    useValidationStore.getState().setMessages([
+      {
+        id: 'm1',
+        severity: 'error',
+        code: 'E010',
+        message: 'Missing mapping',
+        stepId: 'fetch',
+        source: 'client',
+        timestamp: 0,
+      },
+    ]);
+    applyStepEdit('fetch', { name: 'Fetch orders' }, 'fetch_orders');
+    expect([...useValidationStore.getState().stepsWithErrors]).toEqual([
+      'fetch_orders',
+    ]);
+    useValidationStore.getState().clearMessages();
   });
 
   it('treats a rename to the id the step has as no rename', () => {

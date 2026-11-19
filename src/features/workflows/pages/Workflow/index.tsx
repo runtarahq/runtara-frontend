@@ -396,7 +396,6 @@ export function Workflow() {
         dropSavedEntries(current, sentWorkflowChanges)
       );
       // Clear any validation errors from previous failed saves
-      useWorkflowStore.getState().clearValidationErrors();
       useValidationStore.getState().clearMessages();
     } catch (error: any) {
       // Extract validation errors from the API response
@@ -412,13 +411,10 @@ export function Workflow() {
           .getState()
           .setMessages([...serverErrors, ...preSaveWarnings]);
 
-        // Also set in workflowStore for node highlighting (existing behavior)
-        useWorkflowStore.getState().setValidationErrors(validationErrors);
-
         // Focus the view on the first step with an error
-        const firstErrorStepId =
-          useValidationStore.getState().getFirstErrorStepId() ||
-          useWorkflowStore.getState().getFirstErrorStepId();
+        const firstErrorStepId = useValidationStore
+          .getState()
+          .getFirstErrorStepId();
         if (firstErrorStepId) {
           // Select and center on the first error node
           useWorkflowStore.getState().setSelectedNodeId(firstErrorStepId);
