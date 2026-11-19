@@ -32,7 +32,7 @@ export function EditTrigger() {
 
   const trigger = useCustomQuery({
     queryKey: queryKeys.triggers.byId(triggerId ?? ''),
-    queryFn: (token: string) => getInvocationTriggerById(token, triggerId!),
+    queryFn: () => getInvocationTriggerById(triggerId!),
     enabled: !!triggerId,
   });
 

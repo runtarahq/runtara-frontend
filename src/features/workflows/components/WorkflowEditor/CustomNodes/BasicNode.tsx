@@ -106,7 +106,7 @@ function BasicNodeComponent({
   // disabled modules (which would 403 at the management-plane gate).
   const agentsQuery = useCustomQuery({
     queryKey: queryKeys.agents.all,
-    queryFn: (token: string) => getAgents(token, enabledAgentIds),
+    queryFn: () => getAgents(enabledAgentIds),
     placeholderData: { agents: [] },
   });
 

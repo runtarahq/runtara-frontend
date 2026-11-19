@@ -1,5 +1,4 @@
 import { RuntimeREST } from './index';
-import { createAuthHeaders } from './utils';
 import type { EntitlementsSnapshot } from '@/shared/entitlements';
 
 /**
@@ -7,11 +6,7 @@ import type { EntitlementsSnapshot } from '@/shared/entitlements';
  *
  * See `crates/runtara-server/src/api/handlers/entitlements.rs`.
  */
-export async function fetchEntitlements(
-  token?: string | null
-): Promise<EntitlementsSnapshot> {
-  const result = await RuntimeREST.api.getEntitlementsHandler(
-    createAuthHeaders(token)
-  );
+export async function fetchEntitlements(): Promise<EntitlementsSnapshot> {
+  const result = await RuntimeREST.api.getEntitlementsHandler();
   return result.data;
 }

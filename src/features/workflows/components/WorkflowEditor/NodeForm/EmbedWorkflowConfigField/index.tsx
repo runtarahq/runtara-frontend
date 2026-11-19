@@ -74,8 +74,7 @@ export function EmbedWorkflowConfigField({
   const { data: versionsResponse, isLoading: isLoadingVersions } =
     useCustomQuery({
       queryKey: queryKeys.workflows.versions(currentWorkflowId ?? ''),
-      queryFn: (token: string) =>
-        getWorkflowVersions(token, currentWorkflowId!),
+      queryFn: () => getWorkflowVersions(currentWorkflowId!),
       enabled: !!currentWorkflowId,
     });
 

@@ -151,10 +151,8 @@ export function useRenameFolder() {
   const queryClient = useQueryClient();
 
   return useCustomMutation({
-    mutationFn: (
-      token: string,
-      params: { currentPath: string; newPath: string }
-    ) => renameFolder(token, params),
+    mutationFn: (params: { currentPath: string; newPath: string }) =>
+      renameFolder(params),
     onSuccess: () => {
       // Invalidate both workflows and folders
       queryClient.invalidateQueries({ queryKey: queryKeys.workflows.all });
@@ -172,8 +170,7 @@ export function useDeleteFolder() {
   const queryClient = useQueryClient();
 
   return useCustomMutation({
-    mutationFn: (token: string, folderPath: string) =>
-      deleteFolder(token, folderPath),
+    mutationFn: (folderPath: string) => deleteFolder(folderPath),
     onSuccess: () => {
       // Invalidate both workflows and folders
       queryClient.invalidateQueries({ queryKey: queryKeys.workflows.all });

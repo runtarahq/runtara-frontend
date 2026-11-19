@@ -36,7 +36,7 @@ export function StopButton(props: Props) {
 
     setIsLoading(true);
     try {
-      await stopInstance(token, instanceId);
+      await stopInstance(instanceId);
       await refreshRunViews(queryClient);
       toast.success('Workflow instance has been stopped');
     } catch (error) {

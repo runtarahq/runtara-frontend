@@ -74,7 +74,6 @@ export function overdueFilters(
 
 /** Page across queue partitions without loading every request or silently truncating to a preview. */
 export async function queryAttentionRequests(
-  token: string,
   sources: AttentionQueue[],
   overdue: boolean,
   requestedPage: number,
@@ -91,7 +90,6 @@ export async function queryAttentionRequests(
     );
   const fetchPage = (scope: AttentionQueue, page: number) =>
     operationsRequest<OperationRequestPage>(
-      token,
       'operations/requests/query',
       'POST',
       {

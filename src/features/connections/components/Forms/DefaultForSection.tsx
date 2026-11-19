@@ -3,7 +3,6 @@ import { useFormContext } from 'react-hook-form';
 import { CheckCircle2 } from 'lucide-react';
 import { AgentSummary, ConnectionTypeDto } from '@/generated/RuntaraRuntimeApi';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { Checkbox } from '@/shared/components/ui/checkbox';
@@ -22,10 +21,8 @@ interface DefaultTarget {
   label: string;
 }
 
-async function listAgentSummaries(token: string) {
-  const result = await RuntimeREST.api.listAgentsHandler(
-    createAuthHeaders(token)
-  );
+async function listAgentSummaries() {
+  const result = await RuntimeREST.api.listAgentsHandler();
   return result.data.agents ?? [];
 }
 

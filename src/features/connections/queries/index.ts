@@ -1,16 +1,12 @@
 import * as RuntimeAPI from '@/generated/RuntaraRuntimeApi.ts';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
-export async function getConnections(token: string) {
+export async function getConnections() {
   try {
     // Fetch connections and connection types from Runtime API
     const [connectionsResult, connectionTypesResult] = await Promise.all([
-      RuntimeREST.api.listConnectionsHandler(
-        { includeRateLimitStats: true },
-        createAuthHeaders(token)
-      ),
-      RuntimeREST.api.listConnectionTypesHandler(createAuthHeaders(token)),
+      RuntimeREST.api.listConnectionsHandler({ includeRateLimitStats: true }),
+      RuntimeREST.api.listConnectionTypesHandler(),
     ]);
 
     const connections = connectionsResult.data.connections || [];
@@ -39,12 +35,9 @@ export async function getConnections(token: string) {
   }
 }
 
-export async function getConnectionById(token: string, id: string) {
+export async function getConnectionById(id: string) {
   try {
-    const result = await RuntimeREST.api.getConnectionHandler(
-      id,
-      createAuthHeaders(token)
-    );
+    const result = await RuntimeREST.api.getConnectionHandler(id);
 
     const connection = result.data.connection;
 
@@ -52,9 +45,7 @@ export async function getConnectionById(token: string, id: string) {
     if (connection?.integrationId) {
       try {
         const connectionTypesResult =
-          await RuntimeREST.api.listConnectionTypesHandler(
-            createAuthHeaders(token)
-          );
+          await RuntimeREST.api.listConnectionTypesHandler();
 
         const connectionTypes =
           connectionTypesResult.data.connectionTypes || [];
@@ -83,28 +74,20 @@ export async function getConnectionById(token: string, id: string) {
   }
 }
 
-export async function getConnectionsByOperator(
-  token: string,
-  operatorName: string
-) {
+export async function getConnectionsByOperator(operatorName: string) {
   // Use the dedicated endpoint that filters connections by operator
   const result = await RuntimeREST.api.getConnectionsByOperatorHandler(
     operatorName,
-    undefined,
-    createAuthHeaders(token)
+    undefined
   );
 
   return result.data.connections || [];
 }
 
 export async function createConnection(
-  token: string,
   connection: RuntimeAPI.CreateConnectionRequest
 ): Promise<string> {
-  const result = await RuntimeREST.api.createConnectionHandler(
-    connection,
-    createAuthHeaders(token)
-  );
+  const result = await RuntimeREST.api.createConnectionHandler(connection);
   return result.data.connectionId;
 }
 
@@ -122,10 +105,7 @@ export interface UpdateConnectionInput {
   defaultFor?: string[];
 }
 
-export async function updateConnection(
-  token: string,
-  connection: UpdateConnectionInput
-) {
+export async function updateConnection(connection: UpdateConnectionInput) {
   const {
     id,
     version,
@@ -145,32 +125,22 @@ export async function updateConnection(
     defaultFor,
   };
 
-  await RuntimeREST.api.updateConnectionHandler(
-    id,
-    requestBody,
-    createAuthHeaders(token)
-  );
+  await RuntimeREST.api.updateConnectionHandler(id, requestBody);
 }
 
-export async function removeConnection(token: string, connectionId: string) {
-  await RuntimeREST.api.deleteConnectionHandler(
-    connectionId,
-    createAuthHeaders(token)
-  );
+export async function removeConnection(connectionId: string) {
+  await RuntimeREST.api.deleteConnectionHandler(connectionId);
 }
 
 export async function getOAuthAuthorizeUrl(
-  token: string | null | undefined,
   connectionId: string
 ): Promise<string> {
-  // Use the shared header builder: it omits Authorization when there is no
-  // token (local / trust_proxy auth modes), matching every other runtime call.
   // With credentials: the answer sets the flow's cookie, which binds it to
   // this browser and must come back with the provider's redirect to the API's
   // host, wherever the console is served from.
   const result = await RuntimeREST.instance.get(
     `/api/runtime/connections/${connectionId}/oauth/authorize`,
-    { ...createAuthHeaders(token), withCredentials: true }
+    { withCredentials: true }
   );
   return result.data.authorizationUrl;
 }
@@ -186,12 +156,10 @@ export interface PendingConfirmation {
 }
 
 export async function getPendingConfirmation(
-  token: string | null | undefined,
   connectionId: string
 ): Promise<PendingConfirmation | null> {
   const result = await RuntimeREST.instance.get(
-    `/api/runtime/connections/${connectionId}/oauth/pending`,
-    createAuthHeaders(token)
+    `/api/runtime/connections/${connectionId}/oauth/pending`
   );
   return (result.data?.pending as PendingConfirmation | null) ?? null;
 }
@@ -199,22 +167,18 @@ export async function getPendingConfirmation(
 /** Confirm (or reject) the pending authorization `pendingId`: the one the
  *  member reviewed. A later one that replaced it is refused (409). */
 export async function decidePendingConfirmation(
-  token: string | null | undefined,
   connectionId: string,
   pendingId: string,
   decision: 'confirm' | 'reject'
 ): Promise<void> {
   await RuntimeREST.instance.post(
     `/api/runtime/connections/${connectionId}/oauth/${decision}`,
-    { pendingId },
-    createAuthHeaders(token)
+    { pendingId }
   );
 }
 
-export async function getConnectionTypes(token: string) {
-  const result = await RuntimeREST.api.listConnectionTypesHandler(
-    createAuthHeaders(token)
-  );
+export async function getConnectionTypes() {
+  const result = await RuntimeREST.api.listConnectionTypesHandler();
 
   return result.data.connectionTypes || [];
 }

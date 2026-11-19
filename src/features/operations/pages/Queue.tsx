@@ -145,11 +145,10 @@ function QueueContent({
   const overdueTab = isQueue && Boolean(due) && tab === 'overdue';
   const query = useCustomQuery({
     queryKey: ['operations', tenant, 'items', view, page, search, overdueTab],
-    queryFn: async (token: string) =>
+    queryFn: async () =>
       isQueue
         ? {
             requests: await queryRequests(
-              token,
               overdueTab ? withOverdue(view) : view,
               page,
               search
@@ -158,7 +157,7 @@ function QueueContent({
           }
         : {
             requests: null,
-            runs: await queryRuns(token, {
+            runs: await queryRuns({
               ...resolveQuery(view),
               search,
               page,
@@ -171,10 +170,10 @@ function QueueContent({
   // Tab counts, the same way the Overview counts overdue requests.
   const counts = useCustomQuery({
     queryKey: ['operations', tenant, 'queue-counts', view],
-    queryFn: async (token: string) => {
+    queryFn: async () => {
       const [open, overdue] = await Promise.all([
-        queryRequests(token, view, 0, '', 1),
-        queryRequests(token, withOverdue(view), 0, '', 1),
+        queryRequests(view, 0, '', 1),
+        queryRequests(withOverdue(view), 0, '', 1),
       ]);
       return { open: open.totalElements, overdue: overdue.totalElements };
     },

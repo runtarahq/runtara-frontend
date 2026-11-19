@@ -72,7 +72,7 @@ export function CreateConnection() {
           useNavigationBlockerStore.getState().setBlocker(false);
         });
       try {
-        const authUrl = await getOAuthAuthorizeUrl(token, connectionId);
+        const authUrl = await getOAuthAuthorizeUrl(connectionId);
         const result = await openOAuthPopup(authUrl, connectionId);
         release();
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });

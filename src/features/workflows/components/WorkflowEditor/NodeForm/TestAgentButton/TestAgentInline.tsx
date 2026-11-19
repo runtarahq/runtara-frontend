@@ -3,7 +3,6 @@ import { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useFormContext } from 'react-hook-form';
 import { shallow } from 'zustand/shallow';
-import { useToken } from '@/shared/hooks';
 import { Copy, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Textarea } from '@/shared/components/ui/textarea';
@@ -59,7 +58,6 @@ function setTestHandler(handler: TestHandler | null) {
 const TEST_NODE_ID = '__test_agent__';
 
 export function TestAgentInline() {
-  const token = useToken();
   const { watch } = useFormContext();
   const { agents } = useContext(NodeFormContext);
   const entitlements = useEntitlements();
@@ -146,13 +144,7 @@ export function TestAgentInline() {
       if (!actualAgentId) {
         throw new Error('Agent not found');
       }
-      return testAgent(
-        token,
-        actualAgentId,
-        testedCapabilityId,
-        inputs,
-        connectionId
-      );
+      return testAgent(actualAgentId, testedCapabilityId, inputs, connectionId);
     },
     onSuccess: (data, { capabilityId: testedCapabilityId }) => {
       if (testedCapabilityId !== capabilityIdRef.current) return;

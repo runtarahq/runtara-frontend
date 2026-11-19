@@ -1,5 +1,4 @@
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
 // Re-export relevant DTOs from the generated Runtime API for easier access
 export type {
@@ -32,19 +31,15 @@ export type {
  *   hourly - so a 90-day window used to come back as 2161 buckets.
  */
 export async function getTenantMetrics(
-  token: string,
   startTime: string,
   endTime: string,
   granularity: string
 ) {
-  const result = await RuntimeREST.api.getTenantMetrics(
-    {
-      startTime,
-      endTime,
-      granularity,
-    },
-    createAuthHeaders(token)
-  );
+  const result = await RuntimeREST.api.getTenantMetrics({
+    startTime,
+    endTime,
+    granularity,
+  });
   return result.data;
 }
 
@@ -52,9 +47,7 @@ export async function getTenantMetrics(
  * Get system analytics including memory, disk space, and CPU information
  * @param token - Authentication token
  */
-export async function getSystemAnalytics(token: string) {
-  const result = await RuntimeREST.api.getSystemAnalyticsHandler(
-    createAuthHeaders(token)
-  );
+export async function getSystemAnalytics() {
+  const result = await RuntimeREST.api.getSystemAnalyticsHandler();
   return result.data;
 }

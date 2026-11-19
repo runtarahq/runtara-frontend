@@ -28,8 +28,8 @@ export function OverviewPage() {
   const client = useQueryClient();
   const failures = useCustomQuery({
     queryKey: ['operations', tenant, 'overview-failures'],
-    queryFn: (token: string) =>
-      queryRuns(token, {
+    queryFn: () =>
+      queryRuns({
         status: 'failed,timeout',
         completedFrom: new Date(Date.now() - 86_400_000).toISOString(),
         size: 1,
@@ -39,14 +39,14 @@ export function OverviewPage() {
   });
   const running = useCustomQuery({
     queryKey: ['operations', tenant, 'running-count'],
-    queryFn: (token: string) => queryRunSummary(token, {}),
+    queryFn: () => queryRunSummary({}),
     refetchInterval: 30_000,
     placeholderData: undefined,
   });
   const recent = useCustomQuery({
     queryKey: ['operations', tenant, 'invocations-24h'],
-    queryFn: (token: string) =>
-      queryRunSummary(token, {
+    queryFn: () =>
+      queryRunSummary({
         createdFrom: new Date(Date.now() - 86_400_000).toISOString(),
       }),
     refetchInterval: 30_000,
@@ -54,15 +54,15 @@ export function OverviewPage() {
   });
   const latest = useCustomQuery({
     queryKey: ['operations', tenant, 'recent-runs'],
-    queryFn: (token: string) =>
-      queryRuns(token, { size: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
+    queryFn: () =>
+      queryRuns({ size: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
     refetchInterval: 30_000,
     placeholderData: undefined,
   });
   const queueViews = attentionQueues(queues.data ?? [], views.data ?? []);
   const attention = useCustomQuery({
     queryKey: ['operations', tenant, 'attention', queueViews],
-    queryFn: async (token: string) =>
+    queryFn: async () =>
       Promise.all(
         queueViews.map(async ({ queue, view }) => {
           // One unfiltered query per queue; a saved view supplies presentation roles.
@@ -73,7 +73,6 @@ export function OverviewPage() {
             size: 3,
           };
           const page = await operationsRequest<OperationRequestPage>(
-            token,
             'operations/requests/query',
             'POST',
             { workflowId: queue.workflowId, actionKey: queue.actionKey, query }
@@ -81,7 +80,6 @@ export function OverviewPage() {
           const overdue = due
             ? (
                 await operationsRequest<OperationRequestPage>(
-                  token,
                   'operations/requests/query',
                   'POST',
                   {

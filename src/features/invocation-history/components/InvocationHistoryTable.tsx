@@ -114,10 +114,10 @@ export function InvocationHistoryTable({
       tenant,
       { ...pagination, filters },
     ],
-    queryFn: async (token: string) => {
+    queryFn: async () => {
       const resolved = resolveRunFilters(filters, Date.now());
       const [page, summary] = await Promise.allSettled([
-        getAllExecutions(token, {
+        getAllExecutions({
           queryKey: [
             {
               pageIndex: pagination.pageIndex,
@@ -126,7 +126,7 @@ export function InvocationHistoryTable({
             },
           ],
         }),
-        queryRunSummary(token, summaryFilters(resolved)),
+        queryRunSummary(summaryFilters(resolved)),
       ]);
       if (page.status === 'rejected') throw page.reason;
       return {

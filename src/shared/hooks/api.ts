@@ -21,16 +21,14 @@ interface PaginatedResponse<T = unknown> {
   totalPages: number;
 }
 
-// Token type uses 'any' because existing queryFn/mutationFn callbacks expect 'string'
-// but hooks provide 'string | undefined'. This maintains backwards compatibility.
-type QueryFnType<TData> = (token: any, context?: any) => Promise<TData>;
-type MutationFnType<TData, TVariables> = (
-  token: any,
-  data: TVariables
+// A query or mutation function takes no token: the API clients send the
+// signed-in user's themselves (see attachAccessToken in shared/queries).
+type QueryFnType<TData> = (
+  context: QueryFunctionContext<QueryKey>
 ) => Promise<TData>;
+type MutationFnType<TData, TVariables> = (data: TVariables) => Promise<TData>;
 type TableQueryFnType<T> = (
-  token: any,
-  context?: any
+  context: QueryFunctionContext<QueryKey>
 ) => Promise<PaginatedResponse<T>>;
 
 interface CustomQueryOptions<TData = unknown> extends Omit<
@@ -51,7 +49,7 @@ export function useCustomQuery<TData = unknown>({
   const token = auth.user?.access_token;
 
   const customQueryFn = async (context: QueryFunctionContext<QueryKey>) => {
-    return queryFn(token, context);
+    return queryFn(context);
   };
 
   const customOptions = {
@@ -247,12 +245,7 @@ export function useCustomMutation<TData = unknown, TVariables = unknown>({
   suppressNotFoundToasts = false,
   ...options
 }: CustomMutationOptions<TData, TVariables>) {
-  const auth = useAuth();
-
-  const customMutationFn = async (data: TVariables) => {
-    const token = auth.user?.access_token;
-    return mutationFn(token, data);
-  };
+  const customMutationFn = async (data: TVariables) => mutationFn(data);
 
   const handleError = (error: ApiError) => {
     const validationErrors = error.response?.data?.validationErrors;
@@ -381,7 +374,7 @@ export function useTableQuery<T = unknown>({
   const token = auth.user?.access_token;
 
   const customQueryFn = async (context: QueryFunctionContext<QueryKey>) => {
-    return queryFn(token, context);
+    return queryFn(context);
   };
 
   const customOptions = {

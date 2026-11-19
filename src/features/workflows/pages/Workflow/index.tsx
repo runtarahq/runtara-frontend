@@ -222,7 +222,7 @@ export function Workflow() {
   // Fetch available versions
   const { data: versionsResponse } = useCustomQuery({
     queryKey: queryKeys.workflows.versions(workflowId ?? ''),
-    queryFn: (token: string) => getWorkflowVersions(token, workflowId!),
+    queryFn: () => getWorkflowVersions(workflowId!),
     enabled: !!workflowId,
     placeholderData: { data: [], message: '', success: true } as any,
   });
@@ -235,8 +235,8 @@ export function Workflow() {
       workflowId ?? '',
       watchedCompilationVersion ?? 0
     ),
-    queryFn: (token: string) =>
-      getCompilationProgress(token, workflowId!, watchedCompilationVersion!),
+    queryFn: () =>
+      getCompilationProgress(workflowId!, watchedCompilationVersion!),
     enabled: !!workflowId && watchedCompilationVersion !== undefined,
     // No placeholder: the previous attempt's answer is not this one's, and
     // carrying it over showed a recent failure as a rebuild's result (WF-6).
@@ -359,8 +359,7 @@ export function Workflow() {
   // Use queryVersion for the actual query to control when it changes
   const { data: response, isFetching } = useCustomQuery({
     queryKey: queryKeys.workflows.workflow(workflowId ?? '', queryVersion),
-    queryFn: (token: string) =>
-      getWorkflowWorkflow(token, workflowId!, queryVersion),
+    queryFn: () => getWorkflowWorkflow(workflowId!, queryVersion),
     enabled: !!workflowId,
     placeholderData: {
       data: {
@@ -940,7 +939,7 @@ export function Workflow() {
     void,
     { workflowId: string; version: number }
   >({
-    mutationFn: (_token, { workflowId: wid, version }) =>
+    mutationFn: ({ workflowId: wid, version }) =>
       rebuildWorkflowVersion(wid, version),
   });
 

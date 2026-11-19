@@ -4,7 +4,6 @@ import { useAuth } from 'react-oidc-context';
 import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { useAuthStore } from '@/shared/stores/authStore.ts';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
 /**
  * Fetch the authoritative identity view from `GET /api/runtime/me` and store the
@@ -33,7 +32,7 @@ export function useMe() {
 
     let cancelled = false;
     RuntimeREST.instance
-      .get('/api/runtime/me', isOidcAuth ? createAuthHeaders(token) : undefined)
+      .get('/api/runtime/me')
       .then((res) => {
         if (cancelled) return;
         setMe({

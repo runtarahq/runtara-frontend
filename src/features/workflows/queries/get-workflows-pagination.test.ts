@@ -53,7 +53,7 @@ describe('getWorkflows', () => {
   it('returns every workflow when the tenant spills past one page', async () => {
     serve(124);
 
-    const result = (await getWorkflows('token')) as any;
+    const result = (await getWorkflows()) as any;
 
     // The bug: this used to stop at 100 and the last 24 became unselectable.
     expect(result.data.content).toHaveLength(124);
@@ -63,7 +63,7 @@ describe('getWorkflows', () => {
   it('asks for each page in turn, starting at page 0', async () => {
     serve(124);
 
-    await getWorkflows('token');
+    await getWorkflows();
 
     const pages = listWorkflowsHandler.mock.calls.map((call) => call[0].page);
     expect(pages).toEqual([0, 1]);
@@ -72,7 +72,7 @@ describe('getWorkflows', () => {
   it('makes a single request when everything fits on one page', async () => {
     serve(42);
 
-    const result = (await getWorkflows('token')) as any;
+    const result = (await getWorkflows()) as any;
 
     expect(result.data.content).toHaveLength(42);
     expect(listWorkflowsHandler).toHaveBeenCalledTimes(1);
@@ -81,7 +81,7 @@ describe('getWorkflows', () => {
   it('restates the pagination fields to describe the merged list', async () => {
     serve(124);
 
-    const result = (await getWorkflows('token')) as any;
+    const result = (await getWorkflows()) as any;
 
     expect(result.data).toMatchObject({
       number: 0,
@@ -98,7 +98,7 @@ describe('getWorkflows', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     serve(100 * 40); // 40 pages, double the ceiling
 
-    const result = (await getWorkflows('token')) as any;
+    const result = (await getWorkflows()) as any;
 
     expect(listWorkflowsHandler).toHaveBeenCalledTimes(20);
     expect(result.data.content).toHaveLength(2000);

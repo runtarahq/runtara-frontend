@@ -80,7 +80,7 @@ const allFolders = Array.from({ length: FOLDER_COUNT }, (_, i) => {
  * Stands in for GET /api/runtime/workflows, honouring its page/pageSize contract
  * and its `search` parameter (case-insensitive substring on the name).
  */
-function serveWorkflowPage(_token: string, params: Record<string, any>) {
+function serveWorkflowPage(params: Record<string, any>) {
   const pageSize = params.pageSize ?? 20;
   const page = params.page ?? 0;
   const start = page * pageSize;
@@ -205,8 +205,8 @@ describe('WorkflowsGrid pagination', () => {
 
     // Workflows 9–18 live across server pages 0 and 1 of a 10-row page size.
     const requestedPages = mocks.getWorkflowsInFolder.mock.calls
-      .filter(([, params]) => params.pageSize === PAGE_SIZE)
-      .map(([, params]) => params.page);
+      .filter(([params]) => params.pageSize === PAGE_SIZE)
+      .map(([params]) => params.page);
     expect(requestedPages).toContain(0);
     expect(requestedPages).toContain(1);
   });

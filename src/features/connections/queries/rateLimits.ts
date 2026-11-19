@@ -1,22 +1,15 @@
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
-export async function getRateLimits(token: string, interval?: string) {
+export async function getRateLimits(interval?: string) {
   const result = await RuntimeREST.api.listRateLimitsHandler(
-    interval ? { interval } : undefined,
-    createAuthHeaders(token)
+    interval ? { interval } : undefined
   );
   return result.data;
 }
 
-export async function getConnectionRateLimitStatus(
-  token: string,
-  connectionId: string
-) {
-  const result = await RuntimeREST.api.getConnectionRateLimitStatusHandler(
-    connectionId,
-    createAuthHeaders(token)
-  );
+export async function getConnectionRateLimitStatus(connectionId: string) {
+  const result =
+    await RuntimeREST.api.getConnectionRateLimitStatusHandler(connectionId);
   return result.data;
 }
 
@@ -30,7 +23,6 @@ export interface RateLimitHistoryParams {
 }
 
 export async function getConnectionRateLimitHistory(
-  token: string,
   params: RateLimitHistoryParams
 ) {
   const { connectionId, ...query } = params;
@@ -42,8 +34,7 @@ export async function getConnectionRateLimitHistory(
       event_type: query.eventType,
       from: query.from,
       to: query.to,
-    },
-    createAuthHeaders(token)
+    }
   );
   return result.data;
 }
@@ -57,7 +48,6 @@ export interface RateLimitTimelineParams {
 }
 
 export async function getConnectionRateLimitTimeline(
-  token: string,
   params: RateLimitTimelineParams
 ) {
   const { connectionId, ...query } = params;
@@ -68,8 +58,7 @@ export async function getConnectionRateLimitTimeline(
       endTime: query.endTime,
       granularity: query.granularity,
       tag: query.tag,
-    },
-    createAuthHeaders(token)
+    }
   );
   return result.data;
 }

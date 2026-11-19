@@ -211,7 +211,7 @@ export function NameField({ name }: { name: string }) {
   // Fetch connections for agent — use agent.id (module id), not display name
   const connectionsByAgent = useCustomQuery({
     queryKey: queryKeys.agents.connectionsByAgent(agentModuleId ?? ''),
-    queryFn: (token: string) => getConnectionsByOperator(token, agentModuleId!),
+    queryFn: () => getConnectionsByOperator(agentModuleId!),
     placeholderData: [],
     enabled: Boolean(agentModuleId && supportsConnections),
   });

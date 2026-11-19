@@ -60,7 +60,6 @@ describe('queue management', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete queue' }));
     await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce());
     expect(api).toHaveBeenCalledWith(
-      'test-token',
       'operations/views/queue?revision=1',
       'DELETE'
     );
@@ -110,7 +109,7 @@ describe('queue management', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(api.mock.calls[0][3]).toMatchObject({
+    expect(api.mock.calls[0][2]).toMatchObject({
       revision: 1,
       configuration: { name: 'Changed' },
     });

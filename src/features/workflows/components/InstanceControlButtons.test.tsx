@@ -39,7 +39,6 @@ const cases = [
   {
     name: 'Stop',
     call: queries.stopInstance,
-    args: (token: string) => [token, 'run-1'],
     click: () => {
       renderWithQueries(<StopButton instanceId="run-1" />);
       fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
@@ -48,8 +47,6 @@ const cases = [
   {
     name: 'Pause',
     call: queries.pauseInstance,
-    // Sent through runtimeFetch, which carries the token itself.
-    args: () => ['run-1'],
     click: () => {
       renderWithQueries(<PauseButton instanceId="run-1" />);
       fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
@@ -59,7 +56,6 @@ const cases = [
   {
     name: 'Resume',
     call: queries.resumeInstance,
-    args: (token: string) => [token, 'run-1'],
     click: () => {
       renderWithQueries(<ResumeButton instanceId="run-1" />);
       fireEvent.click(
@@ -69,7 +65,7 @@ const cases = [
   },
 ];
 
-describe.each(cases)('$name button', ({ call, click, args }) => {
+describe.each(cases)('$name button', ({ call, click }) => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryClient = new QueryClient();
@@ -79,7 +75,7 @@ describe.each(cases)('$name button', ({ call, click, args }) => {
     auth.oidc = false;
     auth.token = '';
     click();
-    await waitFor(() => expect(call).toHaveBeenCalledWith(...args('')));
+    await waitFor(() => expect(call).toHaveBeenCalledWith('run-1'));
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -95,13 +91,12 @@ describe.each(cases)('$name button', ({ call, click, args }) => {
     );
   });
 
-  it('sends the request with the OIDC token', async () => {
+  // The API client sends the token itself; the button only needs a session.
+  it('sends the request when signed in under OIDC', async () => {
     auth.oidc = true;
     auth.token = 'access-token';
     click();
-    await waitFor(() =>
-      expect(call).toHaveBeenCalledWith(...args('access-token'))
-    );
+    await waitFor(() => expect(call).toHaveBeenCalledWith('run-1'));
   });
 
   it('reports an expired OIDC session instead of doing nothing', async () => {

@@ -69,8 +69,7 @@ export function BackgroundBuildWatch({
 }) {
   const { data } = useCustomQuery<Progress>({
     queryKey: queryKeys.workflows.compilationProgress(workflowId, version),
-    queryFn: (token: string) =>
-      getCompilationProgress(token, workflowId, version),
+    queryFn: () => getCompilationProgress(workflowId, version),
     placeholderData: undefined,
     refetchInterval: (q) =>
       isTerminal((q.state.data as Progress | undefined)?.status) ? false : 1000,

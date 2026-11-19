@@ -5,7 +5,6 @@ import { Link, useParams } from 'react-router';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
 import {
@@ -44,8 +43,7 @@ export function RunPage() {
   const { views, processes } = useOperations();
   const run = useCustomQuery({
     queryKey: ['operations', tenant, 'run', workflowId, instanceId],
-    queryFn: (token: string) =>
-      getWorkflowInstance(token, workflowId, instanceId),
+    queryFn: () => getWorkflowInstance(workflowId, instanceId),
     // A finished run does not change, so stop polling it (OP-9).
     refetchInterval: (query) =>
       query.state.data && !isActiveStatus(query.state.data.status)
@@ -68,12 +66,11 @@ export function RunPage() {
       workflowId,
       run.data?.usedVersion,
     ],
-    queryFn: async (token: string) =>
+    queryFn: async () =>
       (
         await RuntimeREST.api.getVersionSchemasHandler(
           workflowId,
-          run.data!.usedVersion,
-          createAuthHeaders(token)
+          run.data!.usedVersion
         )
       ).data,
     enabled: Boolean(run.data?.usedVersion),
@@ -81,8 +78,8 @@ export function RunPage() {
   });
   const steps = useCustomQuery({
     queryKey: ['operations', tenant, 'activity', workflowId, instanceId],
-    queryFn: (token: string) =>
-      getStepSummaries(token, workflowId, instanceId, {
+    queryFn: () =>
+      getStepSummaries(workflowId, instanceId, {
         limit: 20,
         sortOrder: 'desc',
       }),

@@ -240,9 +240,9 @@ export function WorkflowsGrid({
       pageSize,
       searchTerm,
     ],
-    queryFn: async (token: string) => {
+    queryFn: async () => {
       const requestPage = (serverPage: number) =>
-        getWorkflowsInFolder(token, {
+        getWorkflowsInFolder({
           path: folderPath,
           recursive: false,
           page: serverPage,
@@ -322,10 +322,10 @@ export function WorkflowsGrid({
   });
 
   const scheduleMutation = useCustomMutation({
-    mutationFn: (
-      token: string,
-      params: { workflowId: string; inputs?: Record<string, any> }
-    ) => scheduleWorkflow(token, params.workflowId, params.inputs),
+    mutationFn: (params: {
+      workflowId: string;
+      inputs?: Record<string, any>;
+    }) => scheduleWorkflow(params.workflowId, params.inputs),
     onSuccess: () => {
       toast.info('Workflow has been scheduled');
       queryClient.invalidateQueries({
@@ -343,8 +343,8 @@ export function WorkflowsGrid({
   });
 
   const moveMutation = useCustomMutation({
-    mutationFn: (token: string, params: { workflowId: string; path: string }) =>
-      moveWorkflowToFolder(token, params),
+    mutationFn: (params: { workflowId: string; path: string }) =>
+      moveWorkflowToFolder(params),
     onSuccess: () => {
       toast.success('Workflow has been moved');
       queryClient.invalidateQueries({ queryKey: queryKeys.workflows.all });

@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
 import { Can } from '@/shared/components/Can';
-import { useToken } from '@/shared/hooks';
 import { RunStatusPill } from '@/features/invocation-history/components/RunLinks';
 import { formatRunDuration } from '@/features/invocation-history/utils/run-duration';
 import {
@@ -170,7 +169,6 @@ export function ReplayButton({
   const client = useQueryClient();
   const [confirm, setConfirm] = useState(initiallyConfirm);
   const [busy, setBusy] = useState(false);
-  const token = useToken();
   const navigate = useNavigate();
   // Closed while the request ran: the user has moved on, so the answer must
   // not navigate them away from where they are now (OP-10).
@@ -185,7 +183,6 @@ export function ReplayButton({
     setBusy(true);
     try {
       const result = await operationsRequest<{ instanceId: string }>(
-        token,
         `workflows/instances/${run.id}/replay`,
         'POST',
         {}

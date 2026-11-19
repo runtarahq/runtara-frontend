@@ -29,7 +29,7 @@ export function useConnectionOAuth() {
       if (isOidcAuth && !token) return;
       setRunningId(connectionId);
       try {
-        const authUrl = await getOAuthAuthorizeUrl(token, connectionId);
+        const authUrl = await getOAuthAuthorizeUrl(connectionId);
         const result = await openOAuthPopup(authUrl, connectionId);
         queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
         queryClient.invalidateQueries({

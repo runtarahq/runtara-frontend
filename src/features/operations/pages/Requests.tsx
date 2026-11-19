@@ -20,8 +20,7 @@ export function RequestsPage() {
   const scopes = attentionQueues(queues.data ?? [], views.data ?? []);
   const query = useCustomQuery({
     queryKey: ['operations', tenant, 'request-list', scopes, overdue, page],
-    queryFn: (token: string) =>
-      queryAttentionRequests(token, scopes, overdue, page),
+    queryFn: () => queryAttentionRequests(scopes, overdue, page),
     enabled: Boolean(queues.data && views.data),
     // The scopes carry each queue's count, so every count change is a new key.
     // Keep the rows on screen across that; a filter or page change still

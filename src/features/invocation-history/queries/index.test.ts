@@ -5,7 +5,6 @@ const list = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/queries', () => ({
   RuntimeREST: { api: { listAllExecutionsHandler: list } },
 }));
-vi.mock('@/shared/queries/utils', () => ({ createAuthHeaders: () => ({}) }));
 
 it('forwards search, exact label, and pagination and retains labels and server totals', async () => {
   list.mockResolvedValue({
@@ -29,7 +28,7 @@ it('forwards search, exact label, and pagination and retains labels and server t
       },
     },
   });
-  const result = await getAllExecutions('', {
+  const result = await getAllExecutions({
     queryKey: [
       'executions',
       {
@@ -79,7 +78,7 @@ it('forwards the parent filter and keeps parent and suspension reason', async ()
       },
     },
   });
-  const result = await getAllExecutions('', {
+  const result = await getAllExecutions({
     queryKey: ['executions', { filters: { parentInstanceId: 'parent' } }],
   });
   expect(list.mock.lastCall![0]).toMatchObject({ parentInstanceId: 'parent' });

@@ -39,7 +39,7 @@ export function useMultipleAgentDetails(
   const agentQueries = useQueries({
     queries: agentIds.map((agentId) => ({
       queryKey: queryKeys.agents.byId(agentId),
-      queryFn: () => getAgentDetails(token, agentId),
+      queryFn: () => getAgentDetails(agentId),
       // Local and trust-proxy auth modes don't produce a bearer token; the
       // server accepts unauthenticated metadata reads in those modes. Only
       // gate on token presence when OIDC is actually in use.

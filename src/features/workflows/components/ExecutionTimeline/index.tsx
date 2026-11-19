@@ -122,8 +122,7 @@ function ExecutionTimelineContent({
   // Poll instance data for status
   const { data: instanceData } = useCustomQuery({
     queryKey: queryKeys.workflows.instance(workflowId, instanceId),
-    queryFn: (token: string) =>
-      getWorkflowInstance(token, workflowId, instanceId),
+    queryFn: () => getWorkflowInstance(workflowId, instanceId),
     enabled: !!workflowId && !!instanceId,
     // TanStack passes the query, not its data; reading `data.status` off the
     // query was always undefined, so this poll never ran (HI-3).

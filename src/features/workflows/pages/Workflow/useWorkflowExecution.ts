@@ -51,21 +51,18 @@ export function useWorkflowExecution(workflowId: string | undefined) {
   const [resumeGuardLapses, setResumeGuardLapses] = useState(0);
 
   const scheduleMutation = useCustomMutation({
-    mutationFn: (
-      token: string,
-      {
-        workflowId,
-        inputs,
-        version,
-        debug,
-      }: {
-        workflowId: string;
-        trackEvents: boolean;
-        inputs?: Record<string, any>;
-        version?: number;
-        debug?: boolean;
-      }
-    ) => scheduleWorkflow(token, workflowId, inputs, version, debug),
+    mutationFn: ({
+      workflowId,
+      inputs,
+      version,
+      debug,
+    }: {
+      workflowId: string;
+      trackEvents: boolean;
+      inputs?: Record<string, any>;
+      version?: number;
+      debug?: boolean;
+    }) => scheduleWorkflow(workflowId, inputs, version, debug),
     onSuccess: (
       response: any,
       variables: {
@@ -107,12 +104,12 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         workflowId ?? '',
         executingInstanceId ?? ''
       ),
-      queryFn: async (token: string) => {
+      queryFn: async () => {
         // Reading a run this page has only just queued would 404 — the runtime
         // has not written its row yet. Only that run waits; anything else,
         // including an instance attached to on load, reads straight away.
         await holdForQueuedRow(queuedRunRef.current, executingInstanceId!);
-        return getWorkflowInstance(token, workflowId!, executingInstanceId!);
+        return getWorkflowInstance(workflowId!, executingInstanceId!);
       },
       enabled: !!executingInstanceId,
       // The seeded queued status is for display only. Without this it would
@@ -135,8 +132,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         workflowId,
         executingInstanceId ?? undefined
       ),
-      queryFn: (token: string) =>
-        getStepEvents(token, workflowId!, executingInstanceId!),
+      queryFn: () => getStepEvents(workflowId!, executingInstanceId!),
       enabled: !!executingInstanceId && executionDebugMode,
       refetchInterval: () => {
         // Keep polling while the run is live (suspended included), often

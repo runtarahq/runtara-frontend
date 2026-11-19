@@ -49,10 +49,7 @@ export function ReplayButton(props: Props) {
 
     setIsLoading(true);
     try {
-      const result = (await replayWorkflow(
-        token,
-        instanceId
-      )) as ReplayWorkflowResult;
+      const result = (await replayWorkflow(instanceId)) as ReplayWorkflowResult;
       const replayedWorkflowId = result?.workflowId;
 
       await Promise.all([

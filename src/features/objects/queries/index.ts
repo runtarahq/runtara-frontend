@@ -12,7 +12,6 @@ import {
   ImportPreviewResponse,
 } from '@/generated/RuntaraRuntimeApi';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
 /**
  * Recursively checks whether a filter condition is complete
@@ -74,23 +73,17 @@ const appendConnectionId = (url: string, connectionId?: string | null) => {
 };
 
 // Schema related queries
-export async function getAllSchemas(
-  token: string,
-  connectionId?: string | null
-) {
-  const result = await RuntimeREST.api.listSchemas(
-    {
-      offset: 0,
-      limit: 1000,
-      ...queryWithConnection(connectionId),
-    },
-    createAuthHeaders(token)
-  );
+export async function getAllSchemas(connectionId?: string | null) {
+  const result = await RuntimeREST.api.listSchemas({
+    offset: 0,
+    limit: 1000,
+    ...queryWithConnection(connectionId),
+  });
 
   return result.data.schemas || [];
 }
 
-export async function getSchemaById(token: string, context: any) {
+export async function getSchemaById(context: any) {
   const queryKey = context.queryKey as unknown[];
   const id = queryKey[queryKey.length - 1] as string | undefined;
   const connectionId = queryKey[2] as string | null | undefined;
@@ -99,15 +92,13 @@ export async function getSchemaById(token: string, context: any) {
 
   const result = await RuntimeREST.api.getSchemaById(
     id,
-    queryWithConnection(connectionId),
-    createAuthHeaders(token)
+    queryWithConnection(connectionId)
   );
 
   return result.data.schema || null;
 }
 
 export async function updateSchema(
-  token: string,
   id: string,
   data: UpdateSchemaRequest,
   connectionId?: string | null
@@ -116,16 +107,14 @@ export async function updateSchema(
     const result = await RuntimeREST.api.updateSchema(
       id,
       data,
-      queryWithConnection(connectionId),
-      createAuthHeaders(token)
+      queryWithConnection(connectionId)
     );
 
     // Fetch the updated schema to return the full object
     if (result.data.success) {
       const schemaResult = await RuntimeREST.api.getSchemaById(
         id,
-        queryWithConnection(connectionId),
-        createAuthHeaders(token)
+        queryWithConnection(connectionId)
       );
       return schemaResult.data.schema;
     }
@@ -146,22 +135,19 @@ export async function updateSchema(
 }
 
 export async function createSchemaWithConnection(
-  token: string,
   schema: CreateSchemaRequest,
   connectionId?: string | null
 ) {
   try {
     const result = await RuntimeREST.api.createSchema(
       schema,
-      queryWithConnection(connectionId),
-      createAuthHeaders(token)
+      queryWithConnection(connectionId)
     );
 
     if (result.data.success && result.data.schemaId) {
       const schemaResult = await RuntimeREST.api.getSchemaById(
         result.data.schemaId,
-        queryWithConnection(connectionId),
-        createAuthHeaders(token)
+        queryWithConnection(connectionId)
       );
       return schemaResult.data.schema;
     }
@@ -180,20 +166,12 @@ export async function createSchemaWithConnection(
   }
 }
 
-export async function deleteSchema(
-  token: string,
-  id: string,
-  connectionId?: string | null
-) {
-  await RuntimeREST.api.deleteSchema(
-    id,
-    queryWithConnection(connectionId),
-    createAuthHeaders(token)
-  );
+export async function deleteSchema(id: string, connectionId?: string | null) {
+  await RuntimeREST.api.deleteSchema(id, queryWithConnection(connectionId));
 }
 
 // Instance related queries
-export async function getInstancesBySchema(token: string, context: any) {
+export async function getInstancesBySchema(context: any) {
   const [, , connectionId, schemaId, params = {}] = context.queryKey;
   const {
     page = 0,
@@ -240,8 +218,7 @@ export async function getInstancesBySchema(token: string, context: any) {
         sortBy,
         sortOrder,
       },
-      queryWithConnection(connectionId),
-      createAuthHeaders(token)
+      queryWithConnection(connectionId)
     );
 
     const data = result.data;
@@ -258,15 +235,11 @@ export async function getInstancesBySchema(token: string, context: any) {
 
   // Fallback to regular list endpoint (no filtering/sorting support)
   // This path is only used when no schemaName is available AND no filters/sorting requested
-  const result = await RuntimeREST.api.getInstancesBySchema(
-    schemaId,
-    {
-      offset,
-      limit: size,
-      ...queryWithConnection(connectionId),
-    },
-    createAuthHeaders(token)
-  );
+  const result = await RuntimeREST.api.getInstancesBySchema(schemaId, {
+    offset,
+    limit: size,
+    ...queryWithConnection(connectionId),
+  });
 
   const data = result.data;
   const totalElements = data.totalCount || 0;
@@ -280,7 +253,7 @@ export async function getInstancesBySchema(token: string, context: any) {
   };
 }
 
-export async function getInstanceById(token: string, context: any) {
+export async function getInstanceById(context: any) {
   const [, , connectionId, schemaId, instanceId] = context.queryKey;
 
   if (!schemaId || !instanceId) return null;
@@ -288,22 +261,19 @@ export async function getInstanceById(token: string, context: any) {
   const result = await RuntimeREST.api.getInstanceById(
     schemaId,
     instanceId,
-    queryWithConnection(connectionId),
-    createAuthHeaders(token)
+    queryWithConnection(connectionId)
   );
 
   return result.data.instance || null;
 }
 
 export async function createInstance(
-  token: string,
   data: CreateInstanceRequest,
   connectionId?: string | null
 ) {
   const result = await RuntimeREST.api.createInstance(
     data,
-    queryWithConnection(connectionId),
-    createAuthHeaders(token)
+    queryWithConnection(connectionId)
   );
 
   // Fetch the created instance to return the full object
@@ -311,8 +281,7 @@ export async function createInstance(
     const instanceResult = await RuntimeREST.api.getInstanceById(
       data.schemaId,
       result.data.instanceId,
-      queryWithConnection(connectionId),
-      createAuthHeaders(token)
+      queryWithConnection(connectionId)
     );
     return instanceResult.data.instance;
   }
@@ -321,7 +290,6 @@ export async function createInstance(
 }
 
 export async function updateInstance(
-  token: string,
   schemaId: string,
   instanceId: string,
   data: UpdateInstanceRequest,
@@ -331,8 +299,7 @@ export async function updateInstance(
     schemaId,
     instanceId,
     data,
-    queryWithConnection(connectionId),
-    createAuthHeaders(token)
+    queryWithConnection(connectionId)
   );
 
   // Fetch the updated instance to return the full object
@@ -340,8 +307,7 @@ export async function updateInstance(
     const instanceResult = await RuntimeREST.api.getInstanceById(
       schemaId,
       instanceId,
-      queryWithConnection(connectionId),
-      createAuthHeaders(token)
+      queryWithConnection(connectionId)
     );
     return instanceResult.data.instance;
   }
@@ -350,7 +316,6 @@ export async function updateInstance(
 }
 
 export async function bulkDeleteInstances(
-  token: string,
   schemaId: string,
   instanceIds: string[],
   connectionId?: string | null
@@ -362,8 +327,7 @@ export async function bulkDeleteInstances(
   const result = await RuntimeREST.api.bulkDeleteInstances(
     schemaId,
     requestData,
-    queryWithConnection(connectionId),
-    createAuthHeaders(token)
+    queryWithConnection(connectionId)
   );
 
   return result.data.deletedCount || 0;
@@ -391,7 +355,6 @@ export interface BulkCreateResult {
  * and validation handling.
  */
 export async function bulkCreateInstances(
-  token: string,
   schemaId: string,
   instances: unknown[],
   opts: BulkCreateOptions,
@@ -407,8 +370,7 @@ export async function bulkCreateInstances(
       onConflict: opts.onConflict,
       onError: opts.onError,
       conflictColumns: opts.conflictColumns,
-    },
-    { headers: { Authorization: `Bearer ${token}` } }
+    }
   );
   return {
     success: !!result.data?.success,
@@ -426,7 +388,6 @@ export async function bulkCreateInstances(
  * selected rows.
  */
 export async function bulkUpdateInstancesByIds(
-  token: string,
   schemaId: string,
   instanceIds: string[],
   properties: Record<string, unknown>,
@@ -441,8 +402,7 @@ export async function bulkUpdateInstancesByIds(
       mode: 'byCondition',
       condition: { op: 'IN', arguments: ['id', instanceIds] },
       properties,
-    },
-    { headers: { Authorization: `Bearer ${token}` } }
+    }
   );
   return result.data?.updatedCount ?? 0;
 }
@@ -450,7 +410,6 @@ export async function bulkUpdateInstancesByIds(
 // CSV Import/Export functions
 
 export async function exportCsv(
-  token: string,
   schemaName: string,
   data: CsvExportRequest,
   connectionId?: string | null
@@ -461,16 +420,12 @@ export async function exportCsv(
       connectionId
     ),
     data,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      responseType: 'blob',
-    }
+    { responseType: 'blob' }
   );
   return result.data;
 }
 
 export async function importCsvPreview(
-  token: string,
   schemaName: string,
   data: CsvPreviewJsonRequest,
   connectionId?: string | null
@@ -481,18 +436,12 @@ export async function importCsvPreview(
       connectionId
     ),
     data,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
+    { headers: { 'Content-Type': 'application/json' } }
   );
   return result.data;
 }
 
 export async function importCsv(
-  token: string,
   schemaName: string,
   data: CsvImportJsonRequest,
   connectionId?: string | null
@@ -503,12 +452,7 @@ export async function importCsv(
       connectionId
     ),
     data,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
+    { headers: { 'Content-Type': 'application/json' } }
   );
   return result.data;
 }

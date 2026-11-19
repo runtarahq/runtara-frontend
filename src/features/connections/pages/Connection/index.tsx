@@ -2,7 +2,6 @@ import { Button } from '@/shared/components/ui/button';
 import { useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams } from 'react-router';
-import { useAuth } from 'react-oidc-context';
 import { toast } from 'sonner';
 import { useCustomMutation, useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
@@ -78,7 +77,6 @@ export function Connection() {
   const { id } = useParams();
 
   const navigate = useNavigate();
-  const auth = useAuth();
   const [conflict, setConflict] = useState<ConnectionConflictState | null>(
     null
   );
@@ -95,7 +93,7 @@ export function Connection() {
 
   const connection = useCustomQuery({
     queryKey: queryKeys.connections.byId(id ?? ''),
-    queryFn: (token: string) => getConnectionById(token, id!),
+    queryFn: () => getConnectionById(id!),
     enabled: !!id,
   });
 
@@ -111,7 +109,7 @@ export function Connection() {
     'PENDING_CONFIRMATION';
   const pendingQuery = useCustomQuery({
     queryKey: [...queryKeys.connections.byId(id ?? ''), 'oauthPending'],
-    queryFn: (token: string) => getPendingConfirmation(token, id!),
+    queryFn: () => getPendingConfirmation(id!),
     enabled: !!id && isPendingConfirmation,
   });
   const [deciding, setDeciding] = useState<'confirm' | 'reject' | null>(null);
@@ -120,12 +118,7 @@ export function Connection() {
     if (!id || !pending) return;
     setDeciding(decision);
     try {
-      await decidePendingConfirmation(
-        auth.user?.access_token,
-        id,
-        pending.id,
-        decision
-      );
+      await decidePendingConfirmation(id, pending.id, decision);
       toast.success(
         decision === 'confirm'
           ? 'Connection confirmed and ready.'
@@ -162,7 +155,7 @@ export function Connection() {
   // never seen, and left both recovery buttons disabled for good.
   const loadLatest = (pending: UpdateConnectionInput) => {
     if (!id) return;
-    void getConnectionById(auth.user?.access_token ?? '', id)
+    void getConnectionById(id)
       .then((latest) => {
         setConflict((current) =>
           current?.pending === pending

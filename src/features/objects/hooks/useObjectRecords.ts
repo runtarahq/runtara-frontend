@@ -57,7 +57,7 @@ export function useObjectInstanceDtos(
       sortBy,
       sortOrder,
     }),
-    queryFn: (token, context) => getInstancesBySchema(token, context),
+    queryFn: (context) => getInstancesBySchema(context),
     enabled: !!schemaId && !!connectionId,
   });
 }
@@ -76,7 +76,7 @@ export function useObjectInstanceDto(
       instanceId || '',
       connectionId
     ),
-    queryFn: (token, context) => getInstanceById(token, context),
+    queryFn: (context) => getInstanceById(context),
     enabled: !!instanceId && !!connectionId,
   });
 }
@@ -91,7 +91,7 @@ export function useCreateObjectInstanceDto(connectionId?: string | null) {
     Instance,
     { schemaId: string; data: CreateInstanceRequest }
   >({
-    mutationFn: (token, { data }) => createInstance(token, data, connectionId),
+    mutationFn: ({ data }) => createInstance(data, connectionId),
     onSuccess: (newInstance, variables) => {
       const queryKey = queryKeys.objects.instances.bySchema(
         variables.schemaId,
@@ -135,8 +135,8 @@ export function useUpdateObjectInstanceDto(
     { schemaId: string; instanceId: string; data: UpdateInstanceRequest }
   >({
     suppressNotFoundToasts: options?.suppressNotFoundToasts,
-    mutationFn: (token, { schemaId, instanceId, data }) =>
-      updateInstance(token, schemaId, instanceId, data, connectionId),
+    mutationFn: ({ schemaId, instanceId, data }) =>
+      updateInstance(schemaId, instanceId, data, connectionId),
     onMutate: async ({ schemaId, instanceId, data }) => {
       // Cancel any outgoing refetches for all queries matching this schema
       await queryClient.cancelQueries({
@@ -232,8 +232,8 @@ export function useBulkDeleteObjectInstances(connectionId?: string | null) {
 
   return useCustomMutation<number, { schemaId: string; instanceIds: string[] }>(
     {
-      mutationFn: (token, { schemaId, instanceIds }) =>
-        bulkDeleteInstances(token, schemaId, instanceIds, connectionId),
+      mutationFn: ({ schemaId, instanceIds }) =>
+        bulkDeleteInstances(schemaId, instanceIds, connectionId),
       onSuccess: (_, variables) => {
         queryClient.invalidateQueries({
           queryKey: queryKeys.objects.instances.bySchema(
@@ -261,8 +261,8 @@ export function useBulkCreateObjectInstances(connectionId?: string | null) {
       options: BulkCreateOptions;
     }
   >({
-    mutationFn: (token, { schemaId, instances, options }) =>
-      bulkCreateInstances(token, schemaId, instances, options, connectionId),
+    mutationFn: ({ schemaId, instances, options }) =>
+      bulkCreateInstances(schemaId, instances, options, connectionId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.objects.instances.bySchema(
@@ -288,14 +288,8 @@ export function useBulkUpdateObjectInstances(connectionId?: string | null) {
       properties: Record<string, unknown>;
     }
   >({
-    mutationFn: (token, { schemaId, instanceIds, properties }) =>
-      bulkUpdateInstancesByIds(
-        token,
-        schemaId,
-        instanceIds,
-        properties,
-        connectionId
-      ),
+    mutationFn: ({ schemaId, instanceIds, properties }) =>
+      bulkUpdateInstancesByIds(schemaId, instanceIds, properties, connectionId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.objects.instances.bySchema(
@@ -315,8 +309,8 @@ export function useExportCsv(connectionId?: string | null) {
     Blob,
     { schemaName: string; data: CsvExportRequest }
   >({
-    mutationFn: (token, { schemaName, data }) =>
-      exportCsv(token, schemaName, data, connectionId),
+    mutationFn: ({ schemaName, data }) =>
+      exportCsv(schemaName, data, connectionId),
   });
 }
 
@@ -328,8 +322,8 @@ export function useImportCsvPreview(connectionId?: string | null) {
     ImportPreviewResponse,
     { schemaName: string; data: CsvPreviewJsonRequest }
   >({
-    mutationFn: (token, { schemaName, data }) =>
-      importCsvPreview(token, schemaName, data, connectionId),
+    mutationFn: ({ schemaName, data }) =>
+      importCsvPreview(schemaName, data, connectionId),
   });
 }
 
@@ -343,8 +337,8 @@ export function useImportCsv(connectionId?: string | null) {
     CsvImportResponse,
     { schemaId: string; schemaName: string; data: CsvImportJsonRequest }
   >({
-    mutationFn: (token, { schemaName, data }) =>
-      importCsv(token, schemaName, data, connectionId),
+    mutationFn: ({ schemaName, data }) =>
+      importCsv(schemaName, data, connectionId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.objects.instances.bySchema(

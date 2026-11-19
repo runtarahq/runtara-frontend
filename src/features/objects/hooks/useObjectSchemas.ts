@@ -20,7 +20,7 @@ import { useCustomQuery, useCustomMutation } from '@/shared/hooks/api';
 export function useObjectSchemaDtos(connectionId?: string | null) {
   return useCustomQuery<Schema[]>({
     queryKey: queryKeys.objects.schemas.all(connectionId),
-    queryFn: (token) => getAllSchemas(token, connectionId),
+    queryFn: () => getAllSchemas(connectionId),
     enabled: !!connectionId,
     retry: (
       failureCount,
@@ -49,7 +49,7 @@ export function useObjectSchemaDtoById(
 ) {
   return useCustomQuery<Schema | null>({
     queryKey: queryKeys.objects.schemas.byId(id || '', connectionId),
-    queryFn: (token, context) => getSchemaById(token, context),
+    queryFn: (context) => getSchemaById(context),
     enabled: !!id && !!connectionId,
   });
 }
@@ -61,8 +61,8 @@ export function useCreateObjectSchemaDto(connectionId?: string | null) {
   const queryClient = useQueryClient();
 
   return useCustomMutation<Schema, CreateSchemaRequest>({
-    mutationFn: (token, objectSchemaDto) =>
-      createSchemaWithConnection(token, objectSchemaDto, connectionId),
+    mutationFn: (objectSchemaDto) =>
+      createSchemaWithConnection(objectSchemaDto, connectionId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.objects.schemas.all(connectionId),
@@ -78,8 +78,7 @@ export function useUpdateObjectSchemaDto(connectionId?: string | null) {
   const queryClient = useQueryClient();
 
   return useCustomMutation<Schema, { id: string; data: UpdateSchemaRequest }>({
-    mutationFn: (token, { id, data }) =>
-      updateSchema(token, id, data, connectionId),
+    mutationFn: ({ id, data }) => updateSchema(id, data, connectionId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.objects.schemas.all(connectionId),
@@ -98,7 +97,7 @@ export function useDeleteObjectSchema(connectionId?: string | null) {
   const queryClient = useQueryClient();
 
   return useCustomMutation<void, string>({
-    mutationFn: (token, id) => deleteSchema(token, id, connectionId),
+    mutationFn: (id) => deleteSchema(id, connectionId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.objects.schemas.all(connectionId),

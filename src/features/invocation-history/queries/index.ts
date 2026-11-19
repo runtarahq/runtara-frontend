@@ -3,7 +3,6 @@ import {
   WorkflowInstanceDto,
 } from '@/generated/RuntaraRuntimeApi';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 import { ExecutionHistoryItem, ExecutionHistoryFilters } from '../types';
 
 // Extended type for instances that may include additional fields from the API
@@ -18,10 +17,9 @@ interface ExecutionsQueryParams {
   filters?: ExecutionHistoryFilters;
 }
 
-export async function getAllExecutions(
-  token: string,
-  context: { queryKey: readonly unknown[] }
-) {
+export async function getAllExecutions(context: {
+  queryKey: readonly unknown[];
+}) {
   // Params are the last element of the hierarchical key
   const params = context.queryKey[context.queryKey.length - 1] as
     ExecutionsQueryParams | undefined;
@@ -29,24 +27,21 @@ export async function getAllExecutions(
   const pageSize = params?.pageSize ?? 10;
   const filters = params?.filters ?? ({} as ExecutionHistoryFilters);
 
-  const result = await RuntimeREST.api.listAllExecutionsHandler(
-    {
-      page: pageIndex,
-      size: pageSize,
-      search: filters.search || undefined,
-      runLabel: filters.runLabel || undefined,
-      parentInstanceId: filters.parentInstanceId || undefined,
-      workflowId: filters.workflowId || undefined,
-      status: filters.status || undefined,
-      createdFrom: filters.createdFrom || undefined,
-      createdTo: filters.createdTo || undefined,
-      completedFrom: filters.completedFrom || undefined,
-      completedTo: filters.completedTo || undefined,
-      sortBy: filters.sortBy || 'createdAt',
-      sortOrder: filters.sortOrder || 'desc',
-    },
-    createAuthHeaders(token)
-  );
+  const result = await RuntimeREST.api.listAllExecutionsHandler({
+    page: pageIndex,
+    size: pageSize,
+    search: filters.search || undefined,
+    runLabel: filters.runLabel || undefined,
+    parentInstanceId: filters.parentInstanceId || undefined,
+    workflowId: filters.workflowId || undefined,
+    status: filters.status || undefined,
+    createdFrom: filters.createdFrom || undefined,
+    createdTo: filters.createdTo || undefined,
+    completedFrom: filters.completedFrom || undefined,
+    completedTo: filters.completedTo || undefined,
+    sortBy: filters.sortBy || 'createdAt',
+    sortOrder: filters.sortOrder || 'desc',
+  });
 
   const responseData = result.data as ListAllExecutionsResponse;
   const pageData = responseData.data;

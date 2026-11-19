@@ -1,5 +1,4 @@
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
 import type {
@@ -13,7 +12,6 @@ import type {
 } from '@/generated/RuntaraRuntimeApi';
 
 export async function operationsRequest<T>(
-  token: string,
   path: string,
   method = 'GET',
   data?: unknown
@@ -22,7 +20,6 @@ export async function operationsRequest<T>(
     url: `/api/runtime/${path}`,
     method,
     data,
-    ...createAuthHeaders(token),
   });
   return response.data.data;
 }
@@ -30,22 +27,20 @@ export function useOperations({ includeProcesses = true } = {}) {
   const tenant = useAuthStore((s) => s.orgId);
   const queues = useCustomQuery({
     queryKey: ['operations', tenant, 'queues'],
-    queryFn: (token: string) =>
-      operationsRequest<OperationQueue[]>(token, 'operations/queues'),
+    queryFn: () => operationsRequest<OperationQueue[]>('operations/queues'),
     refetchInterval: 10_000,
     placeholderData: undefined,
   });
   const views = useCustomQuery({
     queryKey: ['operations', tenant, 'views'],
-    queryFn: (token: string) =>
-      operationsRequest<SavedOperationView[]>(token, 'operations/views'),
+    queryFn: () => operationsRequest<SavedOperationView[]>('operations/views'),
     placeholderData: undefined,
   });
   const processes = useCustomQuery({
     queryKey: ['operations', tenant, 'processes'],
     enabled: includeProcesses,
-    queryFn: (token: string) =>
-      operationsRequest<OperationProcess[]>(token, 'operations/processes'),
+    queryFn: () =>
+      operationsRequest<OperationProcess[]>('operations/processes'),
     placeholderData: undefined,
   });
   return { queues, views, processes };
@@ -106,14 +101,12 @@ export function resolveQuery(
   };
 }
 export function queryRequests(
-  token: string,
   view: OperationViewConfig,
   page: number,
   search: string,
   size = 25
 ) {
   return operationsRequest<OperationRequestPage>(
-    token,
     'operations/requests/query',
     'POST',
     {
@@ -128,9 +121,8 @@ export function queryRequests(
     }
   );
 }
-export function queryRuns(token: string, query: QueryExecutionsRequest) {
+export function queryRuns(query: QueryExecutionsRequest) {
   return operationsRequest<PageWorkflowInstanceHistoryDto>(
-    token,
     'executions/query',
     'POST',
     query
@@ -201,12 +193,11 @@ export function describeFailure(
 }
 
 export async function queryRunSummary(
-  token: string,
   filters: import('@/generated/RuntaraRuntimeApi').ExecutionSummaryRequest
 ) {
   return operationsRequest<
     import('@/generated/RuntaraRuntimeApi').ExecutionSummary
-  >(token, 'executions/summary', 'POST', filters);
+  >('executions/summary', 'POST', filters);
 }
 
 /** Whether a request failed because the saved view moved to a new revision. */
@@ -219,13 +210,8 @@ export function isRevisionConflict(error: unknown): boolean {
  * revision conflict the user has seen the error; their next attempt should go
  * against this revision instead of repeating the refused one (OP-11, OP-12).
  */
-export async function currentRevision(
-  token: string,
-  id: string
-): Promise<number | undefined> {
-  const views = await operationsRequest<SavedOperationView[]>(
-    token,
-    'operations/views'
-  );
+export async function currentRevision(id: string): Promise<number | undefined> {
+  const views =
+    await operationsRequest<SavedOperationView[]>('operations/views');
   return views.find((view) => view.id === id)?.revision;
 }

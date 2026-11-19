@@ -92,14 +92,9 @@ export function useTenantMetrics(dateRange: DateRangeOption) {
     queryKey: queryKeys.analytics.tenant(dateRange, granularity),
     // The window ends now at each fetch: computed once, every refresh asked
     // for the same past window (AN-1).
-    queryFn: (token: string) => {
+    queryFn: () => {
       const params = getDateRangeParams(dateRange);
-      return getTenantMetrics(
-        token,
-        params.startTime,
-        params.endTime,
-        granularity
-      );
+      return getTenantMetrics(params.startTime, params.endTime, granularity);
     },
     refetchInterval: 60 * 1000, // Refresh every 60 seconds
     refetchIntervalInBackground: false,
@@ -112,7 +107,7 @@ export function useTenantMetrics(dateRange: DateRangeOption) {
 export function useSystemAnalytics() {
   return useCustomQuery({
     queryKey: queryKeys.analytics.system(),
-    queryFn: (token: string) => getSystemAnalytics(token),
+    queryFn: () => getSystemAnalytics(),
     refetchInterval: 30 * 1000, // Refresh every 30 seconds for real-time system info
     refetchIntervalInBackground: false,
   });
@@ -136,12 +131,11 @@ export function usePreviousTenantMetrics(dateRange: DateRangeOption) {
   return useCustomQuery({
     queryKey: queryKeys.analytics.tenantPrevious(dateRange, granularity),
     // Moves with the displayed window, which ends now at each fetch.
-    queryFn: (token: string) => {
+    queryFn: () => {
       const current = getDateRangeParams(dateRange);
       const span = PERIOD_MS[dateRange] ?? PERIOD_MS['30d'];
       const end = new Date(current.startTime);
       return getTenantMetrics(
-        token,
         new Date(end.getTime() - span).toISOString(),
         end.toISOString(),
         granularity

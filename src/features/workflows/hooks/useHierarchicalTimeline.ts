@@ -12,7 +12,6 @@ import {
   isOpenEndedStep,
 } from '@/features/workflows/types/timeline';
 import { RuntimeREST } from '@/shared/queries';
-import { createAuthHeaders } from '@/shared/queries/utils';
 
 const ROOT_PAGE_SIZE = 50;
 const CHILDREN_PAGE_SIZE = 100;
@@ -88,8 +87,7 @@ export function useHierarchicalTimeline(
       instanceId ?? null,
       rootFilters
     ),
-    queryFn: (token: string) =>
-      getStepSummaries(token, workflowId!, instanceId!, rootFilters),
+    queryFn: () => getStepSummaries(workflowId!, instanceId!, rootFilters),
     enabled: !!workflowId && !!instanceId && enabled,
     refetchInterval,
   });
@@ -162,8 +160,7 @@ export function useHierarchicalTimeline(
           sortOrder: 'asc',
           limit: ROOT_PAGE_SIZE,
           offset: rootOffset,
-        },
-        createAuthHeaders(token)
+        }
       );
 
       if (result.data?.data?.steps) {
@@ -209,8 +206,7 @@ export function useHierarchicalTimeline(
             parentScopeId: scopeIdForChildren,
             sortOrder: 'asc',
             limit: CHILDREN_PAGE_SIZE,
-          },
-          createAuthHeaders(token)
+          }
         );
 
         if (result.data?.data?.steps) {

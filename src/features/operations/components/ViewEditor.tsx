@@ -8,7 +8,6 @@ import type {
   SavedOperationView,
   StateFilterDto,
 } from '@/generated/RuntaraRuntimeApi';
-import { useToken } from '@/shared/hooks';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import {
@@ -45,7 +44,6 @@ export function ViewEditor({
     .split(',')
     .map((status) => status.trim())
     .filter(Boolean);
-  const token = useToken();
   const client = useQueryClient();
   const fields = [
     ...new Set([...Object.keys(schema), ...(view.columns ?? [])]),
@@ -57,7 +55,6 @@ export function ViewEditor({
     setError('');
     try {
       const result = await operationsRequest<SavedOperationView>(
-        token,
         `operations/views${saved ? `/${saved.id}` : ''}`,
         saved ? 'PUT' : 'POST',
         { configuration: view, revision }
@@ -66,9 +63,7 @@ export function ViewEditor({
       onSaved(result);
     } catch (e) {
       if (saved && isRevisionConflict(e)) {
-        const latest = await currentRevision(token, saved.id).catch(
-          () => undefined
-        );
+        const latest = await currentRevision(saved.id).catch(() => undefined);
         if (latest !== undefined) setRevision(latest);
         setError(
           `${message(e)}. Someone else changed this queue; saving again replaces their changes.`

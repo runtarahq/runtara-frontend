@@ -123,8 +123,8 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
       selectedInstanceId,
       stepFilters
     ),
-    queryFn: (token: string) =>
-      getStepSummaries(token, workflowId, selectedInstanceId!, stepFilters),
+    queryFn: () =>
+      getStepSummaries(workflowId, selectedInstanceId!, stepFilters),
     enabled: !!selectedInstanceId,
     refetchInterval: () => {
       const selectedInstance = data?.find(

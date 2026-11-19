@@ -55,7 +55,7 @@ describe('request metric drilldowns', () => {
     const scopes = [scope('C', 2), scope('A', 60), scope('B', 70)];
     const data = { A: rows('A', 60), B: rows('B', 70), C: rows('C', 2) };
     request.mockImplementation(
-      async (_token, _path, _method, { workflowId, query }) => {
+      async (_path, _method, { workflowId, query }) => {
         const all = data[workflowId as keyof typeof data];
         return {
           content: all.slice(
@@ -68,14 +68,7 @@ describe('request metric drilldowns', () => {
     );
     const ids: string[] = [];
     for (let page = 0; page < 6; page++) {
-      const result = await queryAttentionRequests(
-        '',
-        scopes,
-        false,
-        page,
-        25,
-        now
-      );
+      const result = await queryAttentionRequests(scopes, false, page, 25, now);
       expect(result.totalElements).toBe(132);
       expect(result.totalPages).toBe(6);
       expect(result.number).toBe(page);
@@ -86,7 +79,7 @@ describe('request metric drilldowns', () => {
       [...data.A, ...data.B, ...data.C].map((row) => row.requestId)
     );
     expect(new Set(ids).size).toBe(132);
-    const last = await queryAttentionRequests('', scopes, false, 999, 25, now);
+    const last = await queryAttentionRequests(scopes, false, 999, 25, now);
     expect(last.number).toBe(5);
     expect(last.content).toHaveLength(7);
   });
@@ -97,9 +90,9 @@ describe('request metric drilldowns', () => {
       scope('C', 9),
     ];
     request.mockResolvedValue({ content: [], totalElements: 0 });
-    await queryAttentionRequests('', scopes, true, 0, 25, now);
+    await queryAttentionRequests(scopes, true, 0, 25, now);
     expect(request).toHaveBeenCalledTimes(2);
-    for (const [, , , body] of request.mock.calls) {
+    for (const [, , body] of request.mock.calls) {
       expect(body.query.state).toEqual([
         {
           field: body.workflowId === 'A' ? 'dueAt' : 'reviewBy',
@@ -109,16 +102,16 @@ describe('request metric drilldowns', () => {
       ]);
     }
     request.mockClear();
-    await queryAttentionRequests('', scopes, false, 0, 25, now);
+    await queryAttentionRequests(scopes, false, 0, 25, now);
     expect(request).toHaveBeenCalledTimes(3);
     expect(
-      request.mock.calls.every((call) => call[3].query.state.length === 0)
+      request.mock.calls.every((call) => call[2].query.state.length === 0)
     ).toBe(true);
   });
   it('fails visibly if any queue cannot be loaded, instead of showing a partial total', async () => {
     request.mockRejectedValue(new Error('Unavailable'));
     await expect(
-      queryAttentionRequests('', [scope('A', 1)], false, 0)
+      queryAttentionRequests([scope('A', 1)], false, 0)
     ).rejects.toThrow('Unavailable');
   });
   it('selects the same due-bearing view for Overview and its request list', () => {
