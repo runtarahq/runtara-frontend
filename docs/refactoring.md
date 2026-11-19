@@ -117,25 +117,30 @@ node component, size, form field component, zod refinement, `serialize`,
 time; the round-trip tests already pin behaviour. Do H2 first, so descriptors
 are typed.
 
-**Status: done, in part.** Four tables hold one entry per DSL step type, each
-typed `{ [T in StepType]: … }` over the generated client's step types, so the
+**Status: done.** Five tables hold one entry per DSL step type, each typed
+`{ [T in StepType]: … }` over the generated client's step types, so the
 compiler names the table a new step type is missing from:
 
 - `WF/step-types/catalog.ts`: node type, display name, summary, badge,
-  durable, retries.
+  durable, retries, and which fields the DSL keeps for it (agent, connection,
+  input schema, direct fields).
 - `WF/step-types/ui.tsx`: icon and the main-tab form.
+- `WF/step-types/form-rules.ts`: what its form refuses to save.
 - `WF/utils/execution-graph/step-serializers.ts` and `step-deserializers.ts`:
   one function per step type, taken out of the two monoliths as they were.
 
-`serializeSteps` and `normalizeNodesAndEdges` keep what every step shares (349
-and 318 lines). The node-type lookup, `StepTypeIcon`, the node form's choice
-of field, its durable and retry sets and the card summary read the tables.
+`serializeSteps` and `normalizeNodesAndEdges` keep what every step shares, and
+read the catalog for what differs. The node-type lookup, `StepTypeIcon`, the
+node form's choice of field and its validation, its durable and retry sets
+and the card summary read the tables. A step type's form no longer checks
+that it is shown for its own type.
 
-Remaining: 93 string comparisons (from 141), most inside the forms of single
-step types and in the shared part of the serializer (Error, Log and Finish
-mappings). `step-details.ts`, `StepOutputPanel.tsx`, `NodeForm/shared.ts` and
-`container-scope.ts` still dispatch by name. The zod refinements in
-`NodeFormItem.tsx` are not in a table.
+47 comparisons of a step type's name remain, from 141. They are not places a
+new step type has to be added to: each narrows one step type to read its own
+fields (`step.stepType === 'Agent' && step.agentId`, which is how a
+discriminated union is read) or is behaviour only that type has (an Agent's
+capability picker, a Conditional's two branches). `WF/queries/chat.ts` has 8
+more that compare runtime event kinds, not DSL step types.
 
 ### H2. The DSL is typed by hand, and the hand-written types are wrong
 
@@ -165,25 +170,38 @@ into the saved DSL (_inferred_).
 3. Split `node.data` into `{ step, ui }` so serialization takes `step` and
    never has to strip.
 
-**Status: done, in part.** `DslStep` is the generated `Step` union and
-`StepType` its discriminant (`WF/types/execution-graph.ts`); the hand-written
-step and config types are gone, with the `stepType as string` casts. Canvas
-node data has its own type (`StepNodeData`). The editor-only fields are listed
-once (`UI_ONLY_STEP_FIELDS`) and taken out in one place.
-`step-types.roundtrip.test.ts` holds a typed fixture of every step type and
-takes each through load and save.
+**Status: done, except what is runtara's to change.**
 
-Remaining:
-
-- Step 1 is a change in runtara: `executionGraph` is still `any` on the
-  workflow DTOs.
+- `DslStep` is the generated `Step` union and `StepType` its discriminant
+  (`WF/types/execution-graph.ts`); the hand-written step and config types are
+  gone, with the `stepType as string` casts.
 - Each per-step deserializer takes its step typed as the generated client
-  defines it (`StepDeserializeContext<'Split'>`), so what it reads from the
-  DSL is checked. The serializers still build their steps untyped
-  (`Record<string, any>`): they spread the node's data and delete from it, and
-  typing their result means building it field by field instead.
-- Step 3, splitting `node.data`, is not done: the forms read the flat shape
-  throughout.
+  defines it, so what it reads from the DSL is checked.
+- Each per-step serializer takes the step it finishes typed the same way, and
+  builds its config as the client's `SplitConfig`, `SwitchConfig` and so on,
+  so what it writes is checked.
+- `step-types.roundtrip.test.ts` holds a typed fixture of every step type and
+  takes each through load and save.
+
+On step 3, the node's data is split by type, not by nesting. `StepNodeData`
+is the step's own fields beside `StepFormOnlyFields`, which declares every
+field a node holds for its form only; `FORM_ONLY_STEP_FIELDS`, the one list
+taken off a step on save, does not compile unless it names each of them, and
+the round-trip test saves every step type with all of them set. Two
+alternatives were weighed and not taken:
+
+- Nesting them under `node.data.ui` would rename the node form's fields,
+  which react-hook-form addresses by flat name in about 30 files, for a
+  guarantee the type check and the test already give.
+- Saving only the fields the DSL type lists (an allow-list) would drop a
+  field a newer server added from every step this console saves. The console
+  is meant to work one minor apart from the server, so it keeps what it does
+  not know.
+
+Remaining, in runtara: `executionGraph` is `any` on the workflow DTOs of the
+generated client (step 1). It needs the server's OpenAPI schema to reference
+`ExecutionGraph` there, and a release; `src/generated` is not edited by hand.
+Until then the editor casts once where it reads a workflow.
 
 ### H3. Three contracts are unenforced
 
@@ -239,8 +257,10 @@ exist today.
 - `.github/workflows/audit.yml` runs the audit suite on `main`, nightly and on
   demand.
 
-Remaining: `RuntaraManagementApi.ts` can still only be regenerated from a
-local server (item 2).
+Remaining, in runtara: `RuntaraManagementApi.ts` can still only be
+regenerated from a local server (item 2). Billing has no route in the runtime
+API, so its one use cannot move to the runtime client; it needs the
+management `openapi.json` published with a release.
 
 ### H4. Two parallel HTTP stacks
 
@@ -315,23 +335,22 @@ the store's geometry into pure functions of `(nodes, edges)` beside the layout
 engine; `renameStep` must stay atomic in the store. Write tests for the save
 pipeline before moving it.
 
-**Status: done for the seams below; more remain.**
+**Status: done.**
 
-| Module                        | Lines now | What moved out, with tests                                                                                                                           |
-| ----------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WF/pages/Workflow/index.tsx` | 1,272     | `save-workflow.ts` (`prepareWorkflowSave`), `workflow-settings.ts` (the settings merge, once of three), `import-workflow.ts` (`parseWorkflowImport`) |
-| `WE/index.tsx`                | 1,374     | `pending-step.ts` (`planPendingStep`: the placement of a picked step)                                                                                |
-| `WF/stores/workflowStore.ts`  | 1,136     | `canvas-geometry.ts` (`insertStepBetween`, `expandParentToFitChildren`)                                                                              |
+| Module                                      | Lines at the audit | Lines now | What moved out, each with tests                                                                                                                                                      |
+| ------------------------------------------- | ------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WF/pages/Workflow/index.tsx`               | 1,635              | 921       | `save-workflow.ts`, `workflow-settings.ts`, `import-workflow.ts`, `use-compilation-watch.ts`, `use-workflow-load.ts` (loading and version switching), `use-unsaved-changes-guard.ts` |
+| `WE/index.tsx`                              | 1,640              | 1,234     | `pending-step.ts` (placing and wiring a picked step), `use-canvas-fit.ts` (viewport fitting)                                                                                         |
+| `WF/stores/workflowStore.ts`                | 1,460              | 902       | `canvas-geometry.ts` (`insertStepBetween`, `applyCanvasNodeChanges`, `expandParentToFitChildren`)                                                                                    |
+| `WF/pages/Workflow/useWorkflowExecution.ts` | 635                | 635       | Nothing moved; it now has tests of its own (11)                                                                                                                                      |
 
-Remaining:
+The hooks taken out of the page run where the code they replace ran, so its
+effects fire in the order they did.
 
-- `pages/Workflow/index.tsx`: compilation watch and rebuild, version
-  switching, the unsaved-changes guard, the two execute handlers.
-- `WE/index.tsx`: node save with validation and rename, pending-node commit,
-  viewport fitting.
-- `workflowStore.ts`: `onNodesChange`, whose geometry reads and writes the
-  store's resize tracking.
-- `useWorkflowExecution.ts` is unchanged and still untested.
+What the three modules still hold is orchestration of the pieces above. Two
+handlers in the page (execute and debug-execute) are near copies of each
+other, and the editor component's node save still validates, renames and
+writes in one callback; both are smaller follow-ups than a seam.
 
 ## Medium priority
 

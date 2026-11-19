@@ -1,6 +1,7 @@
 import { processMappingEntry } from '@/features/workflows/utils/mapping-serialization';
 import type {
   ExecutionGraphStepDto,
+  StepFormOnlyFields,
   StepNodeData,
   StepType,
 } from '@/features/workflows/types/execution-graph';
@@ -13,28 +14,50 @@ import {
 } from './step-serializers';
 
 /**
- * Fields a canvas node holds for the step's form and nothing else: the
- * deserializer (or the form) puts them in `node.data`, and no DSL step has
- * them. They are taken out before a step is saved, here and nowhere else, so
- * a new one is added to this list, not to a destructuring pattern.
+ * Every form-only field of a node (`StepFormOnlyFields`), taken off a step
+ * before it is saved, here and nowhere else. Listed for the runtime, typed
+ * for the compiler: a field declared form-only and missing here is a type
+ * error, as is a name here that is not one.
  */
-export const UI_ONLY_STEP_FIELDS = [
+export const FORM_ONLY_STEP_FIELDS = [
   'inputSchemaFields',
   'variablesFields',
-  'splitInputSchemaFields',
-  'splitOutputSchemaFields',
-  'embedWorkflowConfig',
-  'splitVariablesFields',
-  'splitParallelism',
-  'splitSequential',
-  'splitDontStopOnFailed',
   'formTabs',
   'startMode',
   'selectedTriggerId',
   'executionTimeout',
   'retryStrategy',
+  'embedWorkflowConfig',
   'subgraphMeta',
-] as const;
+  'splitInputSchemaFields',
+  'splitOutputSchemaFields',
+  'splitVariablesFields',
+  'splitParallelism',
+  'splitSequential',
+  'splitDontStopOnFailed',
+  'splitMaxRetries',
+  'splitRetryDelay',
+  'splitTimeout',
+  'splitAllowNull',
+  'splitConvertSingleValue',
+  'splitBatchSize',
+  'groupByKey',
+  'groupByExpectedKeys',
+  'filterCondition',
+  'whileCondition',
+  'whileMaxIterations',
+  'whileTimeout',
+  'whileVariablesFields',
+] as const satisfies readonly (keyof StepFormOnlyFields)[];
+
+type UnlistedFormOnlyField = Exclude<
+  keyof StepFormOnlyFields,
+  (typeof FORM_ONLY_STEP_FIELDS)[number]
+>;
+const _everyFormOnlyFieldIsListed: UnlistedFormOnlyField extends never
+  ? true
+  : never = true;
+void _everyFormOnlyFieldIsListed;
 
 /** A canvas node as `composeExecutionGraph` hands it over to be saved. */
 export interface SerializableStepNode {
@@ -47,9 +70,9 @@ export interface SerializableStepNode {
   >;
 }
 
-function withoutUiOnlyFields<T extends Record<string, unknown>>(data: T): T {
+function withoutFormOnlyFields<T extends Record<string, unknown>>(data: T): T {
   const kept: Record<string, unknown> = { ...data };
-  for (const field of UI_ONLY_STEP_FIELDS) delete kept[field];
+  for (const field of FORM_ONLY_STEP_FIELDS) delete kept[field];
   return kept as T;
 }
 
@@ -92,7 +115,7 @@ export function serializeSteps(
       whileVariablesFields,
       ...ownData
     } = data;
-    const restData = withoutUiOnlyFields(ownData);
+    const restData = withoutFormOnlyFields(ownData);
     const traits = exactStepTypeTraits(data.stepType);
 
     if (subgraph) {

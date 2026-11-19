@@ -6,7 +6,7 @@ import {
   type StepType,
 } from '@/features/workflows/types/execution-graph';
 import { composeExecutionGraph } from './serialize';
-import { UI_ONLY_STEP_FIELDS } from './serialize-steps';
+import { FORM_ONLY_STEP_FIELDS } from './serialize-steps';
 import { executionGraphToReactFlow } from './deserialize';
 
 // One step of every DSL step type, each typed as the generated client
@@ -198,7 +198,7 @@ describe('every DSL step type through the editor', () => {
   );
 
   it.each(STEP_TYPE_NAMES)(
-    '%s is saved without any field listed as editor-only',
+    '%s is saved without any form-only field',
     (stepType) => {
       const step = STEPS[stepType];
       const graph: ExecutionGraphDto = {
@@ -213,7 +213,7 @@ describe('every DSL step type through the editor', () => {
         data: {
           ...node.data,
           ...Object.fromEntries(
-            UI_ONLY_STEP_FIELDS.filter((field) => !(field in node.data)).map(
+            FORM_ONLY_STEP_FIELDS.filter((field) => !(field in node.data)).map(
               (field) => [field, 'form state']
             )
           ),
@@ -223,7 +223,7 @@ describe('every DSL step type through the editor', () => {
       const savedKeys = Object.keys(saved!.steps![step.id]);
       expect(
         savedKeys.filter((key) =>
-          (UI_ONLY_STEP_FIELDS as readonly string[]).includes(key)
+          (FORM_ONLY_STEP_FIELDS as readonly string[]).includes(key)
         )
       ).toEqual([]);
     }

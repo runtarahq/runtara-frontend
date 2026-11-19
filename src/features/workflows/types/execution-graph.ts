@@ -143,12 +143,58 @@ export interface InputMappingRow {
 }
 
 /**
- * What a canvas node holds for a step: the DSL step's fields, unpacked for
- * the node form, beside fields only the editor uses
- * (`UI_ONLY_STEP_FIELDS` in utils/execution-graph/serialize-steps.ts lists
- * them). The serializer turns it back into a `DslStep`.
+ * The fields a canvas node holds for the step's form and nothing else: no DSL
+ * step has them. The deserializer (or the form) puts them in `node.data`;
+ * on save they are taken off, some after a step serializer has written what
+ * they hold to where the DSL keeps it (`splitParallelism` to
+ * `config.parallelism`).
+ *
+ * This is the editor's half of a node's data, apart from the step's own. A
+ * form-only field is declared here, and `FORM_ONLY_STEP_FIELDS`
+ * (utils/execution-graph/serialize-steps.ts) does not compile until it lists
+ * it, so one cannot be added and then saved to the DSL by oversight.
  */
-export interface StepNodeData {
+export interface StepFormOnlyFields {
+  // Workflow- and step-level editors
+  inputSchemaFields?: unknown;
+  variablesFields?: unknown;
+  formTabs?: unknown;
+  startMode?: unknown;
+  selectedTriggerId?: unknown;
+  executionTimeout?: unknown;
+  retryStrategy?: unknown;
+  embedWorkflowConfig?: unknown;
+  /** The graph-level fields of a nested graph, carried while it is drawn. */
+  subgraphMeta?: unknown;
+  // Split
+  splitInputSchemaFields?: unknown;
+  splitOutputSchemaFields?: unknown;
+  splitVariablesFields?: unknown;
+  splitParallelism?: unknown;
+  splitSequential?: unknown;
+  splitDontStopOnFailed?: unknown;
+  splitMaxRetries?: unknown;
+  splitRetryDelay?: unknown;
+  splitTimeout?: unknown;
+  splitAllowNull?: unknown;
+  splitConvertSingleValue?: unknown;
+  splitBatchSize?: unknown;
+  // GroupBy, Filter, While
+  groupByKey?: unknown;
+  groupByExpectedKeys?: unknown;
+  filterCondition?: unknown;
+  whileCondition?: unknown;
+  whileMaxIterations?: unknown;
+  whileTimeout?: unknown;
+  whileVariablesFields?: unknown;
+}
+
+/**
+ * What a canvas node holds for a step: the DSL step's fields, unpacked for
+ * the node form, beside the fields only the editor uses
+ * (`StepFormOnlyFields`). The serializer turns it back into a `DslStep`.
+ */
+export interface StepNodeData extends StepFormOnlyFields {
   id?: string;
   name?: string | null;
   description?: string;
