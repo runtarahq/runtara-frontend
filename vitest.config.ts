@@ -27,10 +27,10 @@ export default defineConfig({
       // A floor, just under what the suite covers today: a change that
       // lowers coverage fails, and the floor is raised as it grows.
       thresholds: {
-        statements: 63,
-        branches: 54,
-        functions: 58,
-        lines: 64,
+        statements: 65,
+        branches: 56,
+        functions: 61,
+        lines: 66,
       },
     },
     // Exclude e2e tests - those are run with Playwright, not Vitest
