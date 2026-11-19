@@ -69,6 +69,7 @@ import { isNotFoundError } from '@/shared/hooks/api';
 import { Alert, AlertDescription } from '@/shared/components/ui/alert';
 import { Spinner } from '@/shared/components/ui/spinner';
 
+import { useWarnBeforeUnload } from '@/shared/hooks/useWarnBeforeUnload';
 const AddRowButton = memo(({ onClick }: { onClick: () => void }) => {
   const [isHovering, setIsHovering] = useState(false);
 
@@ -459,12 +460,7 @@ export function ObjectInstanceDtosTable({
   // in-app move with no click away (back or forward) used to drop the edits
   // silently, so leaving the table saves them, as a clicked link already did.
   const hasDirtyRows = dirtyRows.size > 0;
-  useEffect(() => {
-    if (!hasDirtyRows) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [hasDirtyRows]);
+  useWarnBeforeUnload(hasDirtyRows);
   useEffect(
     () => () => {
       for (const rowId of dirtyRowsRef.current.keys()) {

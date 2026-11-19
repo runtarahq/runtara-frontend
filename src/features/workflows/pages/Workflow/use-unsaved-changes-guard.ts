@@ -11,8 +11,10 @@ import type { WorkflowChanges } from './workflow-settings';
  * switched to there is none: what was there was discarded on purpose, and
  * saying otherwise made the buttons flicker. An action that would discard
  * unsaved work (switching version, importing) is held behind a dialog, and
- * leaving the page is held by the app's navigation blocker.
+ * leaving the page is held by the app's navigation blocker, and reloading or
+ * closing it by the browser's own question.
  */
+import { useWarnBeforeUnload } from '@/shared/hooks/useWarnBeforeUnload';
 export function useUnsavedChangesGuard({
   isSwitchingVersion,
   stagedWorkflowChanges,
@@ -52,6 +54,9 @@ export function useUnsavedChangesGuard({
     }
     return isStructurallyDirty || Object.keys(stagedWorkflowChanges).length > 0;
   }, [isStructurallyDirty, stagedWorkflowChanges, isSwitchingVersion]);
+
+  // A reload or a closed tab asks first, as leaving within the app does.
+  useWarnBeforeUnload(hasUnsavedChanges);
 
   // Helper to check for unsaved changes before performing a destructive action (version change, import)
   const confirmIfUnsavedChanges = useCallback(

@@ -118,4 +118,19 @@ describe('useUnsavedChangesGuard', () => {
     expect(discard).toHaveBeenCalledOnce();
     expect(useWorkflowStore.getState().isDirty).toBe(false);
   });
+
+  it('questions a reload or a closed tab while there is unsaved work', () => {
+    const leavingIsQuestioned = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const { rerender } = guard();
+    expect(leavingIsQuestioned()).toBe(false);
+    rerender({ isSwitchingVersion: false, staged: { description: 'New' } });
+    expect(leavingIsQuestioned()).toBe(true);
+    // Discarded on purpose while a version is switched to.
+    rerender({ isSwitchingVersion: true, staged: { description: 'New' } });
+    expect(leavingIsQuestioned()).toBe(false);
+  });
 });

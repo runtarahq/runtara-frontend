@@ -46,6 +46,7 @@ import {
 } from './adapter';
 import { ConnectionFieldFrame } from './ConnectionFieldFrame';
 
+import { useWarnBeforeUnload } from '@/shared/hooks/useWarnBeforeUnload';
 const EMPTY_SECRET_STATE: NonNullable<EditProjection['secretState']> = {};
 
 type DynamicConnectionFormProps = {
@@ -274,14 +275,7 @@ export function DynamicConnectionForm({
     return () => setBlocker(false);
   }, [hasPendingChanges, setBlocker, form]);
 
-  useEffect(() => {
-    if (!hasPendingChanges) return;
-    const handler = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [hasPendingChanges]);
+  useWarnBeforeUnload(hasPendingChanges);
 
   const handleDiscard = () => {
     // The controlled FieldControls read from useWatch, and with
