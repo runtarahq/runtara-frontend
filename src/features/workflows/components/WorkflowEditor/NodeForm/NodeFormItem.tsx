@@ -3,6 +3,7 @@
 // contain JSX (renderFormField, renderComponent) which tightly couples them to components.
 // Separating would require complex refactoring with circular dependency resolution.
 import { z } from 'zod';
+import type { FieldConfig } from '@/shared/forms';
 import { useState, createContext, useContext, useCallback } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { InputMappingField } from './InputMappingField';
@@ -313,7 +314,7 @@ function StepAdvancedFields() {
 }
 
 // Basic configuration fields (above tabs)
-const basicFieldsConfig = [
+const basicFieldsConfig: FieldConfig[] = [
   {
     type: 'hidden',
     label: '',
@@ -506,7 +507,7 @@ function InputMappingWrapper(config: Record<string, unknown>) {
 }
 
 // Main tab fields
-const mainTabFieldsConfig = [
+const mainTabFieldsConfig: FieldConfig[] = [
   {
     label: '',
     name: 'inputMapping',
@@ -539,7 +540,7 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
 }
 
 // Combined config for compatibility
-export const fieldsConfig = [
+export const fieldsConfig: FieldConfig[] = [
   ...basicFieldsConfig,
   {
     type: 'custom',
@@ -806,7 +807,7 @@ export type SchemaInput = z.input<ReturnType<typeof schema>>;
 
 export const initialValues: Partial<SchemaType> = {
   ...fieldsConfig.reduce((initValues: Record<string, any>, field) => {
-    initValues[field.name] = field.initialValue;
+    if (field.name) initValues[field.name] = field.initialValue;
     return initValues;
   }, {}),
   // Add advanced options default values

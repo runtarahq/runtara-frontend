@@ -25,9 +25,10 @@ import {
   TableSkeletonRows,
   TableStatusFooter,
 } from '@/shared/components/console';
-import { ModalDialog } from '@/shared/components/next-dialog';
 import {
+  Dialog,
   DialogClose,
+  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -261,34 +262,38 @@ export function ExistingConnections({ toolbar }: ExistingConnectionsProps) {
         {body}
       </ConsoleTableShell>
 
-      <ModalDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
-        <DialogHeader>
-          <DialogTitle>Delete Connection</DialogTitle>
-          <DialogDescription>
-            Are you sure you want to delete the connection "
-            {deleteTarget?.title}"?
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-2">
-          This action cannot be undone and may affect any workflows using this
-          connection.
-        </div>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <DialogClose asChild>
-            <Button type="button" variant="secondary" bordered>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={mutation.isPending}
-          >
-            {mutation.isPending ? 'Deleting...' : 'Delete Connection'}
-          </Button>
-        </DialogFooter>
-      </ModalDialog>
+      {deleteTarget && (
+        <Dialog open onOpenChange={() => setDeleteTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Connection</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete the connection "
+                {deleteTarget?.title}"?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              This action cannot be undone and may affect any workflows using
+              this connection.
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" bordered>
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={mutation.isPending}
+              >
+                {mutation.isPending ? 'Deleting...' : 'Delete Connection'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

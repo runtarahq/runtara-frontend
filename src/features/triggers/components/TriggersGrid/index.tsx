@@ -46,9 +46,10 @@ import {
   TooltipTrigger,
   WithTooltip,
 } from '@/shared/components/ui/tooltip';
-import { ModalDialog } from '@/shared/components/next-dialog';
 import {
+  Dialog,
   DialogClose,
+  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -321,34 +322,38 @@ export function TriggersGrid({
         {body}
       </ConsoleTableShell>
 
-      <ModalDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
-        <DialogHeader>
-          <DialogTitle>Delete Trigger</DialogTitle>
-          <DialogDescription>
-            Are you sure you want to delete this trigger for "
-            {deleteTarget?.workflowName}"?
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-2">
-          This action cannot be undone and will stop the trigger from invoking
-          the workflow.
-        </div>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <DialogClose asChild>
-            <Button type="button" variant="secondary" bordered>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={removeMutation.isPending}
-          >
-            {removeMutation.isPending ? 'Deleting...' : 'Delete Trigger'}
-          </Button>
-        </DialogFooter>
-      </ModalDialog>
+      {deleteTarget && (
+        <Dialog open onOpenChange={() => setDeleteTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Trigger</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this trigger for "
+                {deleteTarget?.workflowName}"?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              This action cannot be undone and will stop the trigger from
+              invoking the workflow.
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" bordered>
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={removeMutation.isPending}
+              >
+                {removeMutation.isPending ? 'Deleting...' : 'Delete Trigger'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { FieldConfig } from '@/shared/forms';
 import { WorkflowField } from './WorkflowField';
 import { ScheduleField } from './ScheduleField';
 import { ConfigurationField } from './ConfigurationField';
@@ -17,7 +18,7 @@ export const defaultScheduleConfig: ScheduleConfig = {
   intervalUnit: 'minutes',
 };
 
-export const fieldsConfig = [
+export const fieldsConfig: FieldConfig[] = [
   {
     label: 'Workflow',
     name: 'workflowId',
@@ -67,14 +68,14 @@ export const fieldsConfig = [
     label: 'Debug mode',
     name: 'cronDebug',
     initialValue: false,
-    hint: 'Capture detailed step events for each scheduled run',
+    description: 'Capture detailed step events for each scheduled run',
   },
   {
     type: 'checkbox',
     label: 'Debug mode',
     name: 'webhookDebug',
     initialValue: false,
-    hint: 'Capture detailed step events for each webhook-triggered run',
+    description: 'Capture detailed step events for each webhook-triggered run',
   },
   {
     label: 'Webhook verification connection',
@@ -116,7 +117,8 @@ export const fieldsConfig = [
     label: 'Single instance',
     name: 'singleInstance',
     initialValue: false,
-    hint: 'Only launch a new workflow instance if no other instances of the same workflow are running',
+    description:
+      'Only launch a new workflow instance if no other instances of the same workflow are running',
   },
 ];
 

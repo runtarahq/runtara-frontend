@@ -5,8 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as form from './TriggerItem';
 import { Button } from '@/shared/components/ui/button';
-import { FormContent } from '@/shared/components/NextForm/form-content';
-import { NextForm } from '@/shared/components/NextForm';
+import { FieldList, FormShell } from '@/shared/forms';
 import { Spinner } from '@/shared/components/ui/spinner';
 
 export type TriggerSchemaType = z.infer<typeof form.schema>;
@@ -106,54 +105,42 @@ export function TriggerForm(props: Props) {
   };
 
   return (
-    <NextForm
-      form={entireForm}
-      fieldsConfig={filteredFieldsConfig}
-      onSubmit={handleSubmit}
-      className="space-y-6"
-      renderContent={() => (
-        <section className="rounded-lg bg-card px-4 py-5 shadow-none sm:px-6 sm:py-6">
-          <div className="space-y-6">
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-foreground">{title}</p>
-              {description && (
-                <p className="text-sm text-muted-foreground">{description}</p>
-              )}
-            </div>
-            <FormContent
-              fieldsConfig={filteredFieldsConfig}
-              className="grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6"
-            />
-          </div>
-        </section>
-      )}
-      renderActions={() => (
-        <div className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
-          <Link to={cancelHref} className="w-full sm:w-auto">
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full justify-center"
-            >
-              Cancel
-            </Button>
-          </Link>
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full sm:w-auto"
-          >
-            {isLoading ? (
-              <>
-                <Spinner className="mr-2 size-4" />
-                {loadingLabel}
-              </>
-            ) : (
-              submitLabel
+    <FormShell form={entireForm} onSubmit={handleSubmit} className="space-y-6">
+      <section className="rounded-lg bg-card px-4 py-5 shadow-none sm:px-6 sm:py-6">
+        <div className="space-y-6">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">{title}</p>
+            {description && (
+              <p className="text-sm text-muted-foreground">{description}</p>
             )}
-          </Button>
+          </div>
+          <FieldList
+            fields={filteredFieldsConfig}
+            className="grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6"
+          />
         </div>
-      )}
-    />
+      </section>
+      <div className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+        <Link to={cancelHref} className="w-full sm:w-auto">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full justify-center"
+          >
+            Cancel
+          </Button>
+        </Link>
+        <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
+          {isLoading ? (
+            <>
+              <Spinner className="mr-2 size-4" />
+              {loadingLabel}
+            </>
+          ) : (
+            submitLabel
+          )}
+        </Button>
+      </div>
+    </FormShell>
   );
 }

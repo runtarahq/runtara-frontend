@@ -7,7 +7,7 @@ import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Label } from '@/shared/components/ui/label';
-import { FormSection } from './FormSection';
+import { FormSection } from '@/shared/forms';
 
 const OBJECT_STORAGE_DEFAULT_FOR = 'object_storage';
 const OBJECT_STORAGE_INTEGRATION_IDS = new Set([
@@ -77,7 +77,7 @@ export function DefaultForSection({
   };
 
   return (
-    <FormSection title="Defaults" icon={CheckCircle2} optional>
+    <FormSection variant="banded" title="Defaults" icon={CheckCircle2} optional>
       <div className="grid gap-3">
         {targets.map((target) => {
           const checked = defaultFor.includes(target.id);

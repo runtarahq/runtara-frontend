@@ -1,5 +1,6 @@
 import {
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -9,13 +10,12 @@ import { Switch } from '@/shared/components/ui/switch.tsx';
 interface CheckboxInputProps {
   name: string;
   label: string;
+  description?: string;
   disabled?: boolean;
-  className?: string;
-  onChange?: (event: unknown) => void;
 }
 
 export function CheckboxInput(props: CheckboxInputProps) {
-  const { label, name, disabled } = props;
+  const { label, name, description, disabled } = props;
 
   return (
     <FormField
@@ -29,7 +29,10 @@ export function CheckboxInput(props: CheckboxInputProps) {
               onCheckedChange={field.onChange}
             />
           </FormControl>
-          <FormLabel>{label}</FormLabel>
+          <div className="space-y-0.5">
+            <FormLabel>{label}</FormLabel>
+            {description && <FormDescription>{description}</FormDescription>}
+          </div>
         </FormItem>
       )}
     />

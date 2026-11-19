@@ -24,9 +24,10 @@ import {
   TableSkeletonRows,
   TableStatusFooter,
 } from '@/shared/components/console';
-import { ModalDialog } from '@/shared/components/next-dialog';
 import {
+  Dialog,
   DialogClose,
+  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -264,36 +265,40 @@ export function ObjectSchemaDtosTable({
         {body}
       </ConsoleTableShell>
 
-      <ModalDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
-        <DialogHeader>
-          <DialogTitle>Delete Object Type</DialogTitle>
-          <DialogDescription>
-            Are you sure you want to delete the object type "
-            {deleteTarget?.name}"?
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-2">
-          This action cannot be undone and may affect any workflows or records
-          using this object type.
-        </div>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <DialogClose asChild>
-            <Button type="button" variant="secondary" bordered>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={deleteObjectSchemaMutation.isPending}
-          >
-            {deleteObjectSchemaMutation.isPending
-              ? 'Deleting...'
-              : 'Delete Object Type'}
-          </Button>
-        </DialogFooter>
-      </ModalDialog>
+      {deleteTarget && (
+        <Dialog open onOpenChange={() => setDeleteTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Object Type</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete the object type "
+                {deleteTarget?.name}"?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              This action cannot be undone and may affect any workflows or
+              records using this object type.
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" bordered>
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteObjectSchemaMutation.isPending}
+              >
+                {deleteObjectSchemaMutation.isPending
+                  ? 'Deleting...'
+                  : 'Delete Object Type'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

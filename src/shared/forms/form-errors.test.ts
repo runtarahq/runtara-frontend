@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { describeFirstFormError, humanizeFieldPath } from './form-errors';
+import {
+  describeFirstFormError,
+  humanizeFieldPath,
+} from '@/shared/forms/form-errors';
 
 describe('humanizeFieldPath', () => {
   it('spaces camelCase', () => {

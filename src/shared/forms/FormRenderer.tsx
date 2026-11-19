@@ -175,7 +175,9 @@ export function FormRenderer({
         return (
           <FormSection
             key={section?.id ?? '__default'}
-            section={section}
+            title={section?.label}
+            description={section?.description}
+            collapsible={section?.advanced}
             fieldsClassName={fieldsClassName}
           >
             {visibleFields.map(([name, field]) => {

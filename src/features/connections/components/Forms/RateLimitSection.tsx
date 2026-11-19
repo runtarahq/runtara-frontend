@@ -1,7 +1,7 @@
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Link } from 'react-router';
 import { Gauge, ShieldOff, ExternalLink } from 'lucide-react';
-import { FormSection } from './FormSection';
+import { FormSection } from '@/shared/forms';
 import { TextInput } from '@/shared/components/text-input';
 import { CheckboxInput } from '@/shared/components/checkbox-input';
 import { Button } from '@/shared/components/ui/button';
@@ -47,7 +47,7 @@ export function RateLimitSection({
   };
 
   return (
-    <FormSection title="Rate Limiting" icon={Gauge} optional>
+    <FormSection variant="banded" title="Rate Limiting" icon={Gauge} optional>
       <div className="space-y-4">
         {/* Live protection state (edit mode) */}
         {liveBadge && (
