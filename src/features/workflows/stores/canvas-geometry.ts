@@ -1,4 +1,9 @@
-import type { Edge, Node } from '@xyflow/react';
+import {
+  applyNodeChanges,
+  type Edge,
+  type Node,
+  type NodeChange,
+} from '@xyflow/react';
 import {
   snapPositionToGrid,
   snapToGrid,
@@ -8,6 +13,7 @@ import {
   NODE_TYPES,
   STEP_TYPES,
 } from '@/features/workflows/config/workflow';
+import type { WorkflowState } from '@/features/workflows/stores/workflow-state';
 import type { StepNodeData } from '@/features/workflows/types/execution-graph';
 import { validateConnection } from '@/features/workflows/utils/graph-validation';
 import { generateStepId } from '@/features/workflows/utils/step-ids';
@@ -341,4 +347,255 @@ export function insertStepBetween(
   }
 
   return true;
+}
+
+/** A canvas with what it remembers of a container being resized. */
+export interface ResizableCanvas extends CanvasGraph {
+  resizeTracking: WorkflowState['resizeTracking'];
+}
+
+/**
+ * Applies React Flow's node changes (resize, add, remove; a drag that also
+ * resizes) to the canvas, in place, and returns the changes it applied.
+ *
+ * - Positions and container sizes are snapped to the grid.
+ * - Only a container resizes, and only while the user drags one of its
+ *   handles: React Flow also reports sizes when it re-measures a node or
+ *   grows a parent during a drag, and taking those for a resize moved the
+ *   steps after it.
+ * - While a container's right edge is dragged, the steps downstream of it
+ *   move with the edge, from where they were when the resize began
+ *   (`resizeTracking`, cleared once a batch carries no size).
+ */
+export function applyCanvasNodeChanges(
+  canvas: ResizableCanvas,
+  changes: NodeChange[]
+): NodeChange[] {
+  // Track dimension changes for ContainerNodes to handle centering and downstream shifts
+  const dimensionChanges = new Map<
+    string,
+    {
+      oldWidth: number;
+      oldHeight: number;
+      newWidth: number;
+      newHeight: number;
+      oldPosition: { x: number; y: number };
+    }
+  >();
+
+  // Check if this batch has any dimension changes
+  const hasDimensionChanges = changes.some((c) => c.type === 'dimensions');
+
+  // Check if this batch has position changes - if so, this is a drag operation
+  // and we should skip dimension change processing to prevent infinite loops
+  const hasPositionChanges = changes.some(
+    (c) => c.type === 'position' && c.position
+  );
+
+  // Skip dimension change processing during drag operations
+  // Dimension changes during drag are React Flow's expandParent behavior,
+  // not user-initiated resizing
+  const shouldProcessDimensions = hasDimensionChanges && !hasPositionChanges;
+
+  // If no dimension changes, clear resize tracking (resize operation finished)
+  if (!hasDimensionChanges && Object.keys(canvas.resizeTracking).length > 0) {
+    canvas.resizeTracking = {};
+  }
+
+  // First pass: identify nodes being resized and initialize tracking
+  // Skip this during drag operations to prevent infinite loops
+  changes.forEach((change) => {
+    if (change.type === 'dimensions' && shouldProcessDimensions) {
+      const node = canvas.nodes.find((n) => n.id === change.id);
+      if (node && node.type === NODE_TYPES.ContainerNode) {
+        // Initialize resize tracking if this is the first resize event for this node
+        if (!canvas.resizeTracking[change.id]) {
+          const originalWidth =
+            typeof node.style?.width === 'number'
+              ? node.style.width
+              : node.width || 204;
+          const originalHeight =
+            typeof node.style?.height === 'number'
+              ? node.style.height
+              : node.height || 168;
+
+          // Find all downstream nodes and store their original positions
+          const downstreamNodeOriginalPositions: Record<
+            string,
+            { x: number; y: number }
+          > = {};
+          const nodesToTrack = new Set<string>();
+          const findDownstreamNodes = (currentNodeId: string) => {
+            canvas.edges.forEach((edge) => {
+              if (
+                edge.source === currentNodeId &&
+                !nodesToTrack.has(edge.target)
+              ) {
+                nodesToTrack.add(edge.target);
+                findDownstreamNodes(edge.target);
+              }
+            });
+          };
+          findDownstreamNodes(change.id);
+
+          // Store original positions of all downstream nodes
+          nodesToTrack.forEach((nodeId) => {
+            const downstreamNode = canvas.nodes.find((n) => n.id === nodeId);
+            if (downstreamNode) {
+              downstreamNodeOriginalPositions[nodeId] = {
+                ...downstreamNode.position,
+              };
+            }
+          });
+
+          // Capture resize handle direction from node data
+          const resizeHandle = node.data?.__resizeHandle as
+            | {
+                isLeft: boolean;
+                isRight: boolean;
+                isTop: boolean;
+                isBottom: boolean;
+              }
+            | undefined;
+
+          canvas.resizeTracking[change.id] = {
+            originalPosition: { ...node.position },
+            originalWidth,
+            originalHeight,
+            downstreamNodeOriginalPositions,
+            resizeHandle,
+          };
+        }
+      }
+    }
+  });
+
+  // Filter and transform changes
+  const snappedChanges = changes
+    .filter((change) => {
+      // Block dimension changes for non-container nodes to enforce fixed sizing
+      if (change.type === 'dimensions') {
+        const node = canvas.nodes.find((n) => n.id === change.id);
+        if (node && node.type !== NODE_TYPES.ContainerNode) {
+          return false; // Reject dimension changes for non-container nodes
+        }
+
+        // Skip dimension changes during drag operations to prevent infinite loops
+        // During drag, React Flow fires dimension changes due to expandParent,
+        // but we don't want to process them as resize operations
+        if (!shouldProcessDimensions) {
+          return false;
+        }
+
+        // Only allow dimension changes during active user resize
+        // __resizeHandle is set by BaseResizableNode on resize start and cleared on end
+        // Without this, React Flow's re-measurement on selection can trigger
+        // unwanted container resizing and downstream node shifts
+        if (node && !node.data?.__resizeHandle) {
+          return false;
+        }
+
+        // Track ContainerNode dimension changes for downstream node shifting
+        if (
+          node &&
+          node.type === NODE_TYPES.ContainerNode &&
+          change.dimensions
+        ) {
+          // Use tracked original values, or current values if tracking not initialized
+          const tracking = canvas.resizeTracking[change.id];
+          const oldWidth =
+            tracking?.originalWidth ||
+            (typeof node.style?.width === 'number'
+              ? node.style.width
+              : node.width || 204);
+          const oldHeight =
+            tracking?.originalHeight ||
+            (typeof node.style?.height === 'number'
+              ? node.style.height
+              : node.height || 168);
+          const oldPosition = tracking?.originalPosition || {
+            ...node.position,
+          };
+
+          dimensionChanges.set(change.id, {
+            oldWidth,
+            oldHeight,
+            newWidth: change.dimensions.width,
+            newHeight: change.dimensions.height,
+            oldPosition,
+          });
+        }
+      }
+      return true;
+    })
+    .map((change) => {
+      // Snap container dimension changes to grid
+      if (change.type === 'dimensions' && change.dimensions) {
+        return {
+          ...change,
+          dimensions: {
+            width: snapToGrid(change.dimensions.width),
+            height: snapToGrid(change.dimensions.height),
+          },
+        };
+      }
+      // Snap position changes to grid
+      if (change.type === 'position' && change.position) {
+        return {
+          ...change,
+          position: snapPositionToGrid(change.position),
+        };
+      }
+      return change;
+    });
+
+  // Apply the changes first
+  canvas.nodes = applyNodeChanges(snappedChanges, canvas.nodes);
+
+  // Handle ContainerNode resizing: edge-based resizing based on handle direction
+  dimensionChanges.forEach((changeInfo, nodeId) => {
+    const { oldWidth, newWidth } = changeInfo;
+    const widthDelta = newWidth - oldWidth;
+
+    if (widthDelta !== 0) {
+      const tracking = canvas.resizeTracking[nodeId];
+      const handle = tracking?.resizeHandle;
+
+      // React Flow's NodeResizer already handles position correctly:
+      // - Right edge drag: keeps left edge fixed (position.x unchanged)
+      // - Left edge drag: keeps right edge fixed (adjusts position.x)
+      // We only need to shift downstream nodes based on how the right edge moved
+
+      // Calculate how much the right edge moved in absolute coordinates
+      let rightEdgeShift = 0;
+
+      if (handle) {
+        if (handle.isRight && !handle.isLeft) {
+          // Right edge drag: right edge moved by full widthDelta
+          rightEdgeShift = widthDelta;
+        } else if (handle.isLeft && !handle.isRight) {
+          // Left edge drag: right edge stayed in place (growth went left)
+          rightEdgeShift = 0;
+        } else {
+          // Corner drag or both edges: shouldn't happen with standard handles
+          rightEdgeShift = widthDelta / 2;
+        }
+      }
+
+      // Shift downstream nodes based on right edge movement
+      if (rightEdgeShift !== 0 && tracking?.downstreamNodeOriginalPositions) {
+        canvas.nodes.forEach((node) => {
+          const originalPos = tracking.downstreamNodeOriginalPositions[node.id];
+          if (originalPos) {
+            node.position = {
+              x: originalPos.x + rightEdgeShift,
+              y: node.position.y, // Keep Y unchanged
+            };
+          }
+        });
+      }
+    }
+  });
+
+  return snappedChanges;
 }
