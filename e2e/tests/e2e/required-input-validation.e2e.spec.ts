@@ -173,10 +173,18 @@ test.describe
       .getByRole('spinbutton');
     await countInput.fill('0');
 
-    // "tags" is a tag input that holds an empty array until a tag is added
-    await expect(
-      dialog.locator('[data-field="tags"]').getByRole('textbox')
-    ).toHaveValue('');
+    // Give "tags" as an empty list: add a tag, then take it away. A list
+    // nobody touched is not given at all, and is refused as missing.
+    const tagsInput = dialog
+      .locator('[data-field="tags"]')
+      .getByRole('textbox');
+    await tagsInput.fill('temp');
+    await tagsInput.press('Enter');
+    await expect(dialog.locator('[data-field="tags"]')).toContainText('temp');
+    await tagsInput.press('Backspace');
+    await expect(dialog.locator('[data-field="tags"]')).not.toContainText(
+      'temp'
+    );
 
     // Intercept the request to verify payload
     const executeRequestPromise = page.waitForRequest(
@@ -216,7 +224,12 @@ test.describe
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
-    // Fill required fields ("tags" holds an empty array as it is)
+    // Fill required fields; "tags" needs a value to count as given
+    const tagsInput = dialog
+      .locator('[data-field="tags"]')
+      .getByRole('textbox');
+    await tagsInput.fill('a');
+    await tagsInput.press('Enter');
     await dialog
       .locator('[data-field="name"]')
       .getByRole('textbox')
