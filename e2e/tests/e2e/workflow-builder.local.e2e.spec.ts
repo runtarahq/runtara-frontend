@@ -388,8 +388,14 @@ test.describe('Workflow builder local UI', () => {
     await builder.deleteCanvasStep('Empty split');
     await builder.clearValidationMessages();
 
+    // A While without a condition is refused by its own dialog, which can
+    // put that right. With a condition and nothing in it, it can be added,
+    // and the workflow cannot be saved until it has a body.
     await builder.beginFirstCanvasStep(stepType('While'));
-    await builder.saveOpenCanvasDialog({ name: 'Invalid while' });
+    await builder.expectOpenCanvasDialogRefused({ name: 'Invalid while' });
+    await builder.configureOpenCondition();
+    await builder.saveOpenCanvasDialog();
+    await builder.expectStepVisible('Invalid while');
     await builder.expectSaveValidationFailure();
     await builder.deleteCanvasStep('Invalid while');
   });
@@ -487,7 +493,20 @@ test.describe('Workflow builder local UI', () => {
         name: 'Canvas rejected',
       }
     );
+    // Removing the branch's step leaves the Conditional without its false
+    // edge (E140): the workflow does not save until the branch leads
+    // somewhere again.
     await builder.deleteCanvasStep('Canvas rejected');
+    await builder.expectSaveValidationFailure();
+    await builder.addCanvasBranchStep(
+      'false',
+      'Canvas decision',
+      randomDoubleStep,
+      {
+        name: 'Canvas fallback',
+      }
+    );
+    await builder.expectStepVisible('Canvas fallback');
 
     await builder.saveWorkflow();
     await builder.reloadAndWait();

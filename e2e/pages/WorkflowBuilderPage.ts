@@ -189,7 +189,68 @@ export class WorkflowBuilderPage {
 
   async selectCanvasStep(name: string): Promise<void> {
     await this.useCanvas();
-    await this.canvasStep(name).first().click();
+    await this.clickCanvasStep(name);
+  }
+
+  /**
+   * Clicks a step where the step itself is what is under the pointer. The
+   * middle of a container is taken by the steps nested in it, or by its
+   * "Add first step" button while it is empty, so a container is clicked in
+   * its margin, as a user would.
+   */
+  private async clickCanvasStep(
+    name: string,
+    options: { double?: boolean } = {}
+  ): Promise<void> {
+    const node = this.canvasStep(name).first();
+    await expect(node).toBeVisible({ timeout: 15000 });
+    await expect(async () => {
+      // The canvas may still be moving into view: a spot is only worth
+      // picking once the step has settled.
+      const before = await node.boundingBox();
+      await this.page.waitForTimeout(100);
+      expect(await node.boundingBox()).toEqual(before);
+
+      const position = await node.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const inset = 10;
+        const xs = [
+          box.width / 2,
+          inset,
+          box.width - inset,
+          box.width / 4,
+          (box.width * 3) / 4,
+        ];
+        const ys = [
+          box.height / 2,
+          inset,
+          box.height - inset,
+          box.height / 4,
+          (box.height * 3) / 4,
+        ];
+        for (const y of ys) {
+          for (const x of xs) {
+            const hit = document.elementFromPoint(box.left + x, box.top + y);
+            if (
+              hit &&
+              element.contains(hit) &&
+              !hit.closest(
+                'button, [role="button"], input, .react-flow__handle, .react-flow__resize-control'
+              )
+            ) {
+              return { x, y };
+            }
+          }
+        }
+        return null;
+      });
+      expect(position, `a free spot to click on step ${name}`).not.toBeNull();
+      if (options.double) {
+        await node.dblclick({ position: position!, timeout: 3000 });
+      } else {
+        await node.click({ position: position!, timeout: 3000 });
+      }
+    }).toPass({ timeout: 15000 });
   }
 
   async beginCanvasRouteStep(
@@ -231,24 +292,35 @@ export class WorkflowBuilderPage {
     );
     await expect(edge).toHaveCount(1);
     // The edge is an SVG path, and two routes between the same steps share
-    // their ends: click the middle of this one's line.
-    const point = await edge
-      .locator('path')
-      .last()
-      .evaluate((element) => {
-        const path = element as SVGPathElement;
-        const middle = path.getPointAtLength(path.getTotalLength() / 2);
-        const matrix = path.getScreenCTM();
-        if (!matrix) throw new Error('The route is not rendered');
-        const onScreen = new DOMPoint(middle.x, middle.y).matrixTransform(
-          matrix
-        );
-        return { x: onScreen.x, y: onScreen.y };
-      });
-    await this.page.mouse.click(point.x, point.y);
-    await this.page
-      .getByRole('button', { name: 'Insert a step on this route' })
-      .click();
+    // their ends: click the middle of this one's line. The canvas may still
+    // be moving into view, so the point is taken once the line has settled,
+    // and taken again if the click missed it.
+    const middleOfRoute = () =>
+      edge
+        .locator('path')
+        .last()
+        .evaluate((element) => {
+          const path = element as SVGPathElement;
+          const middle = path.getPointAtLength(path.getTotalLength() / 2);
+          const matrix = path.getScreenCTM();
+          if (!matrix) throw new Error('The route is not rendered');
+          const onScreen = new DOMPoint(middle.x, middle.y).matrixTransform(
+            matrix
+          );
+          return { x: onScreen.x, y: onScreen.y };
+        });
+    const insert = this.page.getByRole('button', {
+      name: 'Insert a step on this route',
+    });
+    await expect(async () => {
+      const before = await middleOfRoute();
+      await this.page.waitForTimeout(100);
+      const point = await middleOfRoute();
+      expect(point).toEqual(before);
+      await this.page.mouse.click(point.x, point.y);
+      await expect(insert).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 15000 });
+    await insert.click();
     await this.pickStep(kind);
     await expect(this.page.getByTestId('node-config-dialog')).toBeVisible({
       timeout: 10000,
@@ -429,15 +501,13 @@ export class WorkflowBuilderPage {
   /** Opens the step's editor (double-click) — the only way into it on the canvas. */
   async editCanvasStep(stepName: string): Promise<void> {
     await this.useCanvas();
-    await this.canvasStep(stepName).first().dblclick();
+    await this.clickCanvasStep(stepName, { double: true });
     await expect(this.page.getByTestId('node-config-dialog')).toBeVisible();
   }
 
   async deleteCanvasStep(stepName: string): Promise<void> {
     await this.useCanvas();
-    const node = this.canvasStep(stepName).first();
-    await expect(node).toBeVisible({ timeout: 15000 });
-    await node.click();
+    await this.clickCanvasStep(stepName);
     await this.page.keyboard.press('Delete');
     await expect(this.canvasStep(stepName)).toHaveCount(0);
   }
@@ -675,6 +745,29 @@ export class WorkflowBuilderPage {
 
     await dialog.getByTestId('node-config-save').click();
     await expect(dialog).toHaveCount(0);
+  }
+
+  /**
+   * Submits the open step dialog expecting the editor to refuse the step:
+   * what the dialog itself can put right keeps it open and says why.
+   */
+  async expectOpenCanvasDialogRefused(
+    options: StepCreateOptions = {}
+  ): Promise<void> {
+    const dialog = this.page.getByTestId('node-config-dialog');
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+
+    if (options.name) {
+      const nameInput = dialog.getByPlaceholder('Step name');
+      await nameInput.clear();
+      await nameInput.fill(options.name);
+    }
+
+    await dialog.getByTestId('node-config-save').click();
+    await expect(
+      this.page.getByText('Step validation failed').first()
+    ).toBeVisible({ timeout: 10000 });
+    await expect(dialog).toBeVisible();
   }
 
   private async pickStep(kind: AddStepKind): Promise<void> {
