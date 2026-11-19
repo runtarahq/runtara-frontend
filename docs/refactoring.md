@@ -14,9 +14,10 @@ those findings.
 
 ## How to read this document
 
-The five high-priority items have since been worked on; each has a **Status**
-paragraph saying what was done and what remains. The findings above each
-status describe the code as it was at the audit.
+The high- and medium-priority items have since been worked on; each has a
+**Status** paragraph saying what was done and what remains. The findings above
+each status describe the code as it was at the audit, and their paths and line
+numbers are of that code.
 
 - Paths are relative to the repository root. `WF` stands for
   `src/features/workflows`, and `WE` for `WF/components/WorkflowEditor`.
@@ -379,6 +380,21 @@ clear dirty, 150 ms to end version switching
 "load into editor" action keyed by workflow id and version. That removes the
 hash effect and both timers.
 
+**Status: done.** `getWorkflowWorkflow` returns the graph as the server sent
+it, and the query cache holds no canvas nodes. `use-workflow-load.ts` hands a
+fetched graph to the store's `setExecutionGraph`, which draws it and starts it
+clean; an import goes in the same way. The effect is keyed by the graph
+object, which the query client keeps the same while its content is, so a
+refetch that brings nothing new leaves the canvas alone, as the hash did. The
+editor takes no `nodes` or `edges`, `syncFromReactFlow` is gone, and so are
+both timers: a version switch ends when its fetch does. The query module no
+longer imports a component, and `src/test/architecture.test.ts` keeps query
+modules from importing any. Audit spec WF-8 opens a workflow with a container
+step and checks it has nothing to save.
+
+The workflow's settings (variables, schema fields) are still shaped in the
+query function. They are plain data, not a view of the canvas.
+
 ### M2. Duplicated and scattered editor state
 
 - Validation errors live in both `workflowStore` and `validationStore`; node
@@ -397,6 +413,25 @@ hash effect and both timers.
 store behind one merge function. Replace `timelineStore` with
 `useInfiniteQuery`. Delete the dead store members.
 
+**Status: partly done.**
+
+- Validation errors live in `validationStore` alone; a step rename moves its
+  messages there (`renameStep`).
+- The store's `executionGraph` copy, `getReactFlowElements`, `setSelectedNodes`
+  and `setSelectedEdges` are gone.
+- The staged-over-server merge is one function, `mergeWorkflowSettings`
+  (`WF/pages/Workflow/workflow-settings.ts`): the settings dialog, a save, an
+  export and the cache patch after a save all call it.
+- `timelineStore` is gone. `useHierarchicalTimeline` reads the top-level steps
+  with an infinite query and each open step's children with a query of their
+  own. The store's poll replaced every loaded page with the first; the query
+  refetches all of them.
+
+Not done: the staged settings are still page state (`stagedWorkflowChanges`),
+and node-form state is still split across react-hook-form, `useNodeFormStore`
+and `stagedNodeIds`. Both change how the settings dialog and the step form
+stage and discard edits, which is behaviour to decide, not a move of code.
+
 ### M3. Stores are module singletons with manual reset
 
 All six workflow stores are module-level. Reset is a page effect keyed on
@@ -409,6 +444,22 @@ is another module singleton for the same reason. There are 64 imperative
 provider (zustand's `createStore` with `useStore`), so reset is unmount. Route
 the raw `setState` calls through actions first.
 
+**Status: done, with one limit.** `editorStore` (`WF/stores/editor-scope.ts`)
+declares a store that is created when an editor first needs it and dropped
+when that editor unmounts. The workflow page wraps itself in
+`EditorStoresProvider`, keyed by the workflow id, so another workflow starts
+from new stores and the reset effect is gone. The workflow, validation,
+execution and step-form stores and the canvas bridge are declared this way,
+which covers the two the reset missed. The seven raw `setState` calls go
+through actions (`editNodes`, `revertNodes`, `clearNodeStatuses`).
+
+The limit: components read the stores of the provider above them, but code
+outside React (67 `getState` calls) reaches the stores of the editor on
+screen. Two editors side by side would each render their own state and share
+that path. Nothing mounts two; passing a store to every imperative caller is
+the remaining step if something does. `chatStore` is still a module store:
+the chat page remounts between its two routes and relies on it.
+
 ### M4. Features depend on the app entry
 
 12 feature files import `queryClient` from `@/bootstrap`, a module that calls
@@ -416,6 +467,9 @@ the raw `setState` calls through actions first.
 
 **Refactoring.** Move the client to `src/shared/lib/query-client.ts`, or use
 `useQueryClient()` inside components and hooks.
+
+**Status: done.** The client is `src/shared/queries/query-client.ts`; nothing
+but `main.tsx` imports the app entry, and a test holds that.
 
 ### M5. Feature import cycles
 
@@ -438,6 +492,14 @@ the three depend on) for the status pill, run links, duration, status options,
 display name, suspension helpers, the Stop/Resume/Replay buttons and state
 labels. Then add an import-boundary lint rule (L6) so the cycles stay gone.
 
+**Status: done.** `src/features/runs` holds what the three features share
+about a run: its status pill and links, duration, label, suspension rules,
+state values, failure description, the request helper and the replay and
+refresh controls. It imports none of the three; workflows uses runs, and the
+history and operations use runs and workflows. There is one `ReplayButton`.
+`src/test/architecture.test.ts` fails on a feature cycle, on shared code
+importing a feature, and on `runs` importing another feature.
+
 ### M6. First load carries editor weight
 
 - `src/bootstrap.tsx` mounts a root `ReactFlowProvider`, which pulls the xyflow
@@ -451,6 +513,12 @@ needs the canvas already goes through `canvas-bridge.ts`. Start the WASM load
 when a route that validates is entered, or on idle. Turn on
 `reportCompressedSize` and add a bundle-size check to CI.
 
+**Status: done.** The root `ReactFlowProvider` and the eager WASM load are
+gone; the validator is fetched when the editor or a schema-driven form opens.
+First load is about 250 kB gzipped, from 311. `scripts/check-bundle-size.mjs`
+runs in CI after the build and fails over 280 kB, or if the editor or
+validator chunk is in the first load.
+
 ### M7. `keepPreviousData` is the default for every query
 
 `useCustomQuery` and `useTableQuery` set `placeholderData: keepPreviousData`
@@ -459,6 +527,10 @@ entity's data until the new one arrives (_inferred_ as a risk on detail pages;
 it is the right behaviour for paginated lists).
 
 **Refactoring.** Make it opt-in, and keep it on in `useTableQuery`.
+
+**Status: done.** `useCustomQuery` no longer keeps previous data;
+`useTableQuery` does. The four queries that wanted it ask for it, two of them
+through `keepPreviousWithin`, which keeps it only within one list.
 
 ### M8. Config is resolved as import side effects
 
@@ -471,6 +543,17 @@ hand.
 **Refactoring.** Low urgency, since the constraint is documented and works. If
 touched: resolve config once in `main.tsx` and pass it down, or at least guard
 the edition cycle with a lint rule.
+
+**Status: partly done.** The OIDC settings are built by `createOidcConfig`,
+which the app entry calls as it boots, so importing the module no longer
+throws and the test stubs in `vitest.config.ts` are gone. The edition cycle is
+guarded: a test follows what each of this repository's editions imports and
+fails if it reaches `appBase` or the OIDC settings.
+
+Not done: `runtimeConfig.ts` and `appBase.ts` still compute their values at
+import, and `main.tsx` still boots in two stages for it. Resolving config once
+and passing it down touches every reader of `config`; the item calls it low
+urgency and that has not changed.
 
 ### M9. Four form-from-description implementations
 
@@ -489,6 +572,18 @@ There are also three `FormSection` components.
 wrapper). Move `ObjectInstanceForm` onto `shared/forms`. Merge the
 `FormSection` components.
 
+**Status: done for 2 and 4.** `NextForm` and `next-dialog` are gone.
+`shared/forms` has `FormShell` (the `<form>` of a react-hook-form, typed by
+its values), `FieldList` (a hand-written list of fields from a typed
+`FieldConfig`, used by the trigger and step forms) and one `FormSection`
+where there were four section components. `ObjectInstanceForm` is a
+`FormDefinition` built from the type's columns and drawn by `FormRenderer`:
+an enum offers its values, JSON is edited as text, and required columns are
+checked. That page was not opened in a browser.
+
+`InputMappingField` (3) is as it was. It maps capability inputs to
+references, which `shared/forms` does not model.
+
 ### M10. No undo and no tab-close guard in the editor
 
 Edits are immer mutations with no history. In-app navigation is guarded by the
@@ -498,6 +593,12 @@ objects do.
 **Refactoring.** Add the `beforeunload` guard now. Undo becomes cheap after H5
 and M3, when graph mutations are pure functions over one per-editor store.
 
+**Status: the guard is done; undo is not.** `useWarnBeforeUnload` warns on
+closing a tab with unsaved changes; the editor, the object records table and
+the connection form use it. Undo is a product feature with its own decisions
+(what a step is, what a save does to history). Its prerequisites are now in
+place: graph edits go through actions on one per-editor store.
+
 ### M11. `operations` ignores the feature conventions
 
 Domain files are flat at the feature root, there is no `hooks/` or `queries/`
@@ -506,6 +607,9 @@ ad hoc `['operations', …]` query keys with blanket invalidation.
 
 **Refactoring.** Add an `operations` section to `query-keys.ts` and move the
 files into the standard folders.
+
+**Status: done.** `queryKeys.operations` replaces the ad hoc arrays, with the
+same shapes. The feature has `queries/`, `hooks/`, `utils/` and `components/`.
 
 ### M12. Other large components
 
@@ -520,6 +624,17 @@ files into the standard folders.
 - `src/shared/components/PayloadExplorer/PayloadExplorer.tsx`: one 720-line
   component in an otherwise well-split module.
 
+**Status: done.** Each was split along the concerns listed, moving code as
+it was, with tests for the parts and the browser audit specs run after.
+
+- `ObjectInstancesTable/index.tsx`: 314 lines. View state, row editing, bulk
+  actions and export are hooks beside it.
+- `operations/pages/Queue.tsx`: 432 lines. The toolbar, bulk bar and table
+  are components; what it works out from a view is `utils/queue-view.ts`.
+- The condition editor is `src/shared/conditions`, eight files.
+- `PayloadExplorer.tsx`: 610 lines. Types, caches, full-value loading and
+  the toolbar controls have files of their own.
+
 ### M13. Release supply chain
 
 - Actions and base images are pinned by tag, not SHA or digest.
@@ -529,6 +644,18 @@ files into the standard folders.
   tagged commit. The GitHub release is created before the image is built.
 - `npm ci --no-audit`, and no dependency-update automation, although
   `package.json` carries 8 undocumented `overrides`.
+
+**Status: done, with the attestation steps untested.** Every action is pinned
+to a commit and both base images to a digest; dependabot moves the pins. A
+release bundles the console once, the image wraps that bundle
+(`BUNDLE=prebuilt` in the `Dockerfile`), and the GitHub release is created
+after the image is pushed. The release job runs what a pull request is held
+to. The tarball and the image carry a provenance attestation, and the image
+an SBOM. CI audits the shipped dependencies.
+
+The image was built both ways locally and its files compared with the
+bundle's. The attestation steps need GitHub's signing service and have not
+run. The `overrides` in `package.json` are still undocumented.
 
 ### M14. Test and tooling gaps
 
@@ -540,6 +667,19 @@ files into the standard folders.
   has no PNGs.
 - Real-backend Playwright projects run in no workflow.
 - Unit tests and Playwright share no mock layer.
+
+**Status: partly done.**
+
+- `e2e/**` and `playwright.config.ts` are type-checked (`tsconfig.e2e.json`);
+  the 51 errors that surfaced are fixed. `vitest.config.ts` was already
+  covered by `tsconfig.node.json`. The casts in `e2e/` are still there (46).
+- Coverage has a floor in `vitest.config.ts`, just under what the suite
+  covers, and the lint job fails beyond the 21 warnings there are.
+
+Not done: visual snapshots are still opt-in and off, since baselines must be
+rendered on the CI platform; the real-backend projects need a runtara server
+this repository's CI does not have; and unit tests and Playwright still share
+no mock layer.
 
 ## Low priority
 
