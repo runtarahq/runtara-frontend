@@ -139,6 +139,7 @@ to the console's `oauth-complete.html`.
 - `npm run dev` — Vite dev server on `:8081`
 - `npm run build` — TypeScript check + production bundle into `dist/`
 - `npm run preview` — serve the production bundle locally
+- `npm run check-bundle-size` — after a build, hold the first load to its budget
 - `npm run lint` — ESLint
 - `npm test` — Vitest
 - `npm run test:edition` — type-check and test the console built with the example edition (`examples/edition`)

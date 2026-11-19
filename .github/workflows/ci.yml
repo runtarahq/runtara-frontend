@@ -28,7 +28,9 @@ jobs:
           - { name: typecheck, cmd: 'npx tsc -b --pretty' }
           - { name: unit, cmd: 'npm test' }
           - { name: knip, cmd: 'npm run knip' }
-          - { name: build, cmd: 'npm run build' }
+          # The build, then the first load against its budget
+          # (scripts/check-bundle-size.mjs).
+          - { name: build, cmd: 'npm run build && npm run check-bundle-size' }
     steps:
       - uses: actions/checkout@v4
 
