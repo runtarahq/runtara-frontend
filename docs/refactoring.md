@@ -413,7 +413,7 @@ query function. They are plain data, not a view of the canvas.
 store behind one merge function. Replace `timelineStore` with
 `useInfiniteQuery`. Delete the dead store members.
 
-**Status: partly done.**
+**Status: done.**
 
 - Validation errors live in `validationStore` alone; a step rename moves its
   messages there (`renameStep`).
@@ -427,10 +427,14 @@ store behind one merge function. Replace `timelineStore` with
   own. The store's poll replaced every loaded page with the first; the query
   refetches all of them.
 
-Not done: the staged settings are still page state (`stagedWorkflowChanges`),
-and node-form state is still split across react-hook-form, `useNodeFormStore`
-and `stagedNodeIds`. Both change how the settings dialog and the step form
-stage and discard edits, which is behaviour to decide, not a move of code.
+- The staged settings are a store of the editor, `useStagedSettings`
+  (`WF/pages/Workflow/staged-settings.ts`), with staging, an import,
+  discarding and settling after a save as its actions. A step is marked as
+  holding form edits through `markNodeStaged`, not by writing a set.
+
+What stays apart is by design: the step form's values are react-hook-form's,
+and its mapping rows are `useNodeFormStore`'s, which the mapping editor reads
+between renders.
 
 ### M3. Stores are module singletons with manual reset
 
@@ -544,16 +548,17 @@ hand.
 touched: resolve config once in `main.tsx` and pass it down, or at least guard
 the edition cycle with a lint rule.
 
-**Status: partly done.** The OIDC settings are built by `createOidcConfig`,
+**Status: done by the second option.** The OIDC settings are built by
+`createOidcConfig`,
 which the app entry calls as it boots, so importing the module no longer
 throws and the test stubs in `vitest.config.ts` are gone. The edition cycle is
 guarded: a test follows what each of this repository's editions imports and
 fails if it reaches `appBase` or the OIDC settings.
 
-Not done: `runtimeConfig.ts` and `appBase.ts` still compute their values at
-import, and `main.tsx` still boots in two stages for it. Resolving config once
-and passing it down touches every reader of `config`; the item calls it low
-urgency and that has not changed.
+`runtimeConfig.ts` and `appBase.ts` still compute their values at import, and
+`main.tsx` still loads the deployment's config before importing the app. That
+is the first option of the refactoring above, not taken: the second, the
+guard, was, and the import that threw is gone.
 
 ### M9. Four form-from-description implementations
 
@@ -675,11 +680,12 @@ run. The `overrides` in `package.json` are still undocumented.
   covered by `tsconfig.node.json`. The casts in `e2e/` are still there (46).
 - Coverage has a floor in `vitest.config.ts`, just under what the suite
   covers, and the lint job fails beyond the 21 warnings there are.
+- Unit tests and Playwright build the server's objects from the same
+  builders, `src/test/builders.ts`.
 
 Not done: visual snapshots are still opt-in and off, since baselines must be
 rendered on the CI platform; the real-backend projects need a runtara server
-this repository's CI does not have; and unit tests and Playwright still share
-no mock layer.
+this repository's CI does not have; neither can be made or checked from a developer's machine.
 
 ## Low priority
 
