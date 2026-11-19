@@ -432,14 +432,17 @@ export class WorkflowBuilderPage {
   async deleteWorkflowFromList(name: string): Promise<void> {
     await this.page.goto(appPath('/workflows'));
     await this.page.waitForLoadState('domcontentloaded');
-    await this.page.getByPlaceholder('Search workflows...').fill(name);
+    // The search is folded into a button until it is used.
+    await this.page.getByRole('button', { name: /^Search/ }).click();
+    await this.page.getByPlaceholder(/Search workflows/).fill(name);
 
-    const card = this.page.locator('article').filter({ hasText: name });
-    await expect(card).toBeVisible({ timeout: 15000 });
-    await card.hover();
-    await card.getByTitle('Delete').first().click();
+    // The list is a table: a workflow is a row, its actions shown on hover.
+    const row = this.page.locator('tr').filter({ hasText: name });
+    await expect(row).toBeVisible({ timeout: 15000 });
+    await row.hover();
+    await row.getByTitle('Delete').first().click();
     await this.page.getByRole('button', { name: 'Confirm' }).click();
-    await expect(card).toHaveCount(0, { timeout: 15000 });
+    await expect(row).toHaveCount(0, { timeout: 15000 });
   }
 
   async createOpenAiConnection(name: string): Promise<void> {
@@ -473,11 +476,13 @@ export class WorkflowBuilderPage {
   async deleteConnectionFromList(name: string): Promise<void> {
     await this.page.goto(appPath('/connections'));
     await this.page.waitForLoadState('domcontentloaded');
-    const card = this.page.locator('article').filter({ hasText: name });
-    await expect(card).toBeVisible({ timeout: 15000 });
-    await card.getByTitle('Delete connection').first().click();
+    // A connection is a row; Delete is in its actions menu.
+    const row = this.page.locator('tr').filter({ hasText: name });
+    await expect(row).toBeVisible({ timeout: 15000 });
+    await row.getByRole('button', { name: `More actions for ${name}` }).click();
+    await this.page.getByRole('menuitem', { name: /delete/i }).click();
     await this.page.getByRole('button', { name: /delete connection/i }).click();
-    await expect(card).toHaveCount(0, { timeout: 15000 });
+    await expect(row).toHaveCount(0, { timeout: 15000 });
   }
 
   async configureOpenAiAgent(connectionName: string): Promise<void> {

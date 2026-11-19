@@ -698,8 +698,21 @@ test keeps complete; two that did nothing were removed.
   with the commit's console pointed at its API. The pull request that added
   the baselines ran the mocked job against them.
 
-Not done: the `e2e` and `chromium` projects, which sign in through a real
-identity provider, still run in no workflow.
+  The same job runs the connection specs of the `local-ui` project.
+
+Not done, and why:
+
+- The `chromium` project tests signing in through an identity provider. It
+  needs one, with credentials as CI secrets.
+- The `e2e` project and the `local-ui` workflow-builder spec were tried
+  against that stack under local auth and are out of step with it: 16 of the
+  `e2e` tests fail on stale selectors and API contracts, and the
+  workflow-builder spec adds a lone Conditional, which the 10.0.0 validator
+  refuses. Twelve of the sixteen fail identically on the branch as it was
+  before the medium-priority work; the other four are serial suites that
+  failed one step earlier there. Bringing those specs up to date is work of
+  its own. The workflow-builder page object's two clean-up helpers, which
+  looked for a list that is now a table, are fixed.
 
 ## Low priority
 

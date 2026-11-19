@@ -249,6 +249,21 @@ jobs:
           CI: 'true'
         run: npx playwright test --project=smoke
 
+      # The connection specs of the local-auth project: they create, edit and
+      # delete connections through the console and the server's API. Its
+      # workflow-builder spec is not run: the 10.0.0 validator refuses a step
+      # it adds (docs/refactoring.md, M14).
+      - name: Run connection specs
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8081
+          E2E_RUNTIME_URL: http://127.0.0.1:7101
+          CI: 'true'
+        run: >-
+          npx playwright test --project=local-ui
+          e2e/tests/e2e/connections.local.e2e.spec.ts
+          e2e/tests/e2e/connection-crud.local.e2e.spec.ts
+          e2e/tests/e2e/connection-editor.local.e2e.spec.ts
+
       - name: Server logs
         if: failure()
         env:
