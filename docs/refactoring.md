@@ -598,11 +598,14 @@ objects do.
 **Refactoring.** Add the `beforeunload` guard now. Undo becomes cheap after H5
 and M3, when graph mutations are pure functions over one per-editor store.
 
-**Status: the guard is done; undo is not.** `useWarnBeforeUnload` warns on
-closing a tab with unsaved changes; the editor, the object records table and
-the connection form use it. Undo is a product feature with its own decisions
-(what a step is, what a save does to history). Its prerequisites are now in
-place: graph edits go through actions on one per-editor store.
+**Status: done.** `useWarnBeforeUnload` warns on closing a tab with unsaved
+changes; the editor, the object records table and the connection form use it.
+
+Canvas edits can be undone and redone, from the toolbar and the platform's
+keys. Every edit already went through `markDirty` or `dirtied`, so the store
+remembers the canvas before each there, up to fifty steps; edits within
+300 ms of each other are one step, so a drag is undone whole. Workflow
+settings staged in the settings dialog are not part of it.
 
 ### M11. `operations` ignores the feature conventions
 
@@ -683,9 +686,15 @@ run. The `overrides` in `package.json` are still undocumented.
 - Unit tests and Playwright build the server's objects from the same
   builders, `src/test/builders.ts`.
 
-Not done: visual snapshots are still opt-in and off, since baselines must be
-rendered on the CI platform; the real-backend projects need a runtara server
-this repository's CI does not have; neither can be made or checked from a developer's machine.
+- `expectMatchesSnapshot` compares wherever a baseline for the platform is
+  committed and skips where there is none, with no flag. The **Visual
+  baselines** workflow renders them on the runner the mocked job uses.
+
+Not done: no baselines are committed, because that workflow has to run on
+GitHub first; and the real-backend projects run in no workflow. They need a
+runtara server: its evaluation stack could be started in a job, but that
+could not be tried from a developer's machine here, and an untried job was
+not added.
 
 ## Low priority
 
