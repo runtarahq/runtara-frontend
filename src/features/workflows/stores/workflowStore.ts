@@ -122,9 +122,10 @@ export const useWorkflowStore = editorStore('workflow', () =>
             state.isStructurallyDirty = false;
           }),
 
-        setStagedNodeIds: (ids: Set<string>) =>
+        markNodeStaged: (nodeId) =>
           set((state) => {
-            state.stagedNodeIds = ids;
+            if (state.stagedNodeIds.has(nodeId)) return;
+            state.stagedNodeIds = new Set(state.stagedNodeIds).add(nodeId);
           }),
 
         setSelectedNodeId: (nodeId: string | null) =>

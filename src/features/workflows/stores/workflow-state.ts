@@ -89,7 +89,8 @@ export interface WorkflowState {
   resetState: () => void;
   /** With `savedRevision`, clears only if nothing was edited since then. */
   clearDirtyFlag: (savedRevision?: number) => void;
-  setStagedNodeIds: (ids: Set<string>) => void;
+  /** Marks a step as holding form edits not yet applied, for its card. */
+  markNodeStaged: (nodeId: string) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
   setPendingCenterNodeId: (nodeId: string | null) => void;
   setPendingNewNode: (node: WorkflowState['pendingNewNode']) => void;

@@ -14,7 +14,7 @@ import { composeExecutionGraph } from '@/features/workflows/components/WorkflowE
 import '@xyflow/react/dist/base.css';
 import { queryClient } from '@/shared/queries/query-client';
 import { slugify } from '@/shared/utils/string-utils';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
 import { DebugStepInspector } from '@/features/workflows/components/DebugStepInspector';
 import { EditorStoresProvider } from '@/features/workflows/stores/EditorStoresProvider';
@@ -30,7 +30,7 @@ import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { isWaitingSuspension } from '@/features/runs/utils/suspension';
 
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
-import { dropSavedEntries } from './drop-saved-entries';
+import { useStagedSettings } from './staged-settings';
 import { parseWorkflowImport } from './import-workflow';
 import { runFailureMessage } from './run-failure';
 import { useCompilationWatch } from './use-compilation-watch';
@@ -59,7 +59,7 @@ import {
   readCanvasDetail,
   writeCanvasDetail,
 } from '@/features/workflows/components/WorkflowEditor/editor-preferences';
-import type { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
+import { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
 import { isActiveStatus } from '@/shared/utils/status-display';
 
 // The page of one workflow. Its editor state lives in stores of its own
@@ -101,17 +101,8 @@ function WorkflowPage() {
   } = useCompilationWatch(workflowId);
 
   // Staged workflow changes (name, description, variables, schemas, timeout) - preserved until global save
-  const [stagedWorkflowChanges, setStagedWorkflowChanges] =
-    useState<WorkflowChanges>({});
-  const discardStagedChanges = useCallback(
-    () => setStagedWorkflowChanges({}),
-    []
-  );
-
-  // A new page starts with no steps highlighted as staged.
-  useEffect(() => {
-    useWorkflowStore.getState().setStagedNodeIds(new Set());
-  }, []);
+  const stagedWorkflowChanges = useStagedSettings((state) => state.staged);
+  const discardStagedChanges = useStagedSettings((state) => state.discard);
 
   // Whether there is anything unsaved, and asking before it is thrown away
   // (./use-unsaved-changes-guard.ts).
@@ -301,15 +292,7 @@ function WorkflowPage() {
 
   // Workflow-level changes from the settings panel and the canvas (e.g. a new
   // entry point), kept until the global save like node changes.
-  const handleWorkflowChange = useCallback(
-    (changes: Partial<typeof stagedWorkflowChanges>) => {
-      setStagedWorkflowChanges((prev) => ({
-        ...prev,
-        ...changes,
-      }));
-    },
-    []
-  );
+  const handleWorkflowChange = useStagedSettings((state) => state.stage);
 
   // One save at a time (WF-3).
   const handleSubmit = useOneAtATime((values: Record<string, any>) =>
@@ -317,7 +300,7 @@ function WorkflowPage() {
   );
 
   const submitWorkflow = async ({ name }: Record<string, any>) => {
-    // What this save sends; see dropSavedEntries.
+    // What this save sends; see useStagedSettings' settle.
     const sentWorkflowChanges = stagedWorkflowChanges;
     const finalState = useWorkflowStore.getState();
     const savedRevision = finalState.dirtyRevision;
@@ -367,9 +350,7 @@ function WorkflowPage() {
       });
       // Clear the staged changes this save sent. Ones edited while it was in
       // flight were not sent, so they stay staged and unsaved.
-      setStagedWorkflowChanges((current) =>
-        dropSavedEntries(current, sentWorkflowChanges)
-      );
+      useStagedSettings.getState().settle(sentWorkflowChanges);
       // Clear any validation errors from previous failed saves
       useValidationStore.getState().clearMessages();
     } catch (error: any) {
@@ -624,7 +605,7 @@ function WorkflowPage() {
       return;
     }
     try {
-      setStagedWorkflowChanges(imported.settings);
+      useStagedSettings.getState().replace(imported.settings);
       useWorkflowStore.getState().setExecutionGraph(imported.executionGraph);
       toast.info('Execution graph imported successfully');
     } catch (error) {
