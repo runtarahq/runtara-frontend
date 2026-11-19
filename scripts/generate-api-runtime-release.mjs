@@ -9,11 +9,19 @@
 // with the one checked in, and a difference fails. That is how CI tells that
 // the checked-in client is not the pinned release's.
 //
+// One thing is put right in the schema before the client is made from it: a
+// workflow's `executionGraph` is described there as free-form, though the
+// server keeps an ExecutionGraph in it, which the schema also defines. It is
+// pointed at that definition, so the client types the field and the editor
+// does not handle a graph as `any`. Once the server's schema says so itself,
+// the override finds nothing to change and can go.
+//
 // The client may be ahead of the pinned release for a while: generated from a
 // server whose changes are merged and not yet released. What it has beyond
 // the release is then recorded in scripts/api-runtime.pending.patch, which
 // --check applies to the release's client before comparing, so the known
-// difference passes and any other fails. --write-pending records the current
+// difference passes and any other fails. Generating applies it too, so
+// regenerating does not lose it. --write-pending records the current
 // difference. Delete the patch with the bump to the release that carries it:
 // --check fails on a patch that no longer applies.
 
@@ -52,8 +60,32 @@ if (!response.ok) {
 }
 const scratch = mkdtempSync(path.join(tmpdir(), 'runtara-openapi-'));
 const spec = path.join(scratch, 'openapi.json');
-writeFileSync(spec, Buffer.from(await response.arrayBuffer()));
-console.log(`openapi.json of runtara v${version}`);
+const schema = JSON.parse(Buffer.from(await response.arrayBuffer()).toString());
+const typed = typeExecutionGraphs(schema);
+writeFileSync(spec, JSON.stringify(schema));
+console.log(
+  `openapi.json of runtara v${version}` +
+    (typed > 0 ? `, executionGraph typed in ${typed} places` : '')
+);
+
+/**
+ * Points every free-form `executionGraph` property at the ExecutionGraph
+ * schema, and returns how many it changed.
+ */
+function typeExecutionGraphs(node) {
+  if (Array.isArray(node)) {
+    return node.reduce((count, item) => count + typeExecutionGraphs(item), 0);
+  }
+  if (!node || typeof node !== 'object') return 0;
+  let count = 0;
+  const graph = node.properties?.executionGraph;
+  if (graph && !graph.$ref && !graph.type && !graph.allOf && !graph.oneOf) {
+    graph.$ref = '#/components/schemas/ExecutionGraph';
+    count += 1;
+  }
+  for (const value of Object.values(node)) count += typeExecutionGraphs(value);
+  return count;
+}
 
 const result = spawnSync(
   'npx',
@@ -71,7 +103,28 @@ const result = spawnSync(
   ],
   { cwd: root, stdio: 'inherit' }
 );
-if (result.status !== 0 || !check) process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+if (!check) {
+  // The client checked in is the release's with the pending difference.
+  if (existsSync(pendingPatch)) {
+    const applied = spawnSync(
+      'patch',
+      ['--quiet', path.join(root, generated, name), pendingPatch],
+      { stdio: 'inherit' }
+    );
+    // `patch` keeps a copy of a file it had to shift a hunk in.
+    rmSync(`${path.join(root, generated, name)}.orig`, { force: true });
+    if (applied.status !== 0) {
+      console.error(
+        'scripts/api-runtime.pending.patch does not apply to the client just generated.'
+      );
+      process.exit(1);
+    }
+    console.log('Applied scripts/api-runtime.pending.patch');
+  }
+  process.exit(0);
+}
 
 const released = path.join(scratch, name);
 const checkedIn = path.join(root, generated, name);

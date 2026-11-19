@@ -40,7 +40,7 @@
  
  /** Aggregate function. JSON encoding is SCREAMING_SNAKE_CASE. */
  export type AggregateFn =
-@@ -5890,7 +5919,7 @@
+@@ -5892,7 +5921,7 @@
  > extends HttpClient<SecurityDataType> {
    api = {
      /**
@@ -49,7 +49,7 @@
       *
       * @tags oauth-callback
       * @name CallbackHandler
-@@ -5911,7 +5940,7 @@
+@@ -5913,7 +5942,7 @@
        },
        params: RequestParams = {},
      ) =>
@@ -58,7 +58,7 @@
          path: `/api/oauth/${tenantId}/callback`,
          method: "GET",
          query: query,
-@@ -6067,6 +6096,22 @@
+@@ -6069,6 +6098,22 @@
          secure: true,
          type: "application/json",
          format: "json",

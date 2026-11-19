@@ -90,14 +90,14 @@ export type ExecutionGraphDto = Partial<
 };
 
 /**
- * The execution graph of a workflow the server returned.
+ * The execution graph of a workflow the server returned, as the editor
+ * handles a graph: every part optional (`ExecutionGraphDto`), since one saved
+ * by an older version, or not finished, may lack any of them. A workflow
+ * that carries no graph reads as an empty one.
  *
- * The generated client types `executionGraph` as `any` on the workflow DTOs:
- * the server's OpenAPI schema describes the field as free-form there, though
- * it holds an `ExecutionGraph`. This is the one place the field is given its
- * type, so nothing past it handles the graph untyped. When the schema
- * references `ExecutionGraph` and the client is regenerated, the cast in
- * here becomes an identity and can go.
+ * The generated client types the field as the DSL's `ExecutionGraph`
+ * (scripts/generate-api-runtime-release.mjs sees to it where the server's
+ * schema leaves it free-form).
  */
 export function workflowExecutionGraph(workflow: {
   executionGraph?: unknown;

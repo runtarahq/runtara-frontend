@@ -198,12 +198,12 @@ alternatives were weighed and not taken:
   is meant to work one minor apart from the server, so it keeps what it does
   not know.
 
-On step 1, `executionGraph` is still `any` on the workflow DTOs of the
-generated client, which is the server's schema to change. The console no
-longer handles it untyped: `workflowExecutionGraph()` gives the field its
-type where a workflow is read, the one place it is read. When the server's
-OpenAPI schema references `ExecutionGraph` there and the client is
-regenerated, that function's cast becomes an identity.
+On step 1, the generated client types `executionGraph` as the DSL's
+`ExecutionGraph` on the workflow DTOs. The server's schema still describes
+the field as free-form; the generator
+(`scripts/generate-api-runtime-release.mjs`) points it at the `ExecutionGraph`
+definition the same schema has, before the client is made from it. When the
+server's schema says so itself, the override finds nothing to change.
 
 ### H3. Three contracts are unenforced
 

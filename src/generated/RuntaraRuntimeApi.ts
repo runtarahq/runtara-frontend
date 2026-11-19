@@ -1116,7 +1116,8 @@ export interface ApiResponseWorkflowDto {
      */
     currentVersionNumber: number;
     description: string;
-    executionGraph: any;
+    /** The execution graph containing all steps and control flow */
+    executionGraph: ExecutionGraph;
     /** @format int64 */
     executionTime?: number | null;
     /** @format int64 */
@@ -4873,7 +4874,7 @@ export interface UpdateWorkflowRequest {
    * The execution graph containing workflow definition.
    * Must include 'name' and optionally 'description' fields.
    */
-  executionGraph: any;
+  executionGraph: ExecutionGraph;
   /**
    * Linear memory a run may use, in MiB (optional, keeps existing if not provided).
    * @format int32
@@ -5269,7 +5270,8 @@ export interface WorkflowDto {
    */
   currentVersionNumber: number;
   description: string;
-  executionGraph: any;
+  /** The execution graph containing all steps and control flow */
+  executionGraph: ExecutionGraph;
   /** @format int64 */
   executionTime?: number | null;
   /** @format int64 */

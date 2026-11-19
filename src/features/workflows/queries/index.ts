@@ -9,6 +9,7 @@ import {
   ListStepTypesResponse,
   MoveWorkflowRequest,
   RenameFolderRequest,
+  UpdateWorkflowRequest,
   WorkflowInstanceDto,
 } from '@/generated/RuntaraRuntimeApi.ts';
 import { executionGraphToReactFlow } from '@/features/workflows/components/WorkflowEditor/CustomNodes/utils.tsx';
@@ -410,7 +411,9 @@ export async function updateWorkflow(newWorkflow: {
   const { id, data, memoryMb, trackEvents } = newWorkflow;
 
   const result = await RuntimeREST.api.updateWorkflowHandler(id, {
-    executionGraph: data,
+    // The editor saves a graph as it stands, unfinished or not: the server's
+    // validator, not this type, says what it lacks.
+    executionGraph: data as UpdateWorkflowRequest['executionGraph'],
     ...(memoryMb !== undefined ? { memoryMb } : {}),
     ...(trackEvents !== undefined ? { trackEvents } : {}),
   });
