@@ -9,8 +9,8 @@ import { DeleteQueue } from '../components/DeleteQueue';
 import {
   OperationHeader,
   OperationSection,
-  RefreshControls,
 } from '@/features/operations/components/shared';
+import { RefreshControls } from '@/features/runs/components/RunActions';
 import { queryKeys } from '@/shared/queries/query-keys';
 export function QueuesPage() {
   const { views, processes } = useOperations();

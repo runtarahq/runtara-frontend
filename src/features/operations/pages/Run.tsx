@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { stateLabel } from '@/features/operations/utils/state-label';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import { Link, useParams } from 'react-router';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
@@ -19,18 +19,23 @@ import {
   getPendingInput,
   getStepSummaries,
 } from '@/features/workflows/queries';
-import { RunStatusPill } from '@/features/invocation-history/components/RunLinks';
+import { RunStatusPill } from '@/features/runs/components/RunLinks';
 import { ActionForm } from '@/features/workflows/components/ActionForm';
 import { InputRetryPanel } from '@/features/workflows/components/ManagedInputSubmissions';
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
 import { StatePanel } from '../components/RunStateCard';
-import { StateValue, type StateField } from '../components/StateValue';
+import {
+  StateValue,
+  type StateField,
+} from '@/features/runs/components/StateValue';
 import {
   OperationHeader,
   OperationSection,
+} from '@/features/operations/components/shared';
+import {
   RefreshControls,
   ReplayButton,
-} from '@/features/operations/components/shared';
+} from '@/features/runs/components/RunActions';
 import { useOperations } from '@/features/operations/queries';
 import { isActiveStatus } from '@/shared/utils/status-display';
 import {

@@ -2,7 +2,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/shared/stores/authStore';
-import type { ExecutionHistoryItem } from '../types';
+import type { ExecutionHistoryItem } from '@/features/runs/types';
 import { RunActions, RunContext, RunIdentity } from './RunRow';
 vi.mock('@/features/workflows/components/ResumeButton', () => ({
   ResumeButton: () => <button>Resume</button>,

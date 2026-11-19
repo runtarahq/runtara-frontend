@@ -14,20 +14,20 @@ import type {
   ExecutionPhase,
   SuspensionReason,
 } from '@/generated/RuntaraRuntimeApi';
-import { executionDisplayName } from '@/features/workflows/utils/run-label';
+import { executionDisplayName } from '@/features/runs/utils/run-label';
 import {
   isWaitingInProcess,
   suspendedStatusLabel,
-} from '@/features/workflows/utils/suspension';
-import { getAllExecutions } from '../queries';
+} from '@/features/runs/utils/suspension';
+import { getAllExecutions } from '@/features/runs/queries/executions';
 import {
   childRunsListPath,
   childRunsQueryParams,
   findRun,
   runDetailPath,
   runLookupQueryParams,
-} from '../utils/run-links';
-import { shortRunId } from '../utils/column-layout';
+} from '@/features/runs/utils/run-links';
+import { shortRunId } from '@/features/runs/utils/column-layout';
 
 type ExecutionsPage = Awaited<ReturnType<typeof getAllExecutions>>;
 

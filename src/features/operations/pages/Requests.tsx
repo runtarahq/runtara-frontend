@@ -12,8 +12,8 @@ import { RequestRows } from '../components/RequestRows';
 import {
   OperationHeader,
   OperationSection,
-  RefreshControls,
 } from '@/features/operations/components/shared';
+import { RefreshControls } from '@/features/runs/components/RunActions';
 import { failedWithNothingToShow } from '@/features/operations/utils/poll-errors';
 
 import { queryKeys } from '@/shared/queries/query-keys';

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { DataTable } from '@/shared/components/table';
-import type { ExecutionHistoryItem } from '../types';
+import type { ExecutionHistoryItem } from '@/features/runs/types';
 import { invocationHistoryColumns } from './InvocationHistoryColumns';
 
 vi.mock('@/features/workflows/components/ResumeButton', () => ({
@@ -14,7 +14,7 @@ vi.mock('@/features/workflows/components/StopButton', () => ({
 vi.mock('@/features/workflows/components/ReplayButton', () => ({
   ReplayButton: () => <button>Replay</button>,
 }));
-vi.mock('./RunLinks', () => ({
+vi.mock('@/features/runs/components/RunLinks', () => ({
   ParentRunLink: ({
     parentInstanceId,
     compact,

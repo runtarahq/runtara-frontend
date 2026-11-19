@@ -7,11 +7,8 @@ import type {
   QueryExecutionsRequest,
   StateFilterDto,
 } from '@/generated/RuntaraRuntimeApi';
-import {
-  defaultView,
-  operationsRequest,
-  selectedFields,
-} from '@/features/operations/queries';
+import { defaultView, selectedFields } from '@/features/operations/queries';
+import { operationsRequest } from '@/features/runs/queries';
 
 export interface AttentionRequest {
   row: OperationRequest;

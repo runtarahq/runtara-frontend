@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { useCustomQuery, useTableQuery } from '@/shared/hooks/api';
-import { getAllExecutions } from '@/features/invocation-history/queries';
+import { getAllExecutions } from '@/features/runs/queries/executions';
 import { getStepSummaries } from '@/features/workflows/queries';
 import {
   ExecutionHistoryFilters,
   ExecutionHistoryItem,
-} from '@/features/invocation-history/types';
+} from '@/features/runs/types';
 import { formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { Icons } from '@/shared/components/icons';
@@ -32,7 +32,7 @@ import { StepStatusBadge } from '@/features/workflows/components/StepStatusBadge
 import {
   canResume,
   suspendedStatusLabel,
-} from '@/features/workflows/utils/suspension';
+} from '@/features/runs/utils/suspension';
 
 interface HistoryPanelContentProps {
   workflowId: string;

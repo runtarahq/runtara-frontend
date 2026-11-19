@@ -9,20 +9,17 @@ import { useAuthStore } from '@/shared/stores/authStore';
 import {
   useOperations,
   queryRuns,
-  queryRunSummary,
-  operationsRequest,
   selectedFields,
 } from '@/features/operations/queries';
+import { queryRunSummary, operationsRequest } from '@/features/runs/queries';
 import {
   attentionQueues,
   attentionRequest,
   overdueFilters,
 } from '@/features/operations/queries/attention-requests';
 import { OverviewAttention } from '../components/OverviewAttention';
-import {
-  RefreshControls,
-  RunRows,
-} from '@/features/operations/components/shared';
+import { RunRows } from '@/features/operations/components/shared';
+import { RefreshControls } from '@/features/runs/components/RunActions';
 import type { OperationRequestPage } from '@/generated/RuntaraRuntimeApi';
 
 import { queryKeys } from '@/shared/queries/query-keys';

@@ -26,7 +26,7 @@ import {
 } from '@/features/workflows/queries';
 import { usePageTitle } from '@/shared/hooks/usePageTitle';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
-import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
+import { isWaitingSuspension } from '@/features/runs/utils/suspension';
 
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
 import { dropSavedEntries } from './drop-saved-entries';

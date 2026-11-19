@@ -3,7 +3,10 @@ import {
   WorkflowInstanceDto,
 } from '@/generated/RuntaraRuntimeApi';
 import { RuntimeREST } from '@/shared/queries';
-import { ExecutionHistoryItem, ExecutionHistoryFilters } from '../types';
+import {
+  ExecutionHistoryItem,
+  ExecutionHistoryFilters,
+} from '@/features/runs/types';
 
 // Extended type for instances that may include additional fields from the API
 type WorkflowInstanceWithTimestamps = WorkflowInstanceDto & {

@@ -25,7 +25,7 @@ import {
   Hourglass,
 } from 'lucide-react';
 import type { SuspensionReason } from '@/generated/RuntaraRuntimeApi';
-import { waitingStatusText } from '@/features/workflows/utils/suspension';
+import { waitingStatusText } from '@/features/runs/utils/suspension';
 import { CanvasDetailToggle } from '@/features/workflows/components/WorkflowEditor/CanvasDetailToggle';
 import type { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
 

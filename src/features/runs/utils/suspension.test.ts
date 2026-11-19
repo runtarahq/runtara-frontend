@@ -7,7 +7,7 @@ import {
   suspendedStatusLabel,
   suspensionReasonLabel,
   waitingStatusText,
-} from './suspension';
+} from '@/features/runs/utils/suspension';
 
 describe('suspension helpers', () => {
   it('treats only a running run in an in-process wait as waiting in process', () => {

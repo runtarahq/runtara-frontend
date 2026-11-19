@@ -1,4 +1,4 @@
-import { stateLabel } from '@/features/operations/utils/state-label';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -13,11 +13,10 @@ import { Input } from '@/shared/components/ui/input';
 import {
   currentRevision,
   isRevisionConflict,
-  operationsRequest,
-  message,
 } from '@/features/operations/queries';
-import { type StateField } from './StateValue';
-import { RUN_STATUS_OPTIONS } from '@/features/invocation-history/status-options';
+import { operationsRequest, message } from '@/features/runs/queries';
+import { type StateField } from '@/features/runs/components/StateValue';
+import { RUN_STATUS_OPTIONS } from '@/features/runs/utils/status-options';
 
 import { queryKeys } from '@/shared/queries/query-keys';
 export function ViewEditor({

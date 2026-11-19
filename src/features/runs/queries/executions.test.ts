@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { getAllExecutions } from './index';
+import { getAllExecutions } from '@/features/runs/queries/executions';
 
 const list = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/queries', () => ({

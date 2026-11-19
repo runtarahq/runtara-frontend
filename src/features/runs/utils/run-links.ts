@@ -1,4 +1,7 @@
-import type { ExecutionHistoryFilters, ExecutionHistoryItem } from '../types';
+import type {
+  ExecutionHistoryFilters,
+  ExecutionHistoryItem,
+} from '@/features/runs/types';
 
 /** Detail page of one run. */
 export function runDetailPath(workflowId: string, instanceId: string): string {

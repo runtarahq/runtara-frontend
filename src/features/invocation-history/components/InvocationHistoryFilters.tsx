@@ -1,6 +1,6 @@
 import { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
-import { ExecutionHistoryFilters } from '../types';
-import { RUN_STATUS_OPTIONS } from '../status-options';
+import { ExecutionHistoryFilters } from '@/features/runs/types';
+import { RUN_STATUS_OPTIONS } from '@/features/runs/utils/status-options';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import {

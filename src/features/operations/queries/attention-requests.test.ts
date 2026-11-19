@@ -9,8 +9,8 @@ import {
   type AttentionQueue,
 } from '@/features/operations/queries/attention-requests';
 const request = vi.hoisted(() => vi.fn());
-vi.mock('@/features/operations/queries', async () => ({
-  ...(await vi.importActual('@/features/operations/queries')),
+vi.mock('@/features/runs/queries', async () => ({
+  ...(await vi.importActual('@/features/runs/queries')),
   operationsRequest: request,
 }));
 const now = Date.parse('2026-09-29T12:00:00Z');

@@ -1,11 +1,17 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { ChildRunsCard, ParentRunLink, RunStatusPill } from './RunLinks';
+import {
+  ChildRunsCard,
+  ParentRunLink,
+  RunStatusPill,
+} from '@/features/runs/components/RunLinks';
 
 const query = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/hooks/api', () => ({ useCustomQuery: query }));
-vi.mock('../queries', () => ({ getAllExecutions: vi.fn() }));
+vi.mock('@/features/runs/queries/executions', () => ({
+  getAllExecutions: vi.fn(),
+}));
 
 const item = (instanceId: string, extra: Record<string, unknown> = {}) => ({
   instanceId,

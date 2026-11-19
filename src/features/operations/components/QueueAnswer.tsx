@@ -1,4 +1,4 @@
-import { stateLabel } from '@/features/operations/utils/state-label';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import { inlineOptions } from '@/features/operations/utils/answer-options';
 import { Link } from 'react-router';
 import {

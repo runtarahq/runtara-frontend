@@ -12,8 +12,8 @@ import {
   isActiveStatus,
 } from '@/shared/utils/status-display';
 import { Spinner } from '@/shared/components/ui/spinner';
-import { suspendedStatusLabel } from '@/features/workflows/utils/suspension';
-import { ParentRunLink } from '@/features/invocation-history/components/RunLinks';
+import { suspendedStatusLabel } from '@/features/runs/utils/suspension';
+import { ParentRunLink } from '@/features/runs/components/RunLinks';
 import type { ExecutionStats } from '@/features/workflows/components/ExecutionTimeline';
 import { getStepTypeStyle } from '@/features/workflows/components/ExecutionTimeline/step-type-style';
 import type { WorkflowInstanceWithMetadata } from '@/features/workflows/queries';

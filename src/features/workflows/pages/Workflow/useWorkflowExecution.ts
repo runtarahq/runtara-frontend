@@ -19,7 +19,7 @@ import {
 import {
   isAtBreakpoint,
   isWaitingSuspension,
-} from '@/features/workflows/utils/suspension';
+} from '@/features/runs/utils/suspension';
 import { createStepNodeResolver } from '@/features/workflows/utils/step-node-resolver';
 import type { ExecutionStatus } from '@/generated/RuntaraRuntimeApi';
 import { breakpointKey } from './breakpoint-key';

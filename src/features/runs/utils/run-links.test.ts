@@ -5,8 +5,8 @@ import {
   findRun,
   runDetailPath,
   runLookupQueryParams,
-} from './run-links';
-import type { ExecutionHistoryItem } from '../types';
+} from '@/features/runs/utils/run-links';
+import type { ExecutionHistoryItem } from '@/features/runs/types';
 
 const run = (instanceId: string, workflowId = 'wf'): ExecutionHistoryItem => ({
   instanceId,

@@ -1,6 +1,6 @@
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
-import { useVersionStateSchema } from '@/features/operations/hooks/useVersionStateSchema';
-import { stateLabel } from '@/features/operations/utils/state-label';
+import { useVersionStateSchema } from '@/features/runs/hooks/useVersionStateSchema';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import { PayloadExplorer } from '@/shared/components/PayloadExplorer';
 import { formatRelativeTime } from '@/lib/utils';
 import {
@@ -43,8 +43,8 @@ import {
 } from '@/features/workflows/components/ExecutionTimeline';
 import { RunOverviewCard } from './RunOverviewCard';
 import { GuestOutputCard } from './GuestOutputCard';
-import { canResume } from '@/features/workflows/utils/suspension';
-import { ChildRunsCard } from '@/features/invocation-history/components/RunLinks';
+import { canResume } from '@/features/runs/utils/suspension';
+import { ChildRunsCard } from '@/features/runs/components/RunLinks';
 
 /** Outputs may be stored as a JSON string; show them parsed when they are. */
 function parseRunOutputs(outputs: unknown): unknown {

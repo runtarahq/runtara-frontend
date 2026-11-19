@@ -1,4 +1,4 @@
-import type { StateField } from '@/features/operations/components/StateValue';
+import type { StateField } from '@/features/runs/components/StateValue';
 export function stateLabel(key: string, field?: StateField) {
   return (
     field?.label ??

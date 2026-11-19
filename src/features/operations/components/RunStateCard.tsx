@@ -1,11 +1,14 @@
-import { stateLabel } from '@/features/operations/utils/state-label';
+import { stateLabel } from '@/features/runs/utils/state-label';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/shared/components/ui/card';
-import { StateValue, type StateField } from './StateValue';
+import {
+  StateValue,
+  type StateField,
+} from '@/features/runs/components/StateValue';
 
 export function StatePanel({
   state,

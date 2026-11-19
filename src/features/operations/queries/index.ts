@@ -1,4 +1,3 @@
-import { RuntimeREST } from '@/shared/queries';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
 import type {
@@ -12,18 +11,7 @@ import type {
 } from '@/generated/RuntaraRuntimeApi';
 
 import { queryKeys } from '@/shared/queries/query-keys';
-export async function operationsRequest<T>(
-  path: string,
-  method = 'GET',
-  data?: unknown
-): Promise<T> {
-  const response = await RuntimeREST.instance.request<{ data: T }>({
-    url: `/api/runtime/${path}`,
-    method,
-    data,
-  });
-  return response.data.data;
-}
+import { operationsRequest } from '@/features/runs/queries';
 export function useOperations({ includeProcesses = true } = {}) {
   const tenant = useAuthStore((s) => s.orgId);
   const queues = useCustomQuery({
@@ -129,16 +117,6 @@ export function queryRuns(query: QueryExecutionsRequest) {
     query
   );
 }
-export function message(error: unknown): string {
-  const e = error as {
-    response?: { data?: { message?: string } };
-    message?: string;
-  };
-  return (
-    e.response?.data?.message ?? e.message ?? 'The request failed. Try again.'
-  );
-}
-
 export function failureText(
   summary:
     | import('@/generated/RuntaraRuntimeApi').OperationErrorSummary
@@ -157,48 +135,6 @@ export function failureText(
     severity: summary.severity ?? 'error',
     attributes: {},
   });
-}
-
-/** Present a readable failure, including terminal errors without step events. */
-export function describeFailure(
-  run: Pick<
-    import('@/generated/RuntaraRuntimeApi').WorkflowInstanceDto,
-    'error' | 'errorSummary'
-  >
-): { message: string; code?: string | null; category?: string | null } {
-  if (run.errorSummary) return run.errorSummary;
-  try {
-    const value: unknown = JSON.parse(run.error ?? 'null');
-    if (
-      value &&
-      typeof value === 'object' &&
-      'message' in value &&
-      typeof value.message === 'string'
-    ) {
-      return {
-        message: value.message,
-        code:
-          'code' in value && typeof value.code === 'string'
-            ? value.code
-            : undefined,
-        category:
-          'category' in value && typeof value.category === 'string'
-            ? value.category
-            : undefined,
-      };
-    }
-  } catch {
-    /* Host failures may be plain text. */
-  }
-  return { message: run.error || 'No error details recorded' };
-}
-
-export async function queryRunSummary(
-  filters: import('@/generated/RuntaraRuntimeApi').ExecutionSummaryRequest
-) {
-  return operationsRequest<
-    import('@/generated/RuntaraRuntimeApi').ExecutionSummary
-  >('executions/summary', 'POST', filters);
 }
 
 /** Whether a request failed because the saved view moved to a new revision. */

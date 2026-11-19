@@ -14,9 +14,8 @@ import {
 import {
   currentRevision,
   isRevisionConflict,
-  message,
-  operationsRequest,
 } from '@/features/operations/queries';
+import { message, operationsRequest } from '@/features/runs/queries';
 
 import { queryKeys } from '@/shared/queries/query-keys';
 export function DeleteQueue({

@@ -5,7 +5,7 @@ import {
   responsiveColumnClass,
   shortRunId,
   type InvocationColumnId,
-} from './column-layout';
+} from '@/features/runs/utils/column-layout';
 
 const ALL: InvocationColumnId[] = [
   'workflowId',

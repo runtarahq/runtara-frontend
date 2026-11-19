@@ -3,8 +3,8 @@ import {
   resolveQuery,
   selectedFields,
   failureText,
-  describeFailure,
 } from '@/features/operations/queries';
+import { describeFailure } from '@/features/runs/queries';
 import { inlineOptions } from '@/features/operations/utils/answer-options';
 import type { OperationViewConfig } from '@/generated/RuntaraRuntimeApi';
 

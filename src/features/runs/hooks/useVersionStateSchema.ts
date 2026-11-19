@@ -1,7 +1,7 @@
 import { useCustomQuery } from '@/shared/hooks/api';
 import { RuntimeREST } from '@/shared/queries';
 import { queryKeys } from '@/shared/queries/query-keys';
-import type { StateField } from '@/features/operations/components/StateValue';
+import type { StateField } from '@/features/runs/components/StateValue';
 
 /** The state schema of a workflow version: field labels, formats and order. */
 export function useVersionStateSchema(workflowId: string, version: number) {

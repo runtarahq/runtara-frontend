@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { AlertTriangle, Eye } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
-import { StateValue } from './StateValue';
+import { StateValue } from '@/features/runs/components/StateValue';
 import type { AttentionRequest } from '@/features/operations/queries/attention-requests';
 
 const rowClass =

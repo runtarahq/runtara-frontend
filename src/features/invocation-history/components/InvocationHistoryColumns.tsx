@@ -1,8 +1,8 @@
-import { executionDisplayName } from '@/features/workflows/utils/run-label';
+import { executionDisplayName } from '@/features/runs/utils/run-label';
 import { ColumnDef } from '@tanstack/react-table';
 import { Link } from 'react-router';
 import { ExternalLink, Eye, Zap, MessageSquare, Bug } from 'lucide-react';
-import { ExecutionHistoryItem } from '../types';
+import { ExecutionHistoryItem } from '@/features/runs/types';
 import { cn, formatDate } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
@@ -11,12 +11,15 @@ import { isActiveStatus } from '@/shared/utils/status-display';
 import { ReplayButton } from '@/features/workflows/components/ReplayButton';
 import { ResumeButton } from '@/features/workflows/components/ResumeButton';
 import { StopButton } from '@/features/workflows/components/StopButton';
-import { canResume } from '@/features/workflows/utils/suspension';
-import { ParentRunLink, RunStatusPill } from './RunLinks';
+import { canResume } from '@/features/runs/utils/suspension';
+import {
+  ParentRunLink,
+  RunStatusPill,
+} from '@/features/runs/components/RunLinks';
 import {
   responsiveColumnClass,
   type InvocationColumnId,
-} from '../utils/column-layout';
+} from '@/features/runs/utils/column-layout';
 
 /** Column meta that hides a lower-priority column on narrower viewports. */
 const responsiveMeta = (columnId: InvocationColumnId) => {

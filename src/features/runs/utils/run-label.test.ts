@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { executionDisplayName } from './run-label';
+import { executionDisplayName } from '@/features/runs/utils/run-label';
 
 describe('run labels', () => {
   it('shows the label with existing fallbacks', () => {

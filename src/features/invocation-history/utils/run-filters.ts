@@ -1,4 +1,4 @@
-import type { ExecutionHistoryFilters } from '../types';
+import type { ExecutionHistoryFilters } from '@/features/runs/types';
 
 const keys = [
   'workflowId',
