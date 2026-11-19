@@ -1,3 +1,7 @@
+import {
+  placeAfterContainer,
+  placeContainerErrorHandler,
+} from './container-placement';
 import { memo, useCallback, useState } from 'react';
 import {
   Handle,
@@ -75,11 +79,6 @@ function Container({
         positionAbsolute?: { x: number; y: number };
       };
       if (!currentNode) return;
-
-      const currentPosAbsX =
-        currentNode.positionAbsolute?.x ?? currentNode.position.x;
-      const currentPosAbsY =
-        currentNode.positionAbsolute?.y ?? currentNode.position.y;
       const currentWidth =
         (currentNode.style?.width as number) ||
         (currentNode.width as number) ||
@@ -114,19 +113,16 @@ function Container({
         };
         parentNodeId = id;
       } else {
-        // Creating a sibling node outside the container (original behavior)
-        // Get current node's actual height from config (don't trust height prop - it can change with resizing)
-        const currentNodeHeight =
-          NODE_TYPE_SIZES[NODE_TYPES.ContainerNode].height; // 168px
-
-        // Calculate handle positions to align them (handles are at node center)
-        const currentHandleY = currentPosAbsY + currentNodeHeight / 2;
-        const newNodeHandleOffset = newNodeSize.height / 2;
-
-        position = {
-          x: currentPosAbsX + currentWidth + 108, // Will be snapped to grid by store
-          y: currentHandleY - newNodeHandleOffset, // Keep precise for handle alignment
-        };
+        // A step after the container: its sibling, in the same parent. The
+        // height is the config's (the measured one changes with resizing).
+        ({ position, parentId: parentNodeId } = placeAfterContainer(
+          currentNode,
+          {
+            width: currentWidth,
+            height: NODE_TYPE_SIZES[NODE_TYPES.ContainerNode].height,
+          },
+          newNodeSize
+        ));
       }
 
       // Set pending new node - will be created when user confirms in dialog
@@ -171,11 +167,6 @@ function Container({
       positionAbsolute?: { x: number; y: number };
     };
     if (!currentNode) return;
-
-    const currentPosAbsX =
-      currentNode.positionAbsolute?.x ?? currentNode.position.x;
-    const currentPosAbsY =
-      currentNode.positionAbsolute?.y ?? currentNode.position.y;
     const currentWidth =
       (currentNode.style?.width as number) ||
       (currentNode.width as number) ||
@@ -194,10 +185,11 @@ function Container({
 
     const newNodeSize = NODE_TYPE_SIZES[NODE_TYPES.BasicNode];
 
-    const position = {
-      x: currentPosAbsX + currentWidth / 2 - newNodeSize.width / 2,
-      y: currentPosAbsY + currentHeight + 80,
-    };
+    const { position, parentId } = placeContainerErrorHandler(
+      currentNode,
+      { width: currentWidth, height: currentHeight },
+      newNodeSize
+    );
 
     setPendingNewNode({
       id: generateStepId(
@@ -206,6 +198,7 @@ function Container({
       ),
       data: nodeData as any,
       position,
+      parentId,
       sourceNodeId: id,
       sourceHandle: 'onError',
     });
