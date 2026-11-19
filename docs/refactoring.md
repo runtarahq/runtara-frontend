@@ -339,18 +339,17 @@ pipeline before moving it.
 
 | Module                                      | Lines at the audit | Lines now | What moved out, each with tests                                                                                                                                                      |
 | ------------------------------------------- | ------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `WF/pages/Workflow/index.tsx`               | 1,635              | 921       | `save-workflow.ts`, `workflow-settings.ts`, `import-workflow.ts`, `use-compilation-watch.ts`, `use-workflow-load.ts` (loading and version switching), `use-unsaved-changes-guard.ts` |
-| `WE/index.tsx`                              | 1,640              | 1,234     | `pending-step.ts` (placing and wiring a picked step), `use-canvas-fit.ts` (viewport fitting)                                                                                         |
+| `WF/pages/Workflow/index.tsx`               | 1,635              | 893       | `save-workflow.ts`, `workflow-settings.ts`, `import-workflow.ts`, `use-compilation-watch.ts`, `use-workflow-load.ts` (loading and version switching), `use-unsaved-changes-guard.ts` |
+| `WE/index.tsx`                              | 1,640              | 1,208     | `pending-step.ts` (placing and wiring a picked step), `use-canvas-fit.ts` (viewport fitting), `apply-step-edit.ts`                                                                   |
 | `WF/stores/workflowStore.ts`                | 1,460              | 902       | `canvas-geometry.ts` (`insertStepBetween`, `applyCanvasNodeChanges`, `expandParentToFitChildren`)                                                                                    |
 | `WF/pages/Workflow/useWorkflowExecution.ts` | 635                | 635       | Nothing moved; it now has tests of its own (11)                                                                                                                                      |
 
 The hooks taken out of the page run where the code they replace ran, so its
 effects fire in the order they did.
 
-What the three modules still hold is orchestration of the pieces above. Two
-handlers in the page (execute and debug-execute) are near copies of each
-other, and the editor component's node save still validates, renames and
-writes in one callback; both are smaller follow-ups than a seam.
+What the three modules still hold is orchestration of the pieces above. The
+page's two run handlers are one (`startRun`, with `run-failure.ts` for what a
+refusal says), and writing a step edit is `apply-step-edit.ts`.
 
 ## Medium priority
 

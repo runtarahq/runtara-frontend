@@ -5,7 +5,7 @@ import {
 import { useWorkflowExecution } from './useWorkflowExecution';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
-import { useCustomMutation, isEntitlementDenial } from '@/shared/hooks/api';
+import { useCustomMutation } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { WorkflowEditor } from '@/features/workflows/components/WorkflowEditor';
 import { WorkflowActionsForm } from '@/features/workflows/pages/Workflow/WorkflowActionsForm';
@@ -31,6 +31,7 @@ import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
 import { dropSavedEntries } from './drop-saved-entries';
 import { parseWorkflowImport } from './import-workflow';
+import { runFailureMessage } from './run-failure';
 import { useCompilationWatch } from './use-compilation-watch';
 import { useUnsavedChangesGuard } from './use-unsaved-changes-guard';
 import { useVersionSelection, useWorkflowLoad } from './use-workflow-load';
@@ -442,42 +443,47 @@ export function Workflow() {
     setExecuteDialogOpen(true);
   };
 
-  const handleExecuteWorkflow = async (inputs: Record<string, any>) => {
+  // Starts a run, plain or under the debugger, from its dialog or (for a
+  // workflow that takes no input) straight from the toolbar. A refusal is
+  // shown in the dialog when it is open, else as a toast.
+  const startRun = async (
+    inputs: Record<string, any>,
+    mode: 'run' | 'debug'
+  ) => {
     if (!workflowId) {
       toast.error('Workflow ID is missing');
       return;
     }
-
-    const trackEvents = data.trackEvents || false;
+    const debug = mode === 'debug';
+    const dialogOpen = debug ? debugExecuteDialogOpen : executeDialogOpen;
+    const setDialogOpen = debug
+      ? setDebugExecuteDialogOpen
+      : setExecuteDialogOpen;
     setExecuteError(null);
 
     try {
       await scheduleMutation.mutateAsync({
         workflowId,
-        trackEvents,
+        // A debug run always tracks its events.
+        trackEvents: debug ? true : data.trackEvents || false,
         inputs,
         version: selectedVersion,
+        ...(debug ? { debug: true } : {}),
       });
-      setExecuteDialogOpen(false);
-    } catch (error: any) {
-      // Entitlement-shaped denials (403, or 429 for maxConcurrentExecutions)
-      // are already
-      // surfaced by the shared useCustomMutation handler with a proper
-      // message — bail so we don't show the raw summary a second time
-      // (SYN-433: entitlement double-popup).
-      if (isEntitlementDenial(error)) return;
-      const apiError =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        error?.message;
-      const errorMessage = apiError || 'Input validation failed';
-      if (executeDialogOpen) {
-        setExecuteError(errorMessage);
+      setDialogOpen(false);
+    } catch (error: unknown) {
+      const message = runFailureMessage(error);
+      if (message === null) return;
+      if (dialogOpen) {
+        setExecuteError(message);
       } else {
-        toast.error(errorMessage);
+        toast.error(message);
       }
     }
   };
+
+  const handleExecuteWorkflow = (inputs: Record<string, any>) =>
+    startRun(inputs, 'run');
 
   // ── Server-side Debug Execution (breakpoints) ──────────────────────────
   const [debugExecuteDialogOpen, setDebugExecuteDialogOpen] = useState(false);
@@ -495,41 +501,8 @@ export function Workflow() {
     setDebugExecuteDialogOpen(true);
   };
 
-  const handleDebugExecuteServerSubmit = async (
-    inputs: Record<string, any>
-  ) => {
-    if (!workflowId) {
-      toast.error('Workflow ID is missing');
-      return;
-    }
-
-    setExecuteError(null);
-
-    try {
-      await scheduleMutation.mutateAsync({
-        workflowId,
-        trackEvents: true, // Always enable event tracking in debug mode
-        inputs,
-        version: selectedVersion,
-        debug: true,
-      });
-      setDebugExecuteDialogOpen(false);
-    } catch (error: any) {
-      // See note in handleExecuteSubmit — shared handler already toasted any
-      // entitlement denial (SYN-433: entitlement double-popup).
-      if (isEntitlementDenial(error)) return;
-      const apiError =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        error?.message;
-      const errorMessage = apiError || 'Input validation failed';
-      if (debugExecuteDialogOpen) {
-        setExecuteError(errorMessage);
-      } else {
-        toast.error(errorMessage);
-      }
-    }
-  };
+  const handleDebugExecuteServerSubmit = (inputs: Record<string, any>) =>
+    startRun(inputs, 'debug');
 
   /**
    * Navigate to a specific step in the workflow editor.

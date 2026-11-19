@@ -1,5 +1,4 @@
 import { useCanvasLayout } from './useCanvasLayout';
-import { withMemoryConversation } from './NodeForm/memory-conversation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
@@ -15,10 +14,7 @@ import {
   useStoreApi,
   OnConnectEnd,
 } from '@xyflow/react';
-import {
-  dirtied,
-  useWorkflowStore,
-} from '@/features/workflows/stores/workflowStore.ts';
+import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { toast } from 'sonner';
@@ -33,7 +29,6 @@ import {
   snapPositionToGrid,
 } from '@/features/workflows/config/workflow-editor.ts';
 import { validateConnection } from '@/features/workflows/utils/graph-validation';
-import type { StepNodeData } from '@/features/workflows/types/execution-graph';
 
 import * as form from './NodeForm/NodeFormItem.tsx';
 import {
@@ -51,9 +46,9 @@ import {
   NoteNode,
   StartIndicatorNode,
 } from './CustomNodes';
-import { canvasNodeStepId } from './CustomNodes/utils.tsx';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { useEditingNode } from './use-editing-node';
+import { applyStepEdit, stepEditOf } from './apply-step-edit';
 import {
   CANVAS_FIT_VIEW_OPTIONS,
   CANVAS_MIN_ZOOM,
@@ -286,7 +281,6 @@ function WorkflowEditorContent({
   );
   const removeNode = useWorkflowStore((state) => state.removeNode);
   const placeNote = useWorkflowStore((state) => state.placeNote);
-  const updateNode = useWorkflowStore((state) => state.updateNode);
 
   const { getIntersectingNodes, screenToFlowPosition, setCenter, getZoom } =
     useReactFlow();
@@ -808,44 +802,24 @@ function WorkflowEditorContent({
       // A staged step id rename is applied here, with the rest of the edit.
       // Form-only fields: the staged rename, and the on-wait JSON error that
       // only exists to block Save (ED-32).
-      const { renameStepTo, ...data } = submitted;
-      delete (data as { onWaitJsonError?: unknown }).onWaitJsonError;
-      delete (data as { addOnWaitFlow?: unknown }).addOnWaitFlow;
+      const { data, renameStepTo } = stepEditOf(submitted);
       const canApply = await validateNodeEditCandidate(
         nodeId,
         data as form.SchemaType
       );
       if (!canApply) return false;
 
-      let savedId = nodeId;
-      if (renameStepTo && renameStepTo !== canvasNodeStepId(nodeId)) {
-        const renameError = useWorkflowStore
-          .getState()
-          .renameStep(nodeId, renameStepTo);
-        if (renameError) {
-          toast.error(renameError);
-          return false;
-        }
-        savedId =
-          useWorkflowStore.getState().lastStepRename?.newId ?? renameStepTo;
+      // The rename, the data and what follows from it (./apply-step-edit.ts).
+      const applied = applyStepEdit(nodeId, data, renameStepTo);
+      if ('error' in applied) {
+        toast.error(applied.error);
+        return false;
       }
-      updateNode(savedId, data as unknown as StepNodeData);
-      // An AI Agent's conversation id reaches its memory provider on Save
-      // only (ED-33).
-      const synced = withMemoryConversation(
-        useWorkflowStore.getState().nodes,
-        data.inputMapping
-      );
-      if (synced)
-        useWorkflowStore.setState((state) => ({
-          nodes: synced,
-          ...dirtied(state),
-        }));
       memoryDraftRef.current = null;
       closeNodeConfig();
       return true;
     },
-    [validateNodeEditCandidate, updateNode, closeNodeConfig]
+    [validateNodeEditCandidate, closeNodeConfig]
   );
 
   const handleNodeDelete = useCallback(
