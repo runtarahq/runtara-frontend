@@ -13,7 +13,10 @@ export default defineConfig({
   },
 
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router'],
+    // `react-dom/client` by name: left to be discovered on the first page
+    // load, it is bundled in a second pass under another version stamp, and
+    // a cold dev server (CI's, for the audit specs) reloads mid-test.
+    include: ['react', 'react-dom', 'react-dom/client', 'react-router'],
     exclude: ['@vite/client', '@vite/env'],
   },
 
