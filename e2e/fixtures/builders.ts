@@ -57,21 +57,27 @@ export function buildConnectionType(
     displayName: 'HTTP',
     description: 'Generic HTTP connection',
     category: 'api',
-    fields: [],
     ...overrides,
   } as ConnectionTypeDto;
 }
 
-export function buildWorkflow(
-  overrides: DeepPartial<WorkflowDto> = {}
-): WorkflowDto {
+/**
+ * A workflow's graph is whatever the spec needs the server to have stored,
+ * a graph saved by an older console included (positions on its steps, say),
+ * so it is not held to the DSL's current type.
+ */
+type WorkflowOverrides = DeepPartial<Omit<WorkflowDto, 'executionGraph'>> & {
+  executionGraph?: unknown;
+};
+
+export function buildWorkflow(overrides: WorkflowOverrides = {}): WorkflowDto {
   return {
     id: nextId('scn'),
     name: 'Test Workflow',
     description: 'Mock workflow',
     currentVersionNumber: 1,
     lastVersionNumber: 1,
-    executionGraph: { steps: [] },
+    executionGraph: { steps: {} },
     inputSchema: {},
     outputSchema: {},
     created: nowIso(),

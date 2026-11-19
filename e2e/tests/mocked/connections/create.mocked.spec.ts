@@ -10,15 +10,6 @@ test.describe('Create connection (mocked)', () => {
     const type = buildConnectionType({
       integrationId: 'http',
       displayName: 'HTTP',
-      fields: [
-        {
-          name: 'url',
-          displayName: 'URL',
-          isOptional: false,
-          isSecret: false,
-          typeName: 'String',
-        } as any,
-      ],
     });
 
     await mockApi.bootstrap(page);

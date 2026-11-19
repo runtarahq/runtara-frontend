@@ -53,67 +53,75 @@ export interface MockApi {
       page: Page,
       items: ConnectionDto[],
       opts?: { total?: number }
-    ) => Promise<void>;
-    get: (page: Page, id: string, connection: ConnectionDto) => Promise<void>;
-    types: (page: Page, types: ConnectionTypeDto[]) => Promise<void>;
+    ) => Promise<unknown>;
+    get: (
+      page: Page,
+      id: string,
+      connection: ConnectionDto
+    ) => Promise<unknown>;
+    types: (page: Page, types: ConnectionTypeDto[]) => Promise<unknown>;
     typeById: (
       page: Page,
       integrationId: string,
       type: ConnectionTypeDto
-    ) => Promise<void>;
-    create: (page: Page, created: ConnectionDto) => Promise<void>;
-    delete: (page: Page) => Promise<void>;
+    ) => Promise<unknown>;
+    create: (page: Page, created: ConnectionDto) => Promise<unknown>;
+    delete: (page: Page) => Promise<unknown>;
   };
   workflows: {
     list: (
       page: Page,
       items: WorkflowDto[],
       opts?: { total?: number }
-    ) => Promise<void>;
-    get: (page: Page, id: string, workflow: WorkflowDto) => Promise<void>;
+    ) => Promise<unknown>;
+    get: (page: Page, id: string, workflow: WorkflowDto) => Promise<unknown>;
     history: (
       page: Page,
       workflowId: string,
       instances: unknown[]
-    ) => Promise<void>;
+    ) => Promise<unknown>;
     instance: (
       page: Page,
       workflowId: string,
       instanceId: string,
       body: unknown
-    ) => Promise<void>;
+    ) => Promise<unknown>;
     instanceDetail: (
       page: Page,
       workflowId: string,
       instanceId: string,
       instance: unknown,
       metadata?: unknown
-    ) => Promise<void>;
+    ) => Promise<unknown>;
     stepSummaries: (
       page: Page,
       workflowId: string,
       instanceId: string,
       steps: unknown[],
       opts?: { total?: number }
-    ) => Promise<void>;
+    ) => Promise<unknown>;
     stepEvents: (
       page: Page,
       workflowId: string,
       instanceId: string,
       events: unknown[]
-    ) => Promise<void>;
+    ) => Promise<unknown>;
   };
   triggers: {
-    list: (page: Page, triggers: InvocationTrigger[]) => Promise<void>;
-    get: (page: Page, id: string, trigger: InvocationTrigger) => Promise<void>;
-    create: (page: Page, created: InvocationTrigger) => Promise<void>;
+    list: (page: Page, triggers: InvocationTrigger[]) => Promise<unknown>;
+    get: (
+      page: Page,
+      id: string,
+      trigger: InvocationTrigger
+    ) => Promise<unknown>;
+    create: (page: Page, created: InvocationTrigger) => Promise<unknown>;
   };
   objects: {
     schemas: {
-      list: (page: Page, schemas: Schema[]) => Promise<void>;
-      get: (page: Page, id: string, schema: Schema) => Promise<void>;
-      create: (page: Page, schemaId: string) => Promise<void>;
-      update: (page: Page) => Promise<void>;
+      list: (page: Page, schemas: Schema[]) => Promise<unknown>;
+      get: (page: Page, id: string, schema: Schema) => Promise<unknown>;
+      create: (page: Page, schemaId: string) => Promise<unknown>;
+      update: (page: Page) => Promise<unknown>;
     };
     instances: {
       listBySchemaId: (
@@ -121,37 +129,37 @@ export interface MockApi {
         schemaId: string,
         instances: Instance[],
         opts?: { total?: number }
-      ) => Promise<void>;
+      ) => Promise<unknown>;
       filterBySchemaName: (
         page: Page,
         schemaName: string,
         instances: Instance[],
         opts?: { total?: number }
-      ) => Promise<void>;
+      ) => Promise<unknown>;
       get: (
         page: Page,
         schemaId: string,
         instanceId: string,
         instance: Instance
-      ) => Promise<void>;
-      create: (page: Page, instanceId: string) => Promise<void>;
+      ) => Promise<unknown>;
+      create: (page: Page, instanceId: string) => Promise<unknown>;
     };
   };
   analytics: {
-    tenantMetrics: (page: Page, body: unknown) => Promise<void>;
-    system: (page: Page, body: unknown) => Promise<void>;
-    rateLimits: (page: Page, body: unknown) => Promise<void>;
+    tenantMetrics: (page: Page, body: unknown) => Promise<unknown>;
+    system: (page: Page, body: unknown) => Promise<unknown>;
+    rateLimits: (page: Page, body: unknown) => Promise<unknown>;
   };
   files: {
-    buckets: (page: Page, buckets: unknown[]) => Promise<void>;
-    list: (page: Page, bucket: string, items: unknown[]) => Promise<void>;
+    buckets: (page: Page, buckets: unknown[]) => Promise<unknown>;
+    list: (page: Page, bucket: string, items: unknown[]) => Promise<unknown>;
   };
   apiKeys: {
-    list: (page: Page, keys: ApiKey[]) => Promise<void>;
+    list: (page: Page, keys: ApiKey[]) => Promise<unknown>;
   };
   runtime: {
-    health: (page: Page, ok?: boolean) => Promise<void>;
-    metadata: (page: Page, body?: unknown) => Promise<void>;
+    health: (page: Page, ok?: boolean) => Promise<unknown>;
+    metadata: (page: Page, body?: unknown) => Promise<unknown>;
   };
   /**
    * Serve the agent catalog the Rust/WASM workflow validator loads on demand.
@@ -164,26 +172,26 @@ export interface MockApi {
    * which blocks Save in the editor.
    */
   agents: {
-    catalog: (page: Page, agents: AgentInfo[]) => Promise<void>;
+    catalog: (page: Page, agents: AgentInfo[]) => Promise<unknown>;
   };
   invocationHistory: {
     list: (
       page: Page,
       entries: unknown[],
       opts?: { total?: number }
-    ) => Promise<void>;
+    ) => Promise<unknown>;
   };
   /** Catch-all: respond to any un-mocked /api/runtime call with 200 + empty body. Avoids noisy real-network hits in snapshot diffs. */
-  fallthrough: (page: Page) => Promise<void>;
+  fallthrough: (page: Page) => Promise<unknown>;
   /** Stubs every endpoint the sidebar/layout queries so any page renders without errors. */
-  bootstrap: (page: Page) => Promise<void>;
+  bootstrap: (page: Page) => Promise<unknown>;
   /** Raw escape hatch when the high-level helpers don't fit. */
   raw: (
     page: Page,
     url: string | RegExp,
     body: JsonBody | ((route: Route) => Promise<void>),
     opts?: { status?: number }
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 }
 
 const factory: MockApi = {

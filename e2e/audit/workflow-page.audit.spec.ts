@@ -707,7 +707,10 @@ test.describe('Execution audit: status and store', () => {
       .poll(() => polls.inst_running, { timeout: 10_000 })
       .toBeGreaterThan(0);
     await page.waitForTimeout(12_000);
-    const running = { ...polls, input: inputPolls.inst_running };
+    const running = {
+      inst_running: polls.inst_running,
+      input: inputPolls.inst_running,
+    };
 
     await page.goto(`/workflows/${wf.id}/history/inst_mystery`);
     await expect
