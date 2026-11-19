@@ -6,7 +6,11 @@ import type {
 } from '@/features/workflows/types/execution-graph';
 import { exactStepTypeTraits } from '@/features/workflows/step-types/catalog';
 import { DURATION_FIELDS } from './field-values';
-import { STEP_SERIALIZERS, serializeMappingObject } from './step-serializers';
+import {
+  STEP_SERIALIZERS,
+  serializeMappingObject,
+  type StepSerializeContext,
+} from './step-serializers';
 
 /**
  * Fields a canvas node holds for the step's form and nothing else: the
@@ -282,7 +286,8 @@ export function serializeSteps(
     const finish =
       typeof stepType === 'string' &&
       Object.prototype.hasOwnProperty.call(STEP_SERIALIZERS, stepType)
-        ? STEP_SERIALIZERS[stepType as StepType]
+        ? (STEP_SERIALIZERS[stepType as StepType] as
+            ((ctx: StepSerializeContext) => void) | null)
         : null;
     finish?.({
       step: cleaned[id],

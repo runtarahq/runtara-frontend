@@ -4,7 +4,19 @@ import {
 } from '@/features/workflows/utils/mapping-serialization';
 import { buildSchemaFromFields } from '@/features/workflows/utils/schema';
 import { convertConditionArguments } from '@/shared/utils/condition-type-conversion';
-import type { StepType } from '@/features/workflows/types/execution-graph';
+import type {
+  AiAgentConfig,
+  FilterConfig,
+  GroupByConfig,
+  MappingValue,
+  SplitConfig,
+  SwitchConfig,
+  WhileConfig,
+} from '@/generated/RuntaraRuntimeApi';
+import type {
+  DslStepOf,
+  StepType,
+} from '@/features/workflows/types/execution-graph';
 import { readDuration, mapMatchTypeToAPI } from './field-values';
 
 /**
@@ -38,9 +50,13 @@ export interface StepFormFields {
   whileVariablesFields?: any;
 }
 
-export interface StepSerializeContext {
-  /** The DSL step being built, finished in place. */
-  step: Record<string, any>;
+export interface StepSerializeContext<T extends StepType = StepType> {
+  /**
+   * The DSL step being built, finished in place. What is assigned to one of
+   * its own fields is checked against the generated client's type for it;
+   * the form's leftovers, which a serializer deletes, are not typed.
+   */
+  step: Partial<DslStepOf<T>> & Record<string, unknown>;
   /** What the canvas node holds for the step (`StepNodeData`). */
   data: Record<string, any>;
   /** `data` without the editor-only fields and the form's own names. */
@@ -52,7 +68,18 @@ export interface StepSerializeContext {
   form: StepFormFields;
 }
 
-type StepSerializer = (ctx: StepSerializeContext) => void;
+/**
+ * A config as the editor saves it. Any part of it may be missing while the
+ * step is unfinished: the editor saves that as it is, and the validator, not
+ * the type, tells the user what is missing.
+ */
+function unfinished<T>(config: Partial<T>): T {
+  return config as T;
+}
+
+type StepSerializer<T extends StepType> = (
+  ctx: StepSerializeContext<T>
+) => void;
 
 export function normalizeConditionExpression(condition: any): any {
   if (!condition || typeof condition !== 'object') return condition;
@@ -155,14 +182,14 @@ export const serializeMappingObject = (
   return objectValue;
 };
 
-function serializeConditional(ctx: StepSerializeContext): void {
+function serializeConditional(ctx: StepSerializeContext<'Conditional'>): void {
   const { step, restData } = ctx;
   if (!(restData as any).condition) return;
   delete step.inputMapping;
   step.condition = normalizeConditionExpression((restData as any).condition);
 }
 
-function serializeDelay(ctx: StepSerializeContext): void {
+function serializeDelay(ctx: StepSerializeContext<'Delay'>): void {
   const { step, inputMapping } = ctx;
   const durationItem = Array.isArray(inputMapping)
     ? inputMapping.find((item: any) => item.type === 'durationMs')
@@ -175,7 +202,7 @@ function serializeDelay(ctx: StepSerializeContext): void {
       typeHint: durationItem.typeHint || 'number',
       valueType: durationItem.valueType || 'immediate',
       defaultValue: durationItem.defaultValue,
-    }) as [string, unknown];
+    }) as [string, MappingValue];
     step.durationMs = durationValue;
   }
 }
@@ -183,7 +210,9 @@ function serializeDelay(ctx: StepSerializeContext): void {
 /**
  * Ensure EmbedWorkflow has childWorkflowId and childVersion at root level (DSL v2.0.0 requirement)
  */
-function serializeEmbedWorkflow(ctx: StepSerializeContext): void {
+function serializeEmbedWorkflow(
+  ctx: StepSerializeContext<'EmbedWorkflow'>
+): void {
   const { step } = ctx;
   const { childWorkflowId, childVersion } = ctx.form;
   if (childWorkflowId) {
@@ -208,7 +237,7 @@ function serializeEmbedWorkflow(ctx: StepSerializeContext): void {
 /**
  * Split step: use config instead of inputMapping, include schemas
  */
-function serializeSplit(ctx: StepSerializeContext): void {
+function serializeSplit(ctx: StepSerializeContext<'Split'>): void {
   const { step, data, restData, inputMapping } = ctx;
   const {
     splitMaxRetries,
@@ -224,31 +253,7 @@ function serializeSplit(ctx: StepSerializeContext): void {
   const existingSplitConfig = (restData as any).config;
 
   // Build the config object for Split step
-  const splitConfig: {
-    value?: {
-      valueType: 'reference' | 'immediate' | 'template' | 'composite';
-      value: unknown;
-      type?: string;
-      default?: unknown;
-    };
-    parallelism?: number;
-    sequential?: boolean;
-    dontStopOnFailed?: boolean;
-    variables?: Record<
-      string,
-      {
-        valueType: 'reference' | 'immediate' | 'composite' | 'template';
-        value: unknown;
-        type?: string;
-      }
-    >;
-    maxRetries?: number;
-    retryDelayMs?: number;
-    timeoutMs?: number;
-    allowNull?: boolean;
-    convertSingleValue?: boolean;
-    batchSize?: number;
-  } = {};
+  const splitConfig: Partial<SplitConfig> = {};
 
   const sourceValue = serializeSourceMappingValue(inputMapping);
   if (sourceValue) {
@@ -306,14 +311,7 @@ function serializeSplit(ctx: StepSerializeContext): void {
     Array.isArray(data.splitVariablesFields) &&
     data.splitVariablesFields.length > 0
   ) {
-    const variables: Record<
-      string,
-      {
-        valueType: 'reference' | 'immediate' | 'composite' | 'template';
-        value: unknown;
-        type?: string;
-      }
-    > = {};
+    const variables: Record<string, MappingValue> = {};
     for (const varField of data.splitVariablesFields) {
       const variableName =
         typeof varField.name === 'string' ? varField.name.trim() : '';
@@ -373,7 +371,7 @@ function serializeSplit(ctx: StepSerializeContext): void {
     splitConfig.convertSingleValue !== undefined ||
     splitConfig.batchSize !== undefined
   ) {
-    step.config = splitConfig;
+    step.config = unfinished(splitConfig);
   }
 
   // Add outputSchema if defined
@@ -389,27 +387,13 @@ function serializeSplit(ctx: StepSerializeContext): void {
 /**
  * Switch step: use config instead of inputMapping
  */
-function serializeSwitch(ctx: StepSerializeContext): void {
+function serializeSwitch(ctx: StepSerializeContext<'Switch'>): void {
   const { step, inputMapping } = ctx;
   // Remove inputMapping for Switch steps - we use config instead
   delete step.inputMapping;
   delete step.switchRoutingMode;
 
-  const switchConfig: {
-    value?: {
-      valueType: string;
-      value: unknown;
-      type?: string;
-      default?: unknown;
-    };
-    cases?: Array<{
-      match: any;
-      matchType: string;
-      output: any;
-      route?: string;
-    }>;
-    default?: any;
-  } = {};
+  const switchConfig: Partial<SwitchConfig> = {};
 
   if (Array.isArray(inputMapping)) {
     // Serialize the switch value through the shared mapping path (same as
@@ -453,24 +437,21 @@ function serializeSwitch(ctx: StepSerializeContext): void {
   // SwitchConfig requires `value` (deny_unknown_fields + mandatory field
   // on the backend); never emit a config object lacking it.
   if (switchConfig.value) {
-    step.config = switchConfig;
+    step.config = unfinished(switchConfig);
   }
 }
 
 /**
  * Filter step: use config instead of inputMapping
  */
-function serializeFilter(ctx: StepSerializeContext): void {
+function serializeFilter(ctx: StepSerializeContext<'Filter'>): void {
   const { step, restData, inputMapping } = ctx;
   const { filterCondition } = ctx.form;
   delete step.inputMapping;
   delete step.filterCondition;
   const existingFilterConfig = (restData as any).config;
 
-  const filterConfig: {
-    value?: any;
-    condition?: any;
-  } = {};
+  const filterConfig: Partial<FilterConfig> = {};
 
   const sourceValue = serializeSourceMappingValue(inputMapping);
   if (sourceValue) {
@@ -490,14 +471,14 @@ function serializeFilter(ctx: StepSerializeContext): void {
 
   // Only add config if it has the required fields
   if (filterConfig.value && filterConfig.condition) {
-    step.config = filterConfig;
+    step.config = unfinished(filterConfig);
   }
 }
 
 /**
  * While step: serialize condition and config
  */
-function serializeWhile(ctx: StepSerializeContext): void {
+function serializeWhile(ctx: StepSerializeContext<'While'>): void {
   const { step } = ctx;
   const {
     whileCondition,
@@ -516,18 +497,7 @@ function serializeWhile(ctx: StepSerializeContext): void {
   }
 
   // Build config object
-  const whileConfig: {
-    maxIterations?: number;
-    timeoutMs?: number | null;
-    variables?: Record<
-      string,
-      {
-        valueType: 'reference' | 'immediate' | 'composite' | 'template';
-        value: unknown;
-        type?: string;
-      }
-    >;
-  } = {};
+  const whileConfig: Partial<WhileConfig> = {};
   if (whileMaxIterations !== undefined && whileMaxIterations !== null) {
     whileConfig.maxIterations = whileMaxIterations;
   }
@@ -559,14 +529,14 @@ function serializeWhile(ctx: StepSerializeContext): void {
   }
 
   if (Object.keys(whileConfig).length > 0) {
-    step.config = whileConfig;
+    step.config = unfinished(whileConfig);
   }
 }
 
 /**
  * GroupBy step: use config instead of inputMapping
  */
-function serializeGroupBy(ctx: StepSerializeContext): void {
+function serializeGroupBy(ctx: StepSerializeContext<'GroupBy'>): void {
   const { step, restData, inputMapping } = ctx;
   const { groupByKey, groupByExpectedKeys } = ctx.form;
   delete step.inputMapping;
@@ -574,11 +544,7 @@ function serializeGroupBy(ctx: StepSerializeContext): void {
   delete step.groupByExpectedKeys;
   const existingGroupByConfig = (restData as any).config;
 
-  const groupByConfig: {
-    value?: any;
-    key?: string;
-    expectedKeys?: unknown[];
-  } = {};
+  const groupByConfig: Partial<GroupByConfig> = {};
 
   const sourceValue = serializeSourceMappingValue(inputMapping);
   if (sourceValue) {
@@ -603,28 +569,18 @@ function serializeGroupBy(ctx: StepSerializeContext): void {
 
   // Only add config if it has the required fields
   if (groupByConfig.value && groupByConfig.key) {
-    step.config = groupByConfig;
+    step.config = unfinished(groupByConfig);
   }
 }
 
 /**
  * AiAgent step: use config instead of inputMapping
  */
-function serializeAiAgent(ctx: StepSerializeContext): void {
+function serializeAiAgent(ctx: StepSerializeContext<'AiAgent'>): void {
   const { step, inputMapping } = ctx;
   delete step.inputMapping;
 
-  const aiAgentConfig: {
-    systemPrompt?: { valueType: string; value: unknown };
-    userPrompt?: { valueType: string; value: unknown };
-    model?: Record<string, unknown>;
-    maxIterations?: number | null;
-    temperature?: Record<string, unknown>;
-    maxTokens?: Record<string, unknown>;
-    maxRetries?: number | null;
-    retryDelayMs?: number | null;
-    turnTimeoutMs?: number | null;
-  } = {};
+  const aiAgentConfig: Partial<AiAgentConfig> = {};
 
   if (Array.isArray(inputMapping)) {
     const systemPromptItem = inputMapping.find(
@@ -654,7 +610,7 @@ function serializeAiAgent(ctx: StepSerializeContext): void {
     if (modelItem?.value) {
       const [, model] = processMappingEntry(modelItem) as [
         string,
-        Record<string, unknown>,
+        MappingValue,
       ];
       aiAgentConfig.model = model;
     }
@@ -675,7 +631,7 @@ function serializeAiAgent(ctx: StepSerializeContext): void {
     if (temperatureItem?.value !== undefined && temperatureItem.value !== '') {
       const [, temperature] = processMappingEntry(temperatureItem) as [
         string,
-        Record<string, unknown>,
+        MappingValue,
       ];
       aiAgentConfig.temperature = temperature;
     }
@@ -686,7 +642,7 @@ function serializeAiAgent(ctx: StepSerializeContext): void {
     if (maxTokensItem?.value !== undefined && maxTokensItem.value !== '') {
       const [, maxTokens] = processMappingEntry(maxTokensItem) as [
         string,
-        Record<string, unknown>,
+        MappingValue,
       ];
       aiAgentConfig.maxTokens = maxTokens;
     }
@@ -771,7 +727,7 @@ function serializeAiAgent(ctx: StepSerializeContext): void {
     );
   }
 
-  step.config = aiAgentConfig;
+  step.config = unfinished(aiAgentConfig);
 }
 
 /**
@@ -781,7 +737,9 @@ function serializeAiAgent(ctx: StepSerializeContext): void {
  * Semantics of absent keys: timeoutMs = wait indefinitely; pollIntervalMs =
  * runtime default (1000ms); responseSchema = no validation; action = none.
  */
-function serializeWaitForSignal(ctx: StepSerializeContext): void {
+function serializeWaitForSignal(
+  ctx: StepSerializeContext<'WaitForSignal'>
+): void {
   const { step, data, inputMapping, subgraph } = ctx;
   delete step.inputMapping;
 
@@ -900,7 +858,9 @@ function serializeWaitForSignal(ctx: StepSerializeContext): void {
  * delete their key so loaded step data cannot resurrect them on save.
  * An absent mode means `all`; an absent timeoutMs means no deadline.
  */
-function serializeWaitForInstances(ctx: StepSerializeContext): void {
+function serializeWaitForInstances(
+  ctx: StepSerializeContext<'WaitForInstances'>
+): void {
   const { step, inputMapping } = ctx;
   delete step.inputMapping;
   delete step.durable;
@@ -924,7 +884,7 @@ function serializeWaitForInstances(ctx: StepSerializeContext): void {
           typeHint: idsItem.typeHint || 'array',
           valueType: idsItem.valueType || 'reference',
           defaultValue: idsItem.defaultValue,
-        }) as [string, unknown];
+        }) as [string, MappingValue];
         step.instanceIds = idsValue;
       }
     }
@@ -965,14 +925,14 @@ function serializeWaitForInstances(ctx: StepSerializeContext): void {
  * `values` (deny_unknown_fields, no inputMapping). GetState has no
  * configuration. Neither takes a durable flag.
  */
-function serializeSetState(ctx: StepSerializeContext): void {
+function serializeSetState(ctx: StepSerializeContext<'SetState'>): void {
   const { step } = ctx;
   step.values = step.inputMapping ?? {};
   delete step.inputMapping;
   delete step.durable;
 }
 
-function serializeGetState(ctx: StepSerializeContext): void {
+function serializeGetState(ctx: StepSerializeContext<'GetState'>): void {
   const { step } = ctx;
   delete step.inputMapping;
   delete step.values;
@@ -984,7 +944,9 @@ function serializeGetState(ctx: StepSerializeContext): void {
  * server adds does not compile until it says here how it is saved. `null` is
  * a step that is whole once the shared part is done.
  */
-export const STEP_SERIALIZERS: { [T in StepType]: StepSerializer | null } = {
+export const STEP_SERIALIZERS: {
+  [T in StepType]: StepSerializer<T> | null;
+} = {
   Finish: null,
   Agent: null,
   // Their fields are written with the input mapping, in serializeSteps.
