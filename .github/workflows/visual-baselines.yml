@@ -1,12 +1,16 @@
 name: Visual baselines
 
 # Renders the baseline images the mocked Playwright specs compare against, on
-# the platform CI compares on. Run it by hand on a branch whose pages changed
-# on purpose, then commit the images from the `visual-baselines` artifact
-# (e2e/README.md).
+# the platform CI compares on. Run it on a branch whose pages changed on
+# purpose, then commit the images from the `visual-baselines` artifact
+# (e2e/README.md): by hand, or by pushing the commit to a branch named
+# `visual-baselines/...`, which also works before this file is on main.
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'visual-baselines/**'
 
 permissions:
   contents: read

@@ -98,7 +98,7 @@ platforms' images are git-ignored.
 To add or refresh baselines:
 
 1. Run the **Visual baselines** workflow (`.github/workflows/visual-baselines.yml`)
-   on the branch. It renders every snapshot on a CI runner and uploads them as
+   on the branch, or push the commit to a branch named `visual-baselines/...`. It renders every snapshot on a CI runner and uploads them as
    the `visual-baselines` artifact.
 2. Unpack the artifact over `e2e/` and commit the `*.png` files. From then on
    the `mocked` job compares against them.
