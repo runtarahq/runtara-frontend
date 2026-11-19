@@ -21,6 +21,7 @@ import {
   resolveStepType,
   stepTypeTraits,
 } from '@/features/workflows/step-types/catalog';
+import { checkStepForm } from '@/features/workflows/step-types/form-rules';
 import { STEP_TYPE_UI } from '@/features/workflows/step-types/ui';
 import {
   Collapsible,
@@ -787,96 +788,11 @@ export const schema = () =>
       groupByKey: z.string().optional(),
       groupByExpectedKeys: z.array(z.string()).optional(),
     })
+    // What this step type's form refuses to save (step-types/form-rules.ts).
     .superRefine((inputs, ctx) => {
-      // Switch requires a value to switch on: SwitchConfig.value is mandatory
-      // on the backend (deny_unknown_fields serde struct), so an empty value
-      // must block the form save instead of failing with a raw serde error.
-      if (inputs.stepType !== 'Switch') return;
-      const valueItem = (inputs.inputMapping || []).find(
-        (item) => item.type === 'value'
+      checkStepForm(inputs, (path, message) =>
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path, message })
       );
-      const rawValue = valueItem?.value;
-      const isEmptyComposite =
-        valueItem?.valueType === 'composite' &&
-        rawValue !== null &&
-        typeof rawValue === 'object' &&
-        (Array.isArray(rawValue)
-          ? rawValue.length === 0
-          : Object.keys(rawValue as object).length === 0);
-      const hasValue =
-        valueItem !== undefined &&
-        rawValue !== undefined &&
-        (rawValue !== null || valueItem.valueType === 'immediate') &&
-        !(typeof rawValue === 'string' && rawValue.trim() === '') &&
-        !isEmptyComposite;
-
-      if (!hasValue) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['inputMapping'],
-          message: 'Value to Switch On is required',
-        });
-      }
-    })
-    .superRefine((inputs, ctx) => {
-      if (inputs.stepType !== 'Split') return;
-      const splitVariables = inputs.splitVariablesFields || [];
-      splitVariables.forEach((item, index) => {
-        const trimmedName = (item.name || '').trim();
-        const isComposite = item.valueType === 'composite';
-        const isEmptyComposite =
-          isComposite &&
-          item.value !== undefined &&
-          item.value !== null &&
-          typeof item.value === 'object' &&
-          (Array.isArray(item.value)
-            ? item.value.length === 0
-            : Object.keys(item.value as object).length === 0);
-        const hasValue =
-          item.value !== undefined &&
-          (item.value !== null || item.valueType === 'immediate') &&
-          !(typeof item.value === 'string' && item.value.trim() === '') &&
-          !isEmptyComposite;
-
-        if (hasValue && !trimmedName) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['splitVariablesFields', index, 'name'],
-            message: 'Variable name is required',
-          });
-        }
-
-        if (trimmedName && !hasValue) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['splitVariablesFields', index, 'value'],
-            message: 'Variable value is required',
-          });
-        }
-      });
-    })
-    .superRefine((inputs, ctx) => {
-      // Finish outputs serialize through Object.fromEntries, which silently
-      // collapses duplicate names last-wins before the server ever sees them.
-      // Block the save with a visible error on every duplicated row instead.
-      if (inputs.stepType !== 'Finish') return;
-      const nameCounts = new Map<string, number>();
-      (inputs.inputMapping || []).forEach((item) => {
-        const trimmedName = (item.type || '').trim();
-        if (!trimmedName) return;
-        nameCounts.set(trimmedName, (nameCounts.get(trimmedName) || 0) + 1);
-      });
-      (inputs.inputMapping || []).forEach((item, index) => {
-        const trimmedName = (item.type || '').trim();
-        if (!trimmedName) return;
-        if ((nameCounts.get(trimmedName) || 0) > 1) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['inputMapping', index, 'type'],
-            message: `Duplicate output name "${trimmedName}"`,
-          });
-        }
-      });
     });
 
 export type SchemaType = z.infer<ReturnType<typeof schema>>;

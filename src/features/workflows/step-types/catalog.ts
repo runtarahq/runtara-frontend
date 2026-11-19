@@ -33,6 +33,30 @@ export interface StepTypeTraits {
   retries: boolean;
   /** Whether it nests a graph of its own steps (and so their scope). */
   container: boolean;
+  /**
+   * Where the DSL keeps the step's fields, for the part of saving a step that
+   * every step type shares (`serializeSteps`). All absent for a step saved
+   * as its input mapping and nothing more.
+   */
+  /** Takes `agentId` and `capabilityId`. */
+  takesAgent?: boolean;
+  /** Takes `connectionId`. */
+  takesConnection?: boolean;
+  /** Takes an `inputSchema` of its own. */
+  takesInputSchema?: boolean;
+  /** Its `timeoutMs` is a mapping of its own, not a step duration. */
+  timeoutIsMapping?: boolean;
+  /**
+   * Fields the DSL keeps on the step itself, which the form edits as mapping
+   * rows of the same name (an Error's `code`). Such a step has no
+   * `inputMapping`, and a row left empty clears its field.
+   */
+  directFields?: readonly string[];
+  /**
+   * Rows with no field or no value are saved all the same, so the validator
+   * reports them where the user left them.
+   */
+  keepsUnfinishedRows?: boolean;
 }
 
 export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
@@ -43,6 +67,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: false,
+    keepsUnfinishedRows: true,
   },
   Agent: {
     nodeType: NODE_TYPES.BasicNode,
@@ -50,6 +75,8 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: true,
     retries: true,
     container: false,
+    takesAgent: true,
+    takesConnection: true,
   },
   Conditional: {
     nodeType: NODE_TYPES.ConditionalNode,
@@ -66,6 +93,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: true,
     retries: false,
     container: true,
+    takesInputSchema: true,
   },
   Switch: {
     nodeType: NODE_TYPES.SwitchNode,
@@ -98,6 +126,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: false,
+    directFields: ['message', 'level'],
   },
   Error: {
     nodeType: NODE_TYPES.BasicNode,
@@ -105,6 +134,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: false,
+    directFields: ['code', 'message', 'category', 'severity'],
   },
   Filter: {
     nodeType: NODE_TYPES.BasicNode,
@@ -134,6 +164,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: false,
+    timeoutIsMapping: true,
   },
   WaitForInstances: {
     nodeType: NODE_TYPES.BasicNode,
@@ -142,6 +173,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: false,
     retries: false,
     container: false,
+    timeoutIsMapping: true,
   },
   SetState: {
     nodeType: NODE_TYPES.BasicNode,
@@ -167,6 +199,7 @@ export const STEP_TYPE_CATALOG: { [T in StepType]: StepTypeTraits } = {
     durable: true,
     retries: false,
     container: false,
+    takesConnection: true,
   },
 };
 
@@ -188,6 +221,14 @@ export function resolveStepType(name: unknown): StepType | undefined {
     return name as StepType;
   }
   return BY_DISPLAY_NAME.get(name);
+}
+
+/** The traits of a DSL step type by its own name; none for any other name. */
+export function exactStepTypeTraits(name: unknown): StepTypeTraits | undefined {
+  return typeof name === 'string' &&
+    Object.prototype.hasOwnProperty.call(STEP_TYPE_CATALOG, name)
+    ? STEP_TYPE_CATALOG[name as StepType]
+    : undefined;
 }
 
 /** The traits of the step type a name stands for, if it is one. */

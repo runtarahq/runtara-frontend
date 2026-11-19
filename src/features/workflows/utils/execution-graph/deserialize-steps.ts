@@ -23,6 +23,7 @@ import {
 import { convertCompositeToUIFormat } from '@/features/workflows/utils/mapping-serialization';
 import { canvasScopeKey, canvasOnWaitGraph } from './canvas-ids';
 import { safeParseValue, stepDeserializer } from './step-deserializers';
+import { exactStepTypeTraits } from '@/features/workflows/step-types/catalog';
 import { DURATION_FIELDS } from './field-values';
 
 export function normalizeNodesAndEdges(
@@ -46,7 +47,7 @@ export function normalizeNodesAndEdges(
     // The form keeps the short duration names (see DURATION_FIELDS). Only
     // Agent and EmbedWorkflow carry them on the step; the Wait steps' own
     // `timeoutMs` is a mapping and stays as it is.
-    if (step.stepType === 'Agent' || step.stepType === 'EmbedWorkflow') {
+    if (exactStepTypeTraits(step.stepType)?.retries) {
       for (const [canonical, legacy] of DURATION_FIELDS) {
         const record = data as Record<string, unknown>;
         if (record[canonical] !== undefined) {

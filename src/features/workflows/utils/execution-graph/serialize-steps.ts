@@ -4,6 +4,7 @@ import type {
   StepNodeData,
   StepType,
 } from '@/features/workflows/types/execution-graph';
+import { exactStepTypeTraits } from '@/features/workflows/step-types/catalog';
 import { DURATION_FIELDS } from './field-values';
 import { STEP_SERIALIZERS, serializeMappingObject } from './step-serializers';
 
@@ -88,6 +89,7 @@ export function serializeSteps(
       ...ownData
     } = data;
     const restData = withoutUiOnlyFields(ownData);
+    const traits = exactStepTypeTraits(data.stepType);
 
     if (subgraph) {
       data.subgraph = {
@@ -115,13 +117,14 @@ export function serializeSteps(
 
     if (Array.isArray(inputMapping)) {
       const preserveInvalidMappingsForRustValidation =
-        data.stepType === 'Finish';
-      // Error/Log extract direct fields (code, message, level, ...) from the
-      // filtered mapping, where '' is the form's "field cleared" signal and
-      // must keep deleting the key. Every other consumer serializes a real
-      // inputMapping object, where immediate '' is a legal DSL value.
-      const emptyStringMeansCleared =
-        data.stepType === 'Error' || data.stepType === 'Log';
+        traits?.keepsUnfinishedRows === true;
+      // A step with direct fields (an Error's code, a Log's level) takes them
+      // from the filtered mapping, where '' is the form's "field cleared"
+      // signal and must keep deleting the key. Every other consumer
+      // serializes a real inputMapping object, where immediate '' is a legal
+      // DSL value.
+      const directFields = traits?.directFields;
+      const emptyStringMeansCleared = directFields !== undefined;
       const filteredMapping = inputMapping.filter(
         ({
           type,
@@ -171,11 +174,9 @@ export function serializeSteps(
           )
         : filteredMapping;
 
-      // Error steps need direct field values, not InputMapping wrapping
-      if (data.stepType === 'Error') {
-        // Extract error fields as direct values to match backend DSL
-        const errorFields = ['code', 'message', 'category', 'severity'];
-        errorFields.forEach((field) => {
+      // Direct fields are saved on the step, not wrapped in an inputMapping.
+      if (directFields) {
+        directFields.forEach((field) => {
           delete filteredRestData[field];
         });
         normalizedMapping.forEach(
@@ -188,37 +189,7 @@ export function serializeSteps(
             value: any;
             valueType?: string;
           }) => {
-            if (errorFields.includes(type)) {
-              filteredRestData[type] = value; // Direct string value
-            } else if (type === 'context') {
-              const context = serializeMappingObject(value, valueType);
-              if (context && Object.keys(context).length > 0) {
-                filteredRestData.context = context;
-              } else {
-                delete filteredRestData.context;
-              }
-            }
-          }
-        );
-        // Don't include inputMapping for Error steps
-        cleanedInputMapping = undefined;
-      } else if (data.stepType === 'Log') {
-        // Log steps need direct field values (message, level) to match backend DSL
-        const logFields = ['message', 'level'];
-        logFields.forEach((field) => {
-          delete filteredRestData[field];
-        });
-        normalizedMapping.forEach(
-          ({
-            type,
-            value,
-            valueType,
-          }: {
-            type: string;
-            value: any;
-            valueType?: string;
-          }) => {
-            if (logFields.includes(type)) {
+            if (directFields.includes(type)) {
               filteredRestData[type] = value;
             } else if (type === 'context') {
               const context = serializeMappingObject(value, valueType);
@@ -230,7 +201,6 @@ export function serializeSteps(
             }
           }
         );
-        // Don't include inputMapping for Log steps
         cleanedInputMapping = undefined;
       } else {
         // Regular steps - flat object format with InputMapping wrapping
@@ -262,28 +232,25 @@ export function serializeSteps(
       },
     };
 
-    if (restData.stepType === 'Agent' && data.capabilityId) {
+    // What only some step types take (step-types/catalog.ts) is taken off
+    // the others: the form's data carries it whatever the type.
+    if (traits?.takesAgent && data.capabilityId) {
       cleaned[id].capabilityId = data.capabilityId;
     }
 
-    if (restData.stepType !== 'Agent') {
+    if (!traits?.takesAgent) {
       delete cleaned[id].agentId;
       delete cleaned[id].capabilityId;
     }
-    if (restData.stepType !== 'Agent' && restData.stepType !== 'AiAgent') {
+    if (!traits?.takesConnection) {
       delete cleaned[id].connectionId;
     }
-    if (
-      restData.stepType !== 'Agent' &&
-      restData.stepType !== 'EmbedWorkflow'
-    ) {
+    if (!traits?.retries) {
       delete cleaned[id].maxRetries;
-      const isWait =
-        restData.stepType === 'WaitForSignal' ||
-        restData.stepType === 'WaitForInstances';
+      const timeoutIsMapping = traits?.timeoutIsMapping === true;
       for (const [canonical, legacy] of DURATION_FIELDS) {
         // A Wait step's own `timeoutMs` is a mapping, not a step duration.
-        if (!(isWait && canonical === 'timeoutMs')) {
+        if (!(timeoutIsMapping && canonical === 'timeoutMs')) {
           delete cleaned[id][canonical];
         }
         delete cleaned[id][legacy];
@@ -299,7 +266,7 @@ export function serializeSteps(
         }
       }
     }
-    if (restData.stepType !== 'Split') {
+    if (!traits?.takesInputSchema) {
       delete cleaned[id].inputSchema;
     }
 
