@@ -343,7 +343,7 @@ Specs in `e2e/audit/`: shared.
 | Operations    | Queue answer                  | `src/features/operations/components/QueueAnswer.tsx:30`                                                               |
 | Operations    | Queue page                    | `src/features/operations/pages/Queue.tsx:114`                                                                         |
 | Operations    | Run page                      | `src/features/operations/pages/Run.tsx:42`                                                                            |
-| Operations    | Replay                        | `src/features/operations/pages/shared.tsx:171`                                                                        |
+| Operations    | Replay                        | `src/features/operations/components/shared.tsx:171`                                                                   |
 | Operations    | Delete queue                  | `src/features/operations/components/DeleteQueue.tsx:26`                                                               |
 | Operations    | View editor                   | `src/features/operations/components/ViewEditor.tsx:33`                                                                |
 | Operations    | Requests and Overview         | `src/features/operations/pages/Requests.tsx:12`, `src/features/operations/pages/Overview.tsx:26`                      |

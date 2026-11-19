@@ -3,11 +3,18 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { TablePagination } from '@/shared/components/console';
-import { attentionQueues, queryAttentionRequests } from '../attention-requests';
-import { useOperations } from '../queries';
+import {
+  attentionQueues,
+  queryAttentionRequests,
+} from '@/features/operations/queries/attention-requests';
+import { useOperations } from '@/features/operations/queries';
 import { RequestRows } from '../components/RequestRows';
-import { OperationHeader, OperationSection, RefreshControls } from './shared';
-import { failedWithNothingToShow } from '../poll-errors';
+import {
+  OperationHeader,
+  OperationSection,
+  RefreshControls,
+} from '@/features/operations/components/shared';
+import { failedWithNothingToShow } from '@/features/operations/utils/poll-errors';
 
 import { queryKeys } from '@/shared/queries/query-keys';
 export function RequestsPage() {

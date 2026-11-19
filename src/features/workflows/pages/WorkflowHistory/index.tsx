@@ -1,6 +1,6 @@
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
-import { useVersionStateSchema } from '@/features/operations/state-schema';
-import { stateLabel } from '@/features/operations/state-label';
+import { useVersionStateSchema } from '@/features/operations/hooks/useVersionStateSchema';
+import { stateLabel } from '@/features/operations/utils/state-label';
 import { PayloadExplorer } from '@/shared/components/PayloadExplorer';
 import { formatRelativeTime } from '@/lib/utils';
 import {

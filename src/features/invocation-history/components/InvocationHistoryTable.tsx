@@ -24,7 +24,7 @@ import {
   type RunExtraColumn,
 } from './OperationsRunColumns';
 import { RunIdentity, RunContext, RunActions, RunTime } from './RunRow';
-import { ReplayButton } from '@/features/operations/pages/shared';
+import { ReplayButton } from '@/features/operations/components/shared';
 import {
   Dialog,
   DialogContent,

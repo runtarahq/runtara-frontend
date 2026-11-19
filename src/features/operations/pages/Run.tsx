@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { stateLabel } from '../state-label';
+import { stateLabel } from '@/features/operations/utils/state-label';
 import { Link, useParams } from 'react-router';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useAuthStore } from '@/shared/stores/authStore';
@@ -30,10 +30,13 @@ import {
   OperationSection,
   RefreshControls,
   ReplayButton,
-} from './shared';
-import { useOperations } from '../queries';
+} from '@/features/operations/components/shared';
+import { useOperations } from '@/features/operations/queries';
 import { isActiveStatus } from '@/shared/utils/status-display';
-import { failedWithNothingToShow, refreshFailed } from '../poll-errors';
+import {
+  failedWithNothingToShow,
+  refreshFailed,
+} from '@/features/operations/utils/poll-errors';
 
 import { queryKeys } from '@/shared/queries/query-keys';
 export function RunPage() {

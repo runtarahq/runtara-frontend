@@ -1,5 +1,5 @@
-import { stateLabel } from '../state-label';
-import { inlineOptions } from '../answer-options';
+import { stateLabel } from '@/features/operations/utils/state-label';
+import { inlineOptions } from '@/features/operations/utils/answer-options';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -34,7 +34,7 @@ import {
   queryRuns,
   resolveQuery,
   useOperations,
-} from '../queries';
+} from '@/features/operations/queries';
 import {
   DueValue,
   StateValue,
@@ -43,9 +43,16 @@ import {
 import { QueueAnswer, type AnswerController } from '../components/QueueAnswer';
 import { DeleteQueue } from '../components/DeleteQueue';
 import { ViewEditor, StateFilters } from '../components/ViewEditor';
-import { overdueFilters } from '../attention-requests';
-import { OperationHeader, RunRows, RefreshControls } from './shared';
-import { failedWithNothingToShow, refreshFailed } from '../poll-errors';
+import { overdueFilters } from '@/features/operations/queries/attention-requests';
+import {
+  OperationHeader,
+  RunRows,
+  RefreshControls,
+} from '@/features/operations/components/shared';
+import {
+  failedWithNothingToShow,
+  refreshFailed,
+} from '@/features/operations/utils/poll-errors';
 
 import { queryKeys } from '@/shared/queries/query-keys';
 const requestKey = (r: OperationRequest) =>

@@ -429,7 +429,7 @@ the raw `setState` calls through actions first.
 | workflows → invocation-history  | 4       | `getAllExecutions`, `ParentRunLink`, `ChildRunsCard`                                  |
 
 There are two different `ReplayButton` components
-(`WF/components/ReplayButton`, `src/features/operations/pages/shared.tsx:161`).
+(`WF/components/ReplayButton`, `src/features/operations/components/shared.tsx:161`).
 One-way edges (triggers, objects and workflows reading connections; triggers
 reading workflows) are fine.
 

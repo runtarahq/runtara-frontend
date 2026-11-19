@@ -1,4 +1,4 @@
-import { stateLabel } from '../state-label';
+import { stateLabel } from '@/features/operations/utils/state-label';
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,7 +15,7 @@ import {
   isRevisionConflict,
   operationsRequest,
   message,
-} from '../queries';
+} from '@/features/operations/queries';
 import { type StateField } from './StateValue';
 import { RUN_STATUS_OPTIONS } from '@/features/invocation-history/status-options';
 

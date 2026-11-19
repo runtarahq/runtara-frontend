@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { ArrowRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RequestRows } from './RequestRows';
-import type { AttentionRequest } from '../attention-requests';
+import type { AttentionRequest } from '@/features/operations/queries/attention-requests';
 
 const rowClass =
   'grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem]';

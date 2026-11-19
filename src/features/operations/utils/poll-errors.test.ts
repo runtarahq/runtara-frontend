@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { failedWithNothingToShow, refreshFailed } from './poll-errors';
+import {
+  failedWithNothingToShow,
+  refreshFailed,
+} from '@/features/operations/utils/poll-errors';
 
 const loaded = { error: null, data: [] };
 const failedFirst = { error: new Error('500'), data: undefined };

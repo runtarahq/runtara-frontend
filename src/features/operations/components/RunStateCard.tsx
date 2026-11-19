@@ -1,4 +1,4 @@
-import { stateLabel } from '../state-label';
+import { stateLabel } from '@/features/operations/utils/state-label';
 import {
   Card,
   CardContent,

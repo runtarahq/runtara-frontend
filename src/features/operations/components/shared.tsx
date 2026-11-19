@@ -22,9 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/shared/components/ui/table';
-import { StateValue, type StateField } from '../components/StateValue';
-import { message, operationsRequest } from '../queries';
-import { stateLabel } from '../state-label';
+import {
+  StateValue,
+  type StateField,
+} from '@/features/operations/components/StateValue';
+import { message, operationsRequest } from '@/features/operations/queries';
+import { stateLabel } from '@/features/operations/utils/state-label';
 
 export function OperationHeader({
   title,

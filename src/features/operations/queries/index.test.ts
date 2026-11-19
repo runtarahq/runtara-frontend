@@ -4,8 +4,8 @@ import {
   selectedFields,
   failureText,
   describeFailure,
-} from './queries';
-import { inlineOptions } from './answer-options';
+} from '@/features/operations/queries';
+import { inlineOptions } from '@/features/operations/utils/answer-options';
 import type { OperationViewConfig } from '@/generated/RuntaraRuntimeApi';
 
 describe('Operations view queries', () => {

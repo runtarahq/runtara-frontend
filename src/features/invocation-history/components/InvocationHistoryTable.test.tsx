@@ -20,7 +20,7 @@ vi.mock('./RunRow', () => ({
     onReplay: (run: unknown) => void;
   }) => <button onClick={() => onReplay(run)}>Open replay</button>,
 }));
-vi.mock('@/features/operations/pages/shared', () => ({
+vi.mock('@/features/operations/components/shared', () => ({
   ReplayButton: ({ run }: { run: { id: string } }) => (
     <p>Replay snapshot: {run.id}</p>
   ),

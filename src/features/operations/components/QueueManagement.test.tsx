@@ -13,7 +13,7 @@ import { DeleteQueue } from './DeleteQueue';
 import { ViewEditor } from './ViewEditor';
 const api = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/hooks', () => ({ useToken: () => 'test-token' }));
-vi.mock('../queries', async () => ({
+vi.mock('@/features/operations/queries', async () => ({
   ...(await vi.importActual('../queries')),
   operationsRequest: api,
 }));

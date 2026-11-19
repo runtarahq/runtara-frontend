@@ -11,7 +11,7 @@ import type { RunExtraColumn } from './OperationsRunColumns';
 import type { ExecutionHistoryFilters } from '../types';
 import type { ExecutionSummary } from '@/generated/RuntaraRuntimeApi';
 import { runStatusFilters, selectedRunStatus } from '../utils/run-filters';
-import { RefreshControls } from '@/features/operations/pages/shared';
+import { RefreshControls } from '@/features/operations/components/shared';
 
 export function RunControls({
   filters,

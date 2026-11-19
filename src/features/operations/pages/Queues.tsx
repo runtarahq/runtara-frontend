@@ -4,9 +4,13 @@ import { Pencil, Plus } from 'lucide-react';
 import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
-import { useOperations } from '../queries';
+import { useOperations } from '@/features/operations/queries';
 import { DeleteQueue } from '../components/DeleteQueue';
-import { OperationHeader, OperationSection, RefreshControls } from './shared';
+import {
+  OperationHeader,
+  OperationSection,
+  RefreshControls,
+} from '@/features/operations/components/shared';
 import { queryKeys } from '@/shared/queries/query-keys';
 export function QueuesPage() {
   const { views, processes } = useOperations();

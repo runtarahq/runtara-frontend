@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Can } from '@/shared/components/Can';
-import { useOperations, defaultView } from '../queries';
+import { useOperations, defaultView } from '@/features/operations/queries';
 import { ViewEditor } from '../components/ViewEditor';
-import { OperationHeader } from './shared';
+import { OperationHeader } from '@/features/operations/components/shared';
 
 export function QueueSettingsPage() {
   const { queueId } = useParams();

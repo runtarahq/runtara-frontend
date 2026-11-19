@@ -12,14 +12,17 @@ import {
   queryRunSummary,
   operationsRequest,
   selectedFields,
-} from '../queries';
+} from '@/features/operations/queries';
 import {
   attentionQueues,
   attentionRequest,
   overdueFilters,
-} from '../attention-requests';
+} from '@/features/operations/queries/attention-requests';
 import { OverviewAttention } from '../components/OverviewAttention';
-import { RefreshControls, RunRows } from './shared';
+import {
+  RefreshControls,
+  RunRows,
+} from '@/features/operations/components/shared';
 import type { OperationRequestPage } from '@/generated/RuntaraRuntimeApi';
 
 import { queryKeys } from '@/shared/queries/query-keys';
