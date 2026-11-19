@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { apiHeaders, getAccessToken } from '../../utils/api-auth';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 /**
  * Workflow Lifecycle E2E Test
@@ -13,9 +10,6 @@ import { fileURLToPath } from 'url';
  * Flow: create → add step → compile v2 → activate v2 → add second step →
  *       compile v3 → activate v3 → execute → verify → delete
  */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const API_BASE = `${GATEWAY_URL}/api/runtime/workflows`;

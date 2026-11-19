@@ -27,8 +27,16 @@ test.describe.serial('Workflow builder local UI', () => {
     createdWorkflowNames.push(name);
   };
 
-  test.afterEach(async ({ page }) => {
+  test.afterEach(async ({ page }, testInfo) => {
     const builder = new WorkflowBuilderPage(page);
+
+    // The cleanup below leaves the editor, so the failure screenshot Playwright
+    // takes afterwards shows the workflows list. Keep one of the editor.
+    if (testInfo.status !== testInfo.expectedStatus) {
+      await page
+        .screenshot({ path: testInfo.outputPath('editor-at-failure.png') })
+        .catch(() => undefined);
+    }
 
     for (const workflow of [...createdWorkflowNames].reverse()) {
       try {
@@ -78,15 +86,35 @@ test.describe.serial('Workflow builder local UI', () => {
     const builder = new WorkflowBuilderPage(page);
     await rememberWorkflow(builder, workflowName('conditional-branches'));
 
-    await builder.beginFirstCanvasStep(stepType('Conditional'));
+    // A Conditional needs both its edges from the moment it is added (E140),
+    // so it cannot be the first or the last step: it goes in before a step,
+    // which both its branches then lead to, and each branch gets its own step
+    // on its edge.
+    await builder.addFirstCanvasStep(randomDoubleStep, {
+      name: 'After decision',
+    });
+    await builder.beginCanvasStepOnRoute(
+      null,
+      'After decision',
+      'source',
+      stepType('Conditional')
+    );
     await builder.configureOpenCondition();
     await builder.saveOpenCanvasDialog({ name: 'Decision' });
-    await builder.addCanvasRouteStep('Decision', 'true', randomDoubleStep, {
-      name: 'Approved branch',
-    });
-    await builder.addCanvasRouteStep('Decision', 'false', randomDoubleStep, {
-      name: 'Rejected branch',
-    });
+    await builder.insertCanvasStepOnRoute(
+      'Decision',
+      'After decision',
+      'true',
+      randomDoubleStep,
+      { name: 'Approved branch' }
+    );
+    await builder.insertCanvasStepOnRoute(
+      'Decision',
+      'After decision',
+      'false',
+      randomDoubleStep,
+      { name: 'Rejected branch' }
+    );
 
     await builder.saveWorkflow();
     await builder.reloadAndWait();
@@ -96,11 +124,19 @@ test.describe.serial('Workflow builder local UI', () => {
     await builder.expectStepOnRoute('Approved branch', 'Decision', 'true');
     await builder.expectStepOnRoute('Rejected branch', 'Decision', 'false');
 
+    // Removing a branch's step leaves the Conditional without that edge, and
+    // the workflow no longer saves until the branch leads somewhere again.
     await builder.deleteCanvasStep('Rejected branch');
+    await builder.expectSaveValidationFailure();
+    await builder.addCanvasRouteStep('Decision', 'false', randomDoubleStep, {
+      name: 'Replacement branch',
+    });
+
     await builder.saveWorkflow();
     await builder.reloadAndWait();
     await builder.expectStepVisible('Approved branch');
     await builder.expectStepHidden('Rejected branch');
+    await builder.expectStepOnRoute('Replacement branch', 'Decision', 'false');
   });
 
   test('canvas adds switch case and default routes', async ({ page }) => {

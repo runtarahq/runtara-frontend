@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { apiHeaders, getAccessToken } from '../../utils/api-auth';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  WorkflowBuilderPage,
+  randomDoubleStep,
+} from '../../pages/WorkflowBuilderPage';
 
 /**
  * SYN-140: Cannot rename Conditional and Split step
@@ -11,78 +12,43 @@ import { fileURLToPath } from 'url';
  * NodeConfigDialog did not persist to the canvas node label.
  *
  * For each step type:
- * 1. Create workflow → add step via "+" → rename in dialog → save dialog
+ * 1. Create workflow → open the step's dialog → rename in dialog → save dialog
  * 2. Verify canvas shows the custom name (not the default step type name)
  * 3. Delete workflow
+ *
+ * The editor validates a step when it is added and keeps the dialog open on
+ * one that leaves the workflow invalid, so neither step can be added to an
+ * empty canvas any more:
+ * - a Conditional needs both branches to lead somewhere, so it is inserted on
+ *   a route between two steps;
+ * - a new Split has no steps inside it, which the validator refuses (E004),
+ *   so the workflow is created through the API with a Split that has one, and
+ *   the Split is renamed in its dialog.
  */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
+const API_BASE = `${GATEWAY_URL}/api/runtime/workflows`;
 
 /**
- * Helper: create workflow via UI, add a step type, rename it, and verify
- * the canvas node shows the custom name.
- *
- * Returns the workflow ID for cleanup.
+ * Helper: rename the step whose config dialog is open, save the dialog, and
+ * verify the canvas node shows the custom name.
  */
-async function addStepAndRename(
+async function renameOpenStepAndVerify(
   page: import('@playwright/test').Page,
-  opts: {
-    workflowName: string;
-    stepTypeName: string;
-    customName: string;
-  }
-): Promise<string> {
-  // 1. Create workflow
-  await page.goto('/workflows/create');
-  await page.waitForLoadState('networkidle');
-  await page.getByLabel('Name').fill(opts.workflowName);
-  await page.getByRole('button', { name: 'Save' }).click();
+  builder: WorkflowBuilderPage,
+  opts: { stepTypeName: string; customName: string }
+): Promise<void> {
+  // Rename the step and save the dialog
+  await builder.saveOpenCanvasDialog({ name: opts.customName });
 
-  await page.waitForURL(
-    (url) => /\/workflows\/(?!create\b)[a-zA-Z0-9_-]+$/.test(url.pathname),
-    { timeout: 15000 }
-  );
-  const workflowId = page.url().split('/workflows/').pop()!;
-
-  // 2. Wait for canvas
-  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 15000 });
-
-  // 3. Click "+" on Start node to open StepPickerModal
-  const startNode = page
-    .locator('.react-flow__node')
-    .filter({ hasText: 'Start' });
-  await expect(startNode).toBeVisible();
-  await startNode.getByRole('button').click();
-
-  // 4. StepPickerModal opens — click the step type in browse view
-  const modal = page.getByRole('dialog');
-  await expect(modal).toBeVisible();
-  await modal
-    .getByRole('button', { name: new RegExp(`^${opts.stepTypeName}`) })
-    .click();
-
-  // 5. NodeConfigDialog opens in create mode — rename the step
-  const configDialog = page.getByRole('dialog');
-  await expect(configDialog).toBeVisible({ timeout: 5000 });
-  const nameInput = configDialog.getByPlaceholder('Step name');
-  await expect(nameInput).toBeVisible();
-  await nameInput.clear();
-  await nameInput.fill(opts.customName);
-
-  // 6. Save the dialog
-  await configDialog.getByRole('button', { name: 'Save' }).click();
-
-  // 7. Verify the node shows the custom name on canvas (not the default)
-  //    This is the core SYN-140 assertion — the bug caused the canvas to
-  //    show the original step type name instead of the renamed value.
+  // Verify the node shows the custom name on canvas (not the default)
+  // This is the core SYN-140 assertion — the bug caused the canvas to
+  // show the original step type name instead of the renamed value.
   await expect(
     page.locator('.react-flow__node').filter({ hasText: opts.customName })
   ).toBeVisible({ timeout: 10000 });
-
-  return workflowId;
+  await expect(builder.canvasStep(opts.customName)).toHaveCount(1);
+  await expect(builder.canvasStep(opts.stepTypeName)).toHaveCount(0);
 }
 
 // ── Conditional step rename ─────────────────────────────────────────
@@ -110,22 +76,46 @@ test.describe.serial('SYN-140: Conditional step rename', () => {
   });
 
   test('rename shows on canvas', async ({ page }) => {
-    workflowId = await addStepAndRename(page, {
-      workflowName,
+    const builder = new WorkflowBuilderPage(page);
+    workflowId = await builder.createWorkflow(workflowName);
+
+    // A Conditional needs both its branches to lead somewhere, so it is
+    // inserted on a route between two steps: both branches then lead on to
+    // the second one.
+    await builder.addFirstCanvasStep(randomDoubleStep, { name: 'First step' });
+    await builder.addCanvasStepAfter('First step', randomDoubleStep, {
+      name: 'Next step',
+    });
+    const firstId = await builder.canvasNodeId('First step');
+    const nextId = await builder.canvasNodeId('Next step');
+    await builder.useCanvas();
+    // Selecting the route shows its toolbar.
+    await page
+      .locator(`[data-edge-source="${firstId}"][data-edge-target="${nextId}"]`)
+      .locator('path')
+      .last()
+      .click({ force: true });
+    await page
+      .getByRole('button', { name: 'Insert a step on this route' })
+      .click();
+    await page.getByTestId('step-picker-step-type-conditional').click();
+
+    // NodeConfigDialog opens in create mode
+    await expect(
+      page
+        .getByTestId('node-config-dialog')
+        .getByText('New Conditional', { exact: true })
+    ).toBeVisible({ timeout: 10000 });
+    await builder.configureOpenCondition();
+
+    await renameOpenStepAndVerify(page, builder, {
       stepTypeName: 'Conditional',
       customName,
     });
   });
 
   test('delete workflow', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    const card = page.locator('article').filter({ hasText: workflowName });
-    await expect(card).toBeVisible({ timeout: 10000 });
-    await card.getByTitle('Delete').first().click();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(workflowName);
 
     workflowId = '';
   });
@@ -155,23 +145,76 @@ test.describe.serial('SYN-140: Split step rename', () => {
     }
   });
 
-  test('rename shows on canvas', async ({ page }) => {
-    workflowId = await addStepAndRename(page, {
-      workflowName,
+  test('rename shows on canvas', async ({ page, request }) => {
+    // 1. Create the workflow with a Split that carries its default name and
+    //    has a step inside it
+    const createRes = await request.post(`${API_BASE}/create`, {
+      headers: apiHeaders(token),
+      data: { name: workflowName, description: 'SYN-140 E2E — safe to delete' },
+    });
+    expect(createRes.status()).toBe(200);
+    workflowId = (await createRes.json()).data.id;
+
+    const updateRes = await request.post(`${API_BASE}/${workflowId}/update`, {
+      headers: apiHeaders(token),
+      data: {
+        executionGraph: {
+          name: workflowName,
+          entryPoint: 'split',
+          steps: {
+            split: {
+              stepType: 'Split',
+              id: 'split',
+              name: 'Split',
+              config: { value: { valueType: 'immediate', value: [1, 2] } },
+              subgraph: {
+                name: 'Each item',
+                entryPoint: 'work',
+                steps: {
+                  work: {
+                    stepType: 'Agent',
+                    id: 'work',
+                    name: 'Work',
+                    agentId: 'utils',
+                    capabilityId: 'random-double',
+                    inputMapping: {},
+                  },
+                },
+                executionPlan: [],
+              },
+            },
+          },
+          executionPlan: [],
+        },
+      },
+    });
+    expect(
+      updateRes.status(),
+      `Update failed: ${(await updateRes.text()).slice(0, 500)}`
+    ).toBe(200);
+
+    // 2. Open the Split's NodeConfigDialog from the canvas
+    const builder = new WorkflowBuilderPage(page);
+    await builder.gotoWorkflow(workflowId);
+    await builder.expectStepVisible('Split');
+    // Double-click the Split's own area, below the step inside it.
+    await builder.useCanvas();
+    const splitNode = builder.canvasStep('Split');
+    const box = await splitNode.boundingBox();
+    expect(box).not.toBeNull();
+    await splitNode.dblclick({
+      position: { x: box!.width / 2, y: box!.height - 12 },
+    });
+    await expect(page.getByTestId('node-config-dialog')).toBeVisible();
+
+    await renameOpenStepAndVerify(page, builder, {
       stepTypeName: 'Split',
       customName,
     });
   });
 
   test('delete workflow', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    const card = page.locator('article').filter({ hasText: workflowName });
-    await expect(card).toBeVisible({ timeout: 10000 });
-    await card.getByTitle('Delete').first().click();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(workflowName);
 
     workflowId = '';
   });

@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { apiHeaders, getAccessToken } from '../../utils/api-auth';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  WorkflowBuilderPage,
+  randomDoubleStep,
+} from '../../pages/WorkflowBuilderPage';
 
 /**
  * SYN-106: Input validation failed for array/object input types
@@ -22,14 +23,12 @@ import { fileURLToPath } from 'url';
  *    instead of the inner user data. Fix: validates inputs.data.
  *
  * This test verifies:
- * - Frontend renders CompositeValueEditor for array/object fields
+ * - Frontend renders structured editors for array/object fields (a tag
+ *   input and a key/value editor), not a raw text input
  * - HTTP request body contains properly typed data (not stringified JSON)
  * - Frontend rejects empty required array/object fields (client-side validation)
  * - Backend rejects wrong types via JSON Schema validation
  */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 
@@ -93,34 +92,15 @@ test.describe.serial('SYN-106: Execute with complex input types', () => {
     await page.getByRole('option', { name: 'Object' }).click();
 
     // Add a random-double step so the workflow has a valid graph
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
-
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Random Double');
-    const capabilityResult = page.getByText('Random Double').first();
-    await expect(capabilityResult).toBeVisible({ timeout: 30000 });
-    await capabilityResult.click();
-
-    const configDialog = page.getByRole('dialog');
-    await expect(configDialog).toBeVisible({ timeout: 5000 });
-    await configDialog.getByRole('button', { name: 'Save' }).click();
+    const builder = new WorkflowBuilderPage(page);
+    await builder.addFirstCanvasStep(randomDoubleStep);
 
     await expect(
       page.locator('.react-flow__node').filter({ hasText: 'Random Double' })
     ).toBeVisible({ timeout: 10000 });
 
     // Save via toolbar
-    const saveButton = page.getByTitle('Save changes');
-    await expect(saveButton).toBeVisible({ timeout: 5000 });
-    await saveButton.click();
-    await expect(page.getByTitle('No changes to save')).toBeVisible({
-      timeout: 15000,
-    });
+    await builder.saveWorkflow();
   });
 
   // ── Negative: frontend rejects empty required fields ─────────────────
@@ -200,38 +180,43 @@ test.describe.serial('SYN-106: Execute with complex input types', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
-    // Array/object fields start as "not set" — click "Set value" to activate editors
-    const setValueButtons = dialog.getByRole('button', { name: 'Set value' });
-    // Click both "Set value" buttons (tags first, then metadata)
-    await setValueButtons.first().click();
-    await setValueButtons.first().click();
-
-    // Frontend renders CompositeValueEditor after activation
-    await expect(dialog.getByText('Composite Array')).toBeVisible();
-    await expect(dialog.getByText('Composite Object')).toBeVisible();
+    // The dialog draws an array field as a tag input and an object field as
+    // a key/value editor — structured editors, not a raw text input
+    const tagsInput = dialog
+      .locator('[data-field="tags"]')
+      .getByRole('textbox');
+    await expect(tagsInput).toHaveAttribute(
+      'placeholder',
+      'Type and press Enter'
+    );
+    const metadataEditor = dialog
+      .locator('[data-field="metadata"]')
+      .getByRole('group');
+    await expect(metadataEditor).toBeVisible();
 
     // Populate array field with real data
-    const arrayEditor = dialog
-      .locator('.overflow-hidden')
-      .filter({ hasText: 'Composite Array' });
-    await arrayEditor.getByRole('button', { name: 'Add Item' }).click();
-    await page.getByRole('menuitem', { name: /Immediate/ }).click();
-    await arrayEditor.getByPlaceholder('Enter value...').fill('tag1');
+    await tagsInput.fill('tag1');
+    await tagsInput.press('Enter');
+    await expect(dialog.getByText('tag1', { exact: true })).toBeVisible();
 
     // Populate object field with real data
-    const objectEditor = dialog
-      .locator('.overflow-hidden')
-      .filter({ hasText: 'Composite Object' });
-    await objectEditor.getByRole('button', { name: 'Add Field' }).click();
-    await objectEditor.getByPlaceholder('Enter field name...').fill('key1');
-    await objectEditor.getByRole('button', { name: /^Add$/ }).click();
-    await objectEditor.getByPlaceholder('Enter value...').fill('value1');
+    await metadataEditor.getByPlaceholder('Key').fill('key1');
+    await metadataEditor.getByPlaceholder('Value').fill('value1');
+    await metadataEditor.getByRole('button', { name: 'Add entry' }).click();
+    await expect(metadataEditor.getByPlaceholder('Key').first()).toHaveValue(
+      'key1'
+    );
 
     // Intercept the HTTP request to verify wire format
+    const isExecuteRequest = (url: string, method: string) =>
+      url.includes(`/workflows/${workflowId}/execute`) && method === 'POST';
     const executeRequestPromise = page.waitForRequest(
-      (req) =>
-        req.url().includes(`/workflows/${workflowId}/execute`) &&
-        req.method() === 'POST'
+      (req) => isExecuteRequest(req.url(), req.method()),
+      { timeout: 15000 }
+    );
+    const executeResponsePromise = page.waitForResponse(
+      (res) => isExecuteRequest(res.url(), res.request().method()),
+      { timeout: 30000 }
     );
 
     await dialog.getByRole('button', { name: 'Execute' }).click();
@@ -249,29 +234,18 @@ test.describe.serial('SYN-106: Execute with complex input types', () => {
     expect(inputData.metadata).toEqual({ key1: 'value1' });
 
     // Backend must accept the correctly typed data
-    try {
-      await expect(dialog).not.toBeVisible({ timeout: 60000 });
-    } catch {
-      const errorBox = dialog.locator('.bg-destructive\\/10');
-      if (await errorBox.isVisible()) {
-        const errorText = await errorBox.textContent();
-        expect(errorText).not.toContain('Input validation failed');
-        await dialog.getByRole('button', { name: 'Cancel' }).click();
-      }
-    }
+    const executeResponse = await executeResponsePromise;
+    expect(
+      executeResponse.status(),
+      `execute response: ${await executeResponse.text()}`
+    ).toBe(200);
+    await expect(dialog).not.toBeVisible({ timeout: 15000 });
   });
 
   // ── Cleanup ──────────────────────────────────────────────────────────
 
   test('delete workflow', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    const card = page.locator('article').filter({ hasText: workflowName });
-    await expect(card).toBeVisible({ timeout: 10000 });
-    await card.getByTitle('Delete').first().click();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(workflowName);
 
     workflowId = '';
   });

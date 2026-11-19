@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { apiHeaders, getAccessToken } from '../../utils/api-auth';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 /**
  * Step Configuration Save E2E Tests (SYN-217, SYN-244, SYN-242)
@@ -19,12 +16,8 @@ import { fileURLToPath } from 'url';
  * Requires: runtara-server on :7001 with PostgreSQL
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const RUNTIME_URL = process.env.RUNTIME_URL || 'http://localhost:7001';
 const API_BASE = `${RUNTIME_URL}/api/runtime/workflows`;
-const TENANT_ID = process.env.TEST_ORG_ID || 'org_xxxxx';
 
 // ---------- SYN-217: Filter step condition saves ----------
 

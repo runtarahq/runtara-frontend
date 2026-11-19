@@ -209,6 +209,68 @@ export class WorkflowBuilderPage {
     });
   }
 
+  /**
+   * Inserts a step on an existing route: the edge is selected, which shows
+   * its "Insert a step" button. `sourceStepName` null is the Start indicator.
+   * A Conditional inserted this way leads both its branches on to the target.
+   */
+  async beginCanvasStepOnRoute(
+    sourceStepName: string | null,
+    targetStepName: string,
+    sourceHandle: RouteHandle | 'source',
+    kind: AddStepKind
+  ): Promise<void> {
+    await this.useCanvas();
+    const sourceNodeId =
+      sourceStepName === null
+        ? '__start_indicator__'
+        : await this.canvasNodeId(sourceStepName);
+    const targetNodeId = await this.canvasNodeId(targetStepName);
+    const edge = this.page.locator(
+      `[data-edge-source="${attrValue(sourceNodeId)}"][data-edge-target="${attrValue(targetNodeId)}"][data-edge-handle="${attrValue(sourceHandle)}"]`
+    );
+    await expect(edge).toHaveCount(1);
+    // The edge is an SVG path, and two routes between the same steps share
+    // their ends: click the middle of this one's line.
+    const point = await edge
+      .locator('path')
+      .last()
+      .evaluate((element) => {
+        const path = element as SVGPathElement;
+        const middle = path.getPointAtLength(path.getTotalLength() / 2);
+        const matrix = path.getScreenCTM();
+        if (!matrix) throw new Error('The route is not rendered');
+        const onScreen = new DOMPoint(middle.x, middle.y).matrixTransform(
+          matrix
+        );
+        return { x: onScreen.x, y: onScreen.y };
+      });
+    await this.page.mouse.click(point.x, point.y);
+    await this.page
+      .getByRole('button', { name: 'Insert a step on this route' })
+      .click();
+    await this.pickStep(kind);
+    await expect(this.page.getByTestId('node-config-dialog')).toBeVisible({
+      timeout: 10000,
+    });
+  }
+
+  async insertCanvasStepOnRoute(
+    sourceStepName: string | null,
+    targetStepName: string,
+    sourceHandle: RouteHandle | 'source',
+    kind: AddStepKind,
+    options: StepCreateOptions = {}
+  ): Promise<void> {
+    await this.beginCanvasStepOnRoute(
+      sourceStepName,
+      targetStepName,
+      sourceHandle,
+      kind
+    );
+    await this.saveOpenCanvasDialog(options);
+  }
+
   async beginFirstCanvasStep(kind: AddStepKind): Promise<void> {
     await this.useCanvas();
     await this.page
@@ -335,9 +397,18 @@ export class WorkflowBuilderPage {
     firstCaseMatch = 'approved'
   ) {
     const panel = this.page.getByTestId('node-config-dialog');
-    await panel
-      .getByPlaceholder('Enter value or use reference mode...')
-      .fill(switchValue);
+    // The value opens in reference mode (a variable picker); the mode button
+    // cycles on to the mode with a plain input.
+    const valueInput = panel.getByPlaceholder(
+      'Enter value or use reference mode...'
+    );
+    for (let i = 0; i < 4 && !(await valueInput.isVisible()); i++) {
+      await panel
+        .getByRole('button', { name: /^Switch to \w+ mode$/ })
+        .first()
+        .click();
+    }
+    await valueInput.fill(switchValue);
     await panel.getByTestId('switch-routing-mode').click();
     await panel.getByTestId('switch-add-case').click();
     await panel.getByTestId('switch-case-match-0').fill(firstCaseMatch);
@@ -485,14 +556,14 @@ export class WorkflowBuilderPage {
     await expect(row).toHaveCount(0, { timeout: 15000 });
   }
 
+  /**
+   * The provider is inferred from the connection, the one select in the form.
+   * The model is a select when the connection lists its models and a free-text
+   * identifier when it cannot (a test key lists none).
+   */
   async configureOpenAiAgent(connectionName: string): Promise<void> {
     const panel = this.page.getByTestId('node-config-dialog');
     await panel.getByRole('combobox').first().click();
-    await this.page.getByRole('option', { name: 'OpenAI' }).click();
-
-    const connectionSelect = panel.getByRole('combobox').nth(1);
-    await expect(connectionSelect).toBeEnabled({ timeout: 15000 });
-    await connectionSelect.click();
     await this.page.getByRole('option', { name: connectionName }).click();
 
     await panel
@@ -502,9 +573,17 @@ export class WorkflowBuilderPage {
       .getByPlaceholder('Enter user prompt or select a reference...')
       .fill('Summarize the workflow state.');
 
-    const modelSelect = panel.getByRole('combobox').nth(2);
-    await modelSelect.click();
-    await this.page.getByRole('option', { name: /GPT-4o Mini/ }).click();
+    const modelInput = panel.getByPlaceholder('gpt-4o', { exact: true });
+    const modelSelect = panel.getByRole('combobox').nth(1);
+    await expect(modelInput.or(modelSelect).first()).toBeVisible({
+      timeout: 15000,
+    });
+    if (await modelInput.isVisible()) {
+      await modelInput.fill('gpt-4o-mini');
+    } else {
+      await modelSelect.click();
+      await this.page.getByRole('option', { name: /GPT-4o Mini/i }).click();
+    }
   }
 
   async addCanvasAiTool(
@@ -523,7 +602,10 @@ export class WorkflowBuilderPage {
     await this.saveOpenCanvasDialog(options);
   }
 
-  async addCanvasAiMemory(sourceStepName: string): Promise<void> {
+  async addCanvasAiMemory(
+    sourceStepName: string,
+    conversationId = 'e2e-conversation'
+  ): Promise<void> {
     await this.useCanvas();
     await this.page
       .getByRole('button', { name: `Add memory to ${sourceStepName}` })
@@ -533,6 +615,24 @@ export class WorkflowBuilderPage {
     );
     await expect(objectModelAgent).toBeVisible({ timeout: 30000 });
     await objectModelAgent.click();
+
+    // The agent's editor opens on the new memory, which needs a conversation
+    // id; leaving without Save takes the memory back out.
+    const panel = this.page.getByTestId('node-config-dialog');
+    const conversation = panel
+      .getByText('Conversation ID *')
+      .locator('xpath=..');
+    await expect(conversation).toBeVisible({ timeout: 10000 });
+    const conversationInput = conversation.getByPlaceholder('data.sessionId');
+    for (let i = 0; i < 4 && !(await conversationInput.isVisible()); i++) {
+      await conversation
+        .getByRole('button', { name: /^Switch to \w+ mode$/ })
+        .first()
+        .click();
+    }
+    await conversationInput.fill(conversationId);
+    await panel.getByTestId('node-config-save').click();
+    await expect(panel).toHaveCount(0);
     await expect(
       this.page.getByRole('button', { name: `Add memory to ${sourceStepName}` })
     ).toHaveCount(0, { timeout: 10000 });

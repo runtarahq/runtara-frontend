@@ -1,32 +1,33 @@
 import { test, expect } from '@playwright/test';
 import { apiHeaders, getAccessToken } from '../../utils/api-auth';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { WorkflowBuilderPage } from '../../pages/WorkflowBuilderPage';
 
 /**
  * Problem Tab Step Reference E2E Test (SYN-234)
  *
- * Verifies that when a workflow is saved with a step missing required configuration
- * (e.g., Group By without config), the Problem tab shows an ERROR (not just a warning)
- * that references the correct step name ("Group By").
+ * Verifies that a step missing required configuration (e.g., Group By without
+ * config) puts an ERROR (not just a warning) in the Problem tab that references
+ * the correct step name ("Group By").
  *
- * Currently the backend returns a flat string error "Invalid workflow format: missing
- * field 'config'" with no step context, so the Problem tab only shows client-side
- * warnings (which may reference the wrong step). The fix should make the backend
- * return a structured validation error with the step ID.
+ * The test used to add the unconfigured step, then save the workflow, and read
+ * the server's validation error. The editor now runs the same validator in the
+ * browser when a step is added and refuses one that leaves the workflow
+ * invalid, so the error shows as soon as "Add step" is pressed and the step
+ * never reaches the canvas.
  *
  * Requires: full local stack running (gateway, runtime, management, frontend)
  */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
-
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const WORKFLOW_NAME = `E2E Step Ref ${Date.now()}`;
 
-/** Read the access token from the Playwright auth state file. */
-/** Build common headers for authenticated API calls. */
+const groupByStep = {
+  type: 'capability' as const,
+  agentId: 'transform',
+  capabilityId: 'group-by',
+  search: 'Group By',
+};
+
 test.describe.serial('Problem tab shows correct step name (SYN-234)', () => {
   let workflowId: string;
   let token: string;
@@ -49,105 +50,62 @@ test.describe.serial('Problem tab shows correct step name (SYN-234)', () => {
   });
 
   test('create workflow', async ({ page }) => {
-    await page.goto('/workflows/create');
-    await page.waitForLoadState('networkidle');
-
-    await page.getByLabel('Name').fill(WORKFLOW_NAME);
-    await page.getByRole('button', { name: 'Save' }).click();
-
-    await page.waitForURL(
-      (url) => /\/workflows\/(?!create\b)[a-zA-Z0-9_-]+$/.test(url.pathname),
-      { timeout: 15000 }
+    workflowId = await new WorkflowBuilderPage(page).createWorkflow(
+      WORKFLOW_NAME
     );
-
-    workflowId = page.url().split('/workflows/').pop()!;
     expect(workflowId).toBeTruthy();
   });
 
-  test('add Group By step without config, save, and verify error references correct step', async ({
+  test('add Group By step without config and verify error references correct step', async ({
     page,
   }) => {
-    await page.goto(`/workflows/${workflowId}`);
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('.react-flow')).toBeVisible({ timeout: 15000 });
+    const builder = new WorkflowBuilderPage(page);
+    await builder.gotoWorkflow(workflowId);
 
-    // Add a Group By step via "+" on Start node
-    const startNode = page
-      .locator('.react-flow__node')
-      .filter({ hasText: 'Start' });
-    await expect(startNode).toBeVisible();
-    await startNode.getByRole('button').click();
+    // Add a Group By step from the canvas and confirm its config dialog
+    // WITHOUT filling required fields
+    await builder.beginFirstCanvasStep(groupByStep);
+    const dialog = page.getByTestId('node-config-dialog');
+    await dialog.getByTestId('node-config-save').click();
 
-    const searchInput = page.getByPlaceholder('Search steps or operations...');
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Group By');
-
-    const capabilityResult = page.getByText('Group By').first();
-    await expect(capabilityResult).toBeVisible({ timeout: 30000 });
-    await capabilityResult.click();
-
-    // Save the step in the config dialog WITHOUT filling required fields
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible({ timeout: 5000 });
-    await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(dialog).not.toBeVisible({ timeout: 5000 });
-
-    // Verify Group By node appears on canvas
+    // The step is refused: its dialog stays open and the step is not added
     await expect(
-      page.locator('.react-flow__node').filter({ hasText: 'Group By' })
+      page.getByText('Step validation failed', { exact: true })
     ).toBeVisible({ timeout: 10000 });
-
-    // Save the workflow — triggers backend validation error about missing config
-    const saveButton = page.getByTitle('Save changes');
-    await expect(saveButton).toBeVisible({ timeout: 5000 });
-    await saveButton.click();
-
-    // Wait for save response (error expected)
-    await page.waitForTimeout(5000);
+    await expect(dialog).toBeVisible();
+    await builder.expectStepHidden('Group By');
 
     // Open the Problems tab
     const problemsButton = page.getByRole('button', { name: /Problems/ });
     await problemsButton.click();
-    await page.waitForTimeout(500);
 
     // KEY ASSERTION: The Problem tab should have an ERROR (red, severity=error)
     // about missing configuration that references the "Group By" step.
     // The Errors tab must exist and have at least 1 error.
-    const errorsTab = page.getByRole('button', { name: /Errors \(\d+\)/ });
+    const errorsTab = page.getByRole('button', { name: /Errors \([1-9]\d*\)/ });
     await expect(errorsTab).toBeVisible({ timeout: 5000 });
 
     // Switch to Errors-only filter to isolate from warnings
     await errorsTab.click();
     await page.waitForTimeout(300);
 
-    // Find an error message (red text) that mentions "config" or "configuration"
-    const errorMessages = page.locator('.text-destructive');
-    await expect(errorMessages.first()).toBeVisible({ timeout: 5000 });
+    // Find an error message (red text) about the missing required input
+    const missingInputError = page
+      .getByTestId('validation-message')
+      .filter({ has: page.locator('.text-destructive') })
+      .filter({ hasText: /requires input '\w+' but it is not provided/ });
+    await expect(missingInputError.first()).toBeVisible({ timeout: 5000 });
 
     // The error about missing config should have a "Step: Group By" badge
     // This is the core assertion: the error references the CORRECT step
-    const errorWithStep = page
-      .locator('.space-y-0\\.5 > div')
-      .filter({
-        has: page.locator('.text-destructive'),
-      })
-      .filter({
-        hasText: 'Step: Group By',
-      });
-    await expect(errorWithStep).toBeVisible({ timeout: 5000 });
+    const errorWithStep = missingInputError.filter({
+      hasText: 'Step: Group By',
+    });
+    await expect(errorWithStep.first()).toBeVisible({ timeout: 5000 });
   });
 
   test('delete workflow', async ({ page }) => {
-    await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
-
-    const card = page.locator('article').filter({ hasText: WORKFLOW_NAME });
-    await expect(card).toBeVisible({ timeout: 10000 });
-
-    await card.getByTitle('Delete').first().click();
-    await page.getByRole('button', { name: 'Confirm' }).click();
-
-    await expect(card).not.toBeVisible({ timeout: 10000 });
+    await new WorkflowBuilderPage(page).deleteWorkflowFromList(WORKFLOW_NAME);
     workflowId = '';
   });
 });

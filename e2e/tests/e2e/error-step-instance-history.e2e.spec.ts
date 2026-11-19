@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { apiHeaders, getAccessToken } from '../../utils/api-auth';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 /**
  * Error Step Instance History E2E Test (SYN-236)
@@ -21,9 +18,6 @@ import { fileURLToPath } from 'url';
  *
  * Requires: full local stack running (gateway, runtime, management, frontend)
  */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirnameLocal = path.dirname(__filename);
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8080';
 const API_BASE = `${GATEWAY_URL}/api/runtime/workflows`;
@@ -106,12 +100,13 @@ test.describe.serial('Error Step Instance History (SYN-236)', () => {
   });
 
   test('compile, activate, and execute', async ({ request }) => {
-    // Enable debug mode BEFORE compiling (toggleing invalidates compilation)
+    // Enable step-event tracking (what "debug mode" became) BEFORE compiling:
+    // toggling it invalidates the compilation.
     const debugRes = await request.put(
-      `${API_BASE}/${workflowId}/versions/2/debug`,
+      `${API_BASE}/${workflowId}/versions/2/track-events`,
       {
         headers: apiHeaders(token),
-        data: { debugMode: true },
+        data: { trackEvents: true },
       }
     );
     expect(debugRes.status()).toBe(200);
@@ -206,8 +201,9 @@ test.describe.serial('Error Step Instance History (SYN-236)', () => {
       timeout: 15000,
     });
 
-    // The "No Timeline Events Yet" message should NOT appear
-    await expect(page.getByText('No Timeline Events Yet')).not.toBeVisible();
+    // The empty timeline's message ("No Timeline Events Yet" while a run is
+    // in flight, "No Timeline Events" once it has finished) should NOT appear
+    await expect(page.getByText(/No Timeline Events/)).not.toBeVisible();
 
     // Verify the Error step name appears in the timeline
     await expect(page.getByText('Test Error', { exact: true })).toBeVisible({
@@ -215,7 +211,12 @@ test.describe.serial('Error Step Instance History (SYN-236)', () => {
     });
 
     // Verify the step type "Error" is shown beneath the step name in the timeline row
-    await expect(page.getByText('Error', { exact: true })).toBeVisible();
+    // ("Error" alone also labels the run's time-by-step-type bar above.)
+    const stepType = page
+      .getByText('Test Error', { exact: true })
+      .locator('xpath=following-sibling::div[1]');
+    await expect(stepType).toBeVisible();
+    await expect(stepType).toHaveText('Error');
 
     // Verify the page did NOT show the "does not exist" error
     await expect(page.getByText('This page does not exist')).not.toBeVisible();
@@ -237,8 +238,9 @@ test.describe.serial('Error Step Instance History (SYN-236)', () => {
       timeout: 5000,
     });
 
-    // The "Error Message" section header should be visible (from WorkflowHistory)
-    await expect(page.getByText('Error Message')).toBeVisible({
+    // The "Why it failed" section header should be visible (the run overview
+    // card of WorkflowHistory; it was titled "Error Message")
+    await expect(page.getByText('Why it failed')).toBeVisible({
       timeout: 10000,
     });
 
@@ -246,7 +248,7 @@ test.describe.serial('Error Step Instance History (SYN-236)', () => {
     await expect(page.getByText('TEST_ERROR_CODE')).toBeVisible();
 
     // StructuredErrorDisplay should render the category badge
-    await expect(page.getByText('permanent')).toBeVisible();
+    await expect(page.getByText('permanent', { exact: true })).toBeVisible();
 
     // StructuredErrorDisplay should render the error message text
     await expect(
