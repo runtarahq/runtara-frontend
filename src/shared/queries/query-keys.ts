@@ -113,6 +113,23 @@ export const queryKeys = {
         instanceId,
         filters,
       ] as const,
+    /** A run's top-level steps for the timeline, page after page. */
+    timelineRoots: (workflowId: string, instanceId: string | null) =>
+      queryKeys.workflows.stepSummaries(workflowId, instanceId, 'timeline'),
+    /** The steps inside one step of a run's timeline. */
+    timelineChildren: (
+      workflowId: string,
+      instanceId: string | null,
+      scopeId: string
+    ) =>
+      [
+        ...queryKeys.workflows.stepSummaries(
+          workflowId,
+          instanceId,
+          'timeline'
+        ),
+        scopeId,
+      ] as const,
     invocationTriggers: (workflowId: string) =>
       [...queryKeys.workflows.byId(workflowId), 'invocationTriggers'] as const,
     // Folder operations
