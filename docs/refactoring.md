@@ -698,7 +698,9 @@ test keeps complete; two that did nothing were removed.
   with the commit's console pointed at its API. The pull request that added
   the baselines ran the mocked job against them.
 
-  The same job runs the connection specs of the `local-ui` project.
+  The same job runs the connection specs of the `local-ui` project, except
+  two tests that expect how the sign-in popup behaved before the console
+  waited for it (`Reconnect after Save & Reconnect saves`, on main).
 
 Not done, and why:
 
