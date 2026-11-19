@@ -14,6 +14,10 @@ those findings.
 
 ## How to read this document
 
+The five high-priority items have since been worked on; each has a **Status**
+paragraph saying what was done and what remains. The findings above each
+status describe the code as it was at the audit.
+
 - Paths are relative to the repository root. `WF` stands for
   `src/features/workflows`, and `WE` for `WF/components/WorkflowEditor`.
 - Counts are greps over non-test, non-generated source unless stated.
@@ -113,6 +117,26 @@ node component, size, form field component, zod refinement, `serialize`,
 time; the round-trip tests already pin behaviour. Do H2 first, so descriptors
 are typed.
 
+**Status: done, in part.** Four tables hold one entry per DSL step type, each
+typed `{ [T in StepType]: … }` over the generated client's step types, so the
+compiler names the table a new step type is missing from:
+
+- `WF/step-types/catalog.ts`: node type, display name, summary, badge,
+  durable, retries.
+- `WF/step-types/ui.tsx`: icon and the main-tab form.
+- `WF/utils/execution-graph/step-serializers.ts` and `step-deserializers.ts`:
+  one function per step type, taken out of the two monoliths as they were.
+
+`serializeSteps` and `normalizeNodesAndEdges` keep what every step shares (349
+and 318 lines). The node-type lookup, `StepTypeIcon`, the node form's choice
+of field, its durable and retry sets and the card summary read the tables.
+
+Remaining: 93 string comparisons (from 141), most inside the forms of single
+step types and in the shared part of the serializer (Error, Log and Finish
+mappings). `step-details.ts`, `StepOutputPanel.tsx`, `NodeForm/shared.ts` and
+`container-scope.ts` still dispatch by name. The zod refinements in
+`NodeFormItem.tsx` are not in a table.
+
 ### H2. The DSL is typed by hand, and the hand-written types are wrong
 
 `WF/types/execution-graph.ts` gives every step
@@ -140,6 +164,24 @@ into the saved DSL (_inferred_).
    hand-written step types.
 3. Split `node.data` into `{ step, ui }` so serialization takes `step` and
    never has to strip.
+
+**Status: done, in part.** `DslStep` is the generated `Step` union and
+`StepType` its discriminant (`WF/types/execution-graph.ts`); the hand-written
+step and config types are gone, with the `stepType as string` casts. Canvas
+node data has its own type (`StepNodeData`). The editor-only fields are listed
+once (`UI_ONLY_STEP_FIELDS`) and taken out in one place.
+`step-types.roundtrip.test.ts` holds a typed fixture of every step type and
+takes each through load and save.
+
+Remaining:
+
+- Step 1 is a change in runtara: `executionGraph` is still `any` on the
+  workflow DTOs.
+- The bodies of the per-step serializers and deserializers still build their
+  steps untyped (`Record<string, any>`); the `any` count barely moved. Their
+  signatures are the place to type them, one step type at a time.
+- Step 3, splitting `node.data`, is not done: the forms read the flat shape
+  throughout.
 
 ### H3. Three contracts are unenforced
 
@@ -181,6 +223,23 @@ exist today.
 4. Run the audit suite nightly, or on PRs if 16 minutes is acceptable, and
    update its config comment.
 
+**Status: done, except the management client.**
+
+- `npm run check-api-runtime-release` regenerates the client aside and diffs
+  it; CI runs it on every pull request. It found drift at once: the client
+  checked in is ahead of runtara v10.0.0 (API key scopes, revoking a user's
+  keys). The job therefore reports without gating (`continue-on-error`) until
+  the pin moves to a release that has them. The file is not stamped yet.
+- `examples/edition` fills in every part of `Edition`. `npm run test:edition`
+  type-checks the console with it and runs its contract tests, and CI also
+  bundles with it. `edition.config.ts` is the one place the build and the
+  tests resolve an edition.
+- `.github/workflows/audit.yml` runs the audit suite on `main`, nightly and on
+  demand.
+
+Remaining: `RuntaraManagementApi.ts` can still only be regenerated from a
+local server (item 2).
+
 ### H4. Two parallel HTTP stacks
 
 - Auth is not an interceptor. `useCustomQuery` and `useCustomMutation` pass the
@@ -206,6 +265,24 @@ exist today.
 2. Add one `fetch` wrapper for streaming and long-running calls that shares the
    base URL, auth header, 401 and 503 handling, and one error type.
 3. Move the `AiAgentStepField` fetch to `features/connections/queries`.
+
+**Status: done, except removing the token parameter.**
+
+- `currentAccessToken()` (`src/shared/auth/access-token.ts`) is the one place
+  the stored token is read.
+- The generated clients attach it in a request interceptor, unless the caller
+  set an `Authorization` header.
+- `runtimeFetch()` (`src/shared/queries/runtime-fetch.ts`) is `fetch` for the
+  runtime API, with the tenant's base URL, the token, and the same handling of
+  a 401 and a 503 as the interceptor (`reportResponseStatus`).
+- The nine raw `fetch` calls and the validator's loader go through it and take
+  no token. The model lookup moved to the connections queries.
+
+Remaining: query functions on the generated client still take a token and
+call `createAuthHeaders` (about 70 call sites). The interceptor makes that
+redundant, so the parameter can go feature by feature; `useCustomQuery` and
+`useCustomMutation` still pass it. The 9 untyped `RuntimeREST.instance.*`
+calls are unchanged.
 
 ### H5. God modules in the editor
 
@@ -234,6 +311,24 @@ pending-node commit (`:1220-1358`), viewport fitting (`:551-663`).
 the store's geometry into pure functions of `(nodes, edges)` beside the layout
 engine; `renameStep` must stay atomic in the store. Write tests for the save
 pipeline before moving it.
+
+**Status: done for one seam in each module; more seams remain.**
+
+| Module                        | Lines now | What moved out, with tests                                                                                |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------- |
+| `WF/pages/Workflow/index.tsx` | 1,365     | `save-workflow.ts` (`prepareWorkflowSave`) and `workflow-settings.ts` (the settings merge, once of three) |
+| `WE/index.tsx`                | 1,374     | `pending-step.ts` (`planPendingStep`: the placement of a picked step)                                     |
+| `WF/stores/workflowStore.ts`  | 1,136     | `canvas-geometry.ts` (`insertStepBetween`, `expandParentToFitChildren`)                                   |
+
+Remaining:
+
+- `pages/Workflow/index.tsx`: compilation watch and rebuild, version
+  switching, import, the unsaved-changes guard, the two execute handlers.
+- `WE/index.tsx`: node save with validation and rename, pending-node commit,
+  viewport fitting.
+- `workflowStore.ts`: `onNodesChange`, whose geometry reads and writes the
+  store's resize tracking.
+- `useWorkflowExecution.ts` is unchanged and still untested.
 
 ## Medium priority
 
