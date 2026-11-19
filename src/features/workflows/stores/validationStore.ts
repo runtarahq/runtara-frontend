@@ -1,4 +1,5 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand';
+import { editorStore } from './editor-scope';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { ValidationMessage, ValidationFilter } from '../types/validation';
@@ -116,157 +117,161 @@ export function getFirstValidationMessage(
   return msg?.message ?? null;
 }
 
-export const useValidationStore = create<ValidationStore>()(
-  devtools(
-    immer((set, get) => ({
-      // Initial state
-      messages: [],
-      stepsWithErrors: new Set<string>(),
-      stepsWithWarnings: new Set<string>(),
-      isPanelExpanded: false,
-      activeTab: 'problems',
-      activeFilter: 'all',
-      lastValidatedAt: null,
+export const useValidationStore = editorStore('validation', () =>
+  createStore<ValidationStore>()(
+    devtools(
+      immer((set, get) => ({
+        // Initial state
+        messages: [],
+        stepsWithErrors: new Set<string>(),
+        stepsWithWarnings: new Set<string>(),
+        isPanelExpanded: false,
+        activeTab: 'problems',
+        activeFilter: 'all',
+        lastValidatedAt: null,
 
-      // Actions
-      setMessages: (messages) =>
-        set((state) => {
-          state.messages = messages;
-          state.lastValidatedAt = Date.now();
+        // Actions
+        setMessages: (messages) =>
+          set((state) => {
+            state.messages = messages;
+            state.lastValidatedAt = Date.now();
 
-          // Rebuild step sets
-          const { stepsWithErrors, stepsWithWarnings } =
-            rebuildStepSets(messages);
-          state.stepsWithErrors = stepsWithErrors;
-          state.stepsWithWarnings = stepsWithWarnings;
+            // Rebuild step sets
+            const { stepsWithErrors, stepsWithWarnings } =
+              rebuildStepSets(messages);
+            state.stepsWithErrors = stepsWithErrors;
+            state.stepsWithWarnings = stepsWithWarnings;
 
-          // Auto-expand panel and switch to problems tab if there are new errors
-          if (messages.some((m) => m.severity === 'error')) {
-            state.isPanelExpanded = true;
-            state.activeTab = 'problems';
-          }
-        }),
-
-      addMessages: (newMessages) =>
-        set((state) => {
-          state.messages.push(...newMessages);
-          state.lastValidatedAt = Date.now();
-
-          // Update step sets
-          newMessages.forEach((msg) => {
-            if (msg.stepId) {
-              if (msg.severity === 'error') {
-                state.stepsWithErrors.add(msg.stepId);
-              } else {
-                state.stepsWithWarnings.add(msg.stepId);
-              }
+            // Auto-expand panel and switch to problems tab if there are new errors
+            if (messages.some((m) => m.severity === 'error')) {
+              state.isPanelExpanded = true;
+              state.activeTab = 'problems';
             }
-            msg.relatedStepIds?.forEach((id) => {
-              if (msg.severity === 'error') {
-                state.stepsWithErrors.add(id);
-              } else {
-                state.stepsWithWarnings.add(id);
+          }),
+
+        addMessages: (newMessages) =>
+          set((state) => {
+            state.messages.push(...newMessages);
+            state.lastValidatedAt = Date.now();
+
+            // Update step sets
+            newMessages.forEach((msg) => {
+              if (msg.stepId) {
+                if (msg.severity === 'error') {
+                  state.stepsWithErrors.add(msg.stepId);
+                } else {
+                  state.stepsWithWarnings.add(msg.stepId);
+                }
               }
+              msg.relatedStepIds?.forEach((id) => {
+                if (msg.severity === 'error') {
+                  state.stepsWithErrors.add(id);
+                } else {
+                  state.stepsWithWarnings.add(id);
+                }
+              });
             });
-          });
 
-          // Auto-expand panel and switch to problems tab if there are new errors
-          if (newMessages.some((m) => m.severity === 'error')) {
-            state.isPanelExpanded = true;
-            state.activeTab = 'problems';
-          }
-        }),
-
-      clearMessages: (source) =>
-        set((state) => {
-          if (source) {
-            state.messages = state.messages.filter((m) => m.source !== source);
-          } else {
-            state.messages = [];
-          }
-
-          // Rebuild step sets from remaining messages
-          const { stepsWithErrors, stepsWithWarnings } = rebuildStepSets(
-            state.messages
-          );
-          state.stepsWithErrors = stepsWithErrors;
-          state.stepsWithWarnings = stepsWithWarnings;
-        }),
-
-      setPanelExpanded: (expanded) =>
-        set((state) => {
-          state.isPanelExpanded = expanded;
-        }),
-
-      togglePanel: () =>
-        set((state) => {
-          state.isPanelExpanded = !state.isPanelExpanded;
-        }),
-
-      setActiveTab: (tab) =>
-        set((state) => {
-          state.activeTab = tab;
-          // Expand panel when switching tabs
-          if (!state.isPanelExpanded) {
-            state.isPanelExpanded = true;
-          }
-        }),
-
-      setActiveFilter: (filter) =>
-        set((state) => {
-          state.activeFilter = filter;
-        }),
-
-      // Computed helpers
-      getErrorCount: () => {
-        return get().messages.filter((m) => m.severity === 'error').length;
-      },
-
-      getWarningCount: () => {
-        return get().messages.filter((m) => m.severity === 'warning').length;
-      },
-
-      getFilteredMessages: () => {
-        const { messages, activeFilter } = get();
-        if (activeFilter === 'all') {
-          // Sort: errors first, then warnings, then by timestamp
-          return [...messages].sort((a, b) => {
-            if (a.severity !== b.severity) {
-              return a.severity === 'error' ? -1 : 1;
+            // Auto-expand panel and switch to problems tab if there are new errors
+            if (newMessages.some((m) => m.severity === 'error')) {
+              state.isPanelExpanded = true;
+              state.activeTab = 'problems';
             }
-            return a.timestamp - b.timestamp;
-          });
-        }
-        return messages.filter((m) =>
-          activeFilter === 'errors'
-            ? m.severity === 'error'
-            : m.severity === 'warning'
-        );
-      },
+          }),
 
-      getFirstErrorStepId: () => {
-        const firstError = get().messages.find(
-          (m) => m.severity === 'error' && m.stepId
-        );
-        return firstError?.stepId || null;
-      },
+        clearMessages: (source) =>
+          set((state) => {
+            if (source) {
+              state.messages = state.messages.filter(
+                (m) => m.source !== source
+              );
+            } else {
+              state.messages = [];
+            }
 
-      renameStep: (oldId, newId) =>
-        set((state) => {
-          if (oldId === newId) return;
-          const renamed = (id: string) => (id === oldId ? newId : id);
-          state.messages = state.messages.map((message) => ({
-            ...message,
-            stepId: message.stepId ? renamed(message.stepId) : message.stepId,
-            relatedStepIds: message.relatedStepIds?.map(renamed),
-          }));
-          const { stepsWithErrors, stepsWithWarnings } = rebuildStepSets(
-            state.messages
+            // Rebuild step sets from remaining messages
+            const { stepsWithErrors, stepsWithWarnings } = rebuildStepSets(
+              state.messages
+            );
+            state.stepsWithErrors = stepsWithErrors;
+            state.stepsWithWarnings = stepsWithWarnings;
+          }),
+
+        setPanelExpanded: (expanded) =>
+          set((state) => {
+            state.isPanelExpanded = expanded;
+          }),
+
+        togglePanel: () =>
+          set((state) => {
+            state.isPanelExpanded = !state.isPanelExpanded;
+          }),
+
+        setActiveTab: (tab) =>
+          set((state) => {
+            state.activeTab = tab;
+            // Expand panel when switching tabs
+            if (!state.isPanelExpanded) {
+              state.isPanelExpanded = true;
+            }
+          }),
+
+        setActiveFilter: (filter) =>
+          set((state) => {
+            state.activeFilter = filter;
+          }),
+
+        // Computed helpers
+        getErrorCount: () => {
+          return get().messages.filter((m) => m.severity === 'error').length;
+        },
+
+        getWarningCount: () => {
+          return get().messages.filter((m) => m.severity === 'warning').length;
+        },
+
+        getFilteredMessages: () => {
+          const { messages, activeFilter } = get();
+          if (activeFilter === 'all') {
+            // Sort: errors first, then warnings, then by timestamp
+            return [...messages].sort((a, b) => {
+              if (a.severity !== b.severity) {
+                return a.severity === 'error' ? -1 : 1;
+              }
+              return a.timestamp - b.timestamp;
+            });
+          }
+          return messages.filter((m) =>
+            activeFilter === 'errors'
+              ? m.severity === 'error'
+              : m.severity === 'warning'
           );
-          state.stepsWithErrors = stepsWithErrors;
-          state.stepsWithWarnings = stepsWithWarnings;
-        }),
-    })),
-    { name: 'validation-store' }
+        },
+
+        getFirstErrorStepId: () => {
+          const firstError = get().messages.find(
+            (m) => m.severity === 'error' && m.stepId
+          );
+          return firstError?.stepId || null;
+        },
+
+        renameStep: (oldId, newId) =>
+          set((state) => {
+            if (oldId === newId) return;
+            const renamed = (id: string) => (id === oldId ? newId : id);
+            state.messages = state.messages.map((message) => ({
+              ...message,
+              stepId: message.stepId ? renamed(message.stepId) : message.stepId,
+              relatedStepIds: message.relatedStepIds?.map(renamed),
+            }));
+            const { stepsWithErrors, stepsWithWarnings } = rebuildStepSets(
+              state.messages
+            );
+            state.stepsWithErrors = stepsWithErrors;
+            state.stepsWithWarnings = stepsWithWarnings;
+          }),
+      })),
+      { name: 'validation-store' }
+    )
   )
 );

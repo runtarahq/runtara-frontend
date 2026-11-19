@@ -8,7 +8,6 @@ import { StepTypeIcon } from '@/features/workflows/components/StepTypeIcon';
 import * as form from '@/features/workflows/components/WorkflowEditor/NodeForm/NodeFormItem.tsx';
 import {
   generateStepId,
-  dirtied,
   useWorkflowStore,
 } from '@/features/workflows/stores/workflowStore.ts';
 import { useExecutionStore } from '@/features/workflows/stores/executionStore';
@@ -250,11 +249,9 @@ function AiAgentNodeComponent({
           data: { ...n.data, inputMapping: currentMapping },
         };
       });
-      useWorkflowStore.setState((state) => ({
-        nodes: updatedNodes,
-        ...dirtied(state),
-        isStructurallyDirty: true,
-      }));
+      useWorkflowStore
+        .getState()
+        .editNodes(() => updatedNodes, { structural: true });
 
       // Create hidden tool step node positioned off to the right
       const currentPosAbsX =
@@ -408,11 +405,9 @@ function AiAgentNodeComponent({
           data: { ...n.data, inputMapping: currentMapping },
         };
       });
-      useWorkflowStore.setState((state) => ({
-        nodes: updatedNodes,
-        ...dirtied(state),
-        isStructurallyDirty: true,
-      }));
+      useWorkflowStore
+        .getState()
+        .editNodes(() => updatedNodes, { structural: true });
 
       const afterAdd = useWorkflowStore.getState().dirtyRevision;
       setStepPickerMode(null);
@@ -424,14 +419,15 @@ function AiAgentNodeComponent({
         // Nothing else changed since: back to the state before the pick.
         const untouched = store.dirtyRevision === afterAdd;
         store.removeNode(newNodeId);
-        useWorkflowStore.setState((state) => ({
-          nodes: state.nodes.map((n) =>
-            n.id === id
-              ? { ...n, data: { ...n.data, inputMapping: previousMapping } }
-              : n
-          ),
-          ...(untouched ? wasDirty : {}),
-        }));
+        store.revertNodes(
+          (nodes) =>
+            nodes.map((n) =>
+              n.id === id
+                ? { ...n, data: { ...n.data, inputMapping: previousMapping } }
+                : n
+            ),
+          untouched ? wasDirty : undefined
+        );
       });
     },
     [id, addNode, addStoreEdge, configureNewMemory]

@@ -7,10 +7,8 @@ import {
   getWorkflowWorkflow,
   type WorkflowVersionInfoDto,
 } from '@/features/workflows/queries';
-import { useExecutionStore } from '@/features/workflows/stores/executionStore';
-import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
-import type { ExecutionGraphDto } from '@/features/workflows/types/execution-graph';
+import { ExecutionGraphDto } from '@/features/workflows/types/execution-graph';
 import { buildSchemaFromFields } from '@/features/workflows/utils/schema';
 
 /**
@@ -46,8 +44,8 @@ export type VersionSelection = ReturnType<typeof useVersionSelection>;
 /**
  * Loads the workflow at the selected version, and its list of versions.
  *
- * It also owns what loading implies: another workflow starts from clean
- * stores and no staged settings; the fetched graph is drawn in the editor,
+ * It also owns what loading implies: another workflow starts with no staged
+ * settings; the fetched graph is drawn in the editor,
  * which starts clean; the current
  * version is selected until the user picks one; and switching version drops
  * what was unsaved and fetches the target afresh.
@@ -103,18 +101,10 @@ export function useWorkflowLoad(
     return fields.length > 0 ? buildSchemaFromFields(fields) : {};
   }, [data]);
 
-  // Reset selectedVersion and invalidate queries when workflowId changes
+  // Another workflow: no staged settings, no selected version, fresh data.
+  // The editor's stores need nothing: the page gives each workflow its own
+  // (EditorStoresProvider).
   useEffect(() => {
-    // Reset execution state when switching workflows
-    useExecutionStore.getState().resetExecution();
-
-    // Reset workflow state when switching workflows
-    useWorkflowStore.getState().resetState();
-
-    // Clear validation problems from previous workflow
-    useValidationStore.getState().clearMessages();
-
-    // Clear staged workflow changes
     discardStagedChanges();
 
     setSelectedVersion(undefined);
@@ -130,13 +120,6 @@ export function useWorkflowLoad(
       }),
     ]);
   }, [workflowId, discardStagedChanges, setSelectedVersion, setQueryVersion]);
-
-  // Reset execution state when leaving the workflow page
-  useEffect(() => {
-    return () => {
-      useExecutionStore.getState().resetExecution();
-    };
-  }, []);
 
   // Draw what was fetched. This is the one place a fetched graph enters the
   // editor: the query cache holds the server's graph, and the store turns it

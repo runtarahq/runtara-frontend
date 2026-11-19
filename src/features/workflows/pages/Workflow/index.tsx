@@ -17,6 +17,7 @@ import { slugify } from '@/shared/utils/string-utils';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore.ts';
 import { DebugStepInspector } from '@/features/workflows/components/DebugStepInspector';
+import { EditorStoresProvider } from '@/features/workflows/stores/EditorStoresProvider';
 
 import { WorkflowExecuteDialog } from '@/features/workflows/components/WorkflowExecuteDialog';
 import {
@@ -61,7 +62,19 @@ function hasOwn(object: object, key: string) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
+// The page of one workflow. Its editor state lives in stores of its own
+// (stores/editor-scope), made when the page opens on a workflow and dropped
+// when it leaves it: another workflow starts from nothing, with no reset.
 export function Workflow() {
+  const { workflowId } = useParams();
+  return (
+    <EditorStoresProvider key={workflowId}>
+      <WorkflowPage />
+    </EditorStoresProvider>
+  );
+}
+
+function WorkflowPage() {
   const { workflowId } = useParams();
   // Which version is shown and which is loaded (./use-workflow-load.ts).
   const versionSelection = useVersionSelection();

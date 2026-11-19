@@ -1,4 +1,9 @@
 import type { XYPosition } from '@xyflow/react';
+import { createStore } from 'zustand';
+
+import { editorStore } from '@/features/workflows/stores/editor-scope';
+
+type Mapper = (point: XYPosition) => XYPosition;
 
 /**
  * Screen → canvas coordinates for code outside the canvas.
@@ -7,17 +12,19 @@ import type { XYPosition } from '@xyflow/react';
  * `useReactFlow()` higher up (the workflow page's toolbar) talks to a
  * different, never-rendered instance: its viewport is always the identity,
  * which is why toolbar-added notes landed at arbitrary spots. The canvas
- * registers its real mapping here while it is mounted.
+ * registers its real mapping here while it is mounted, with the rest of its
+ * editor's state.
  */
-let screenToCanvasMapper: ((point: XYPosition) => XYPosition) | null = null;
+const canvasBridge = editorStore('canvasBridge', () =>
+  createStore<{ mapper: Mapper | null }>(() => ({ mapper: null }))
+);
 
-export function registerScreenToCanvas(
-  mapper: ((point: XYPosition) => XYPosition) | null
-) {
-  screenToCanvasMapper = mapper;
+export function registerScreenToCanvas(mapper: Mapper | null) {
+  canvasBridge.setState({ mapper });
 }
 
 /** Canvas coordinates of a screen point, or null when no canvas is mounted. */
 export function screenToCanvas(point: XYPosition): XYPosition | null {
-  return screenToCanvasMapper ? screenToCanvasMapper(point) : null;
+  const { mapper } = canvasBridge.getState();
+  return mapper ? mapper(point) : null;
 }

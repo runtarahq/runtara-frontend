@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -22,7 +22,6 @@ vi.mock('@/features/workflows/queries', () => mocks);
 
 import { queryClient } from '@/shared/queries/query-client';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { useExecutionStore } from '@/features/workflows/stores/executionStore';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useVersionSelection, useWorkflowLoad } from './use-workflow-load';
 
@@ -224,25 +223,19 @@ describe('useWorkflowLoad', () => {
     expect(mocks.getWorkflowWorkflow.mock.calls.length).toBe(calls + 1);
   });
 
-  it('starts another workflow from clean stores, no staged settings and no selection', async () => {
+  it('starts another workflow with no staged settings and no selection', async () => {
+    // Its stores are new with the page (EditorStoresProvider), not reset here.
     const { result, rerender } = load();
     await advance(300);
     act(() => result.current.performVersionChange(2));
     await advance(300);
-    const resetExecution = vi.spyOn(
-      useExecutionStore.getState(),
-      'resetExecution'
-    );
-    act(() => useWorkflowStore.setState({ isDirty: true }));
     discard.mockClear();
 
     rerender({ id: 'wf-2' });
     expect(discard).toHaveBeenCalled();
-    expect(useWorkflowStore.getState().isDirty).toBe(false);
     await advance(300);
     // The other workflow's current version, not the one picked before.
     expect(mocks.getWorkflowWorkflow).toHaveBeenCalledWith('wf-2', undefined);
     expect(result.current.selection.selectedVersion).toBe(3);
-    resetExecution.mockRestore();
   });
 });

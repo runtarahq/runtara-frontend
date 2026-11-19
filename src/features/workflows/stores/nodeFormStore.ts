@@ -1,4 +1,5 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand';
+import { editorStore } from './editor-scope';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 
@@ -131,160 +132,162 @@ type NodeFormState = {
   renameField: (nodeId: string, oldName: string, newName: string) => void;
 };
 
-export const useNodeFormStore = create<NodeFormState>()(
-  devtools(
-    immer((set, get) => ({
-      nodeInputMappings: {},
+export const useNodeFormStore = editorStore('nodeForm', () =>
+  createStore<NodeFormState>()(
+    devtools(
+      immer((set, get) => ({
+        nodeInputMappings: {},
 
-      setFieldValue: (nodeId, fieldName, value) => {
-        set((state) => {
-          if (!state.nodeInputMappings[nodeId]) {
-            state.nodeInputMappings[nodeId] = {};
-          }
-          if (!state.nodeInputMappings[nodeId][fieldName]) {
-            state.nodeInputMappings[nodeId][fieldName] = {
-              type: fieldName,
-              value: '',
-              valueType: 'immediate',
-            };
-          }
-          state.nodeInputMappings[nodeId][fieldName].value = value;
-        });
-      },
-
-      setFieldValueType: (nodeId, fieldName, valueType) => {
-        set((state) => {
-          if (!state.nodeInputMappings[nodeId]) {
-            state.nodeInputMappings[nodeId] = {};
-          }
-          if (!state.nodeInputMappings[nodeId][fieldName]) {
-            state.nodeInputMappings[nodeId][fieldName] = {
-              type: fieldName,
-              value: '',
-              valueType: 'immediate',
-            };
-          }
-          state.nodeInputMappings[nodeId][fieldName].valueType = valueType;
-        });
-      },
-
-      setFieldTypeHint: (nodeId, fieldName, typeHint) => {
-        set((state) => {
-          if (!state.nodeInputMappings[nodeId]) {
-            state.nodeInputMappings[nodeId] = {};
-          }
-          if (!state.nodeInputMappings[nodeId][fieldName]) {
-            state.nodeInputMappings[nodeId][fieldName] = {
-              type: fieldName,
-              value: '',
-              valueType: 'immediate',
-            };
-          }
-          state.nodeInputMappings[nodeId][fieldName].typeHint = typeHint;
-        });
-      },
-
-      setFieldAutoSeeded: (nodeId, fieldName, autoSeeded) => {
-        set((state) => {
-          const entry = state.nodeInputMappings[nodeId]?.[fieldName];
-          if (entry) entry.autoSeeded = autoSeeded;
-        });
-      },
-
-      setFieldDefaultValue: (nodeId, fieldName, defaultValue) => {
-        set((state) => {
-          if (!state.nodeInputMappings[nodeId]) {
-            state.nodeInputMappings[nodeId] = {};
-          }
-          if (!state.nodeInputMappings[nodeId][fieldName]) {
-            state.nodeInputMappings[nodeId][fieldName] = {
-              type: fieldName,
-              value: '',
-              valueType: 'immediate',
-            };
-          }
-          if (defaultValue === undefined) {
-            delete state.nodeInputMappings[nodeId][fieldName].defaultValue;
-          } else {
-            state.nodeInputMappings[nodeId][fieldName].defaultValue =
-              defaultValue;
-          }
-        });
-      },
-
-      initializeField: (nodeId, fieldName, entry) => {
-        set((state) => {
-          if (!state.nodeInputMappings[nodeId]) {
-            state.nodeInputMappings[nodeId] = {};
-          }
-          // Don't overwrite if already exists
-          if (!state.nodeInputMappings[nodeId][fieldName]) {
-            state.nodeInputMappings[nodeId][fieldName] = entry;
-          }
-        });
-      },
-
-      removeField: (nodeId, fieldName) => {
-        set((state) => {
-          if (state.nodeInputMappings[nodeId]) {
-            delete state.nodeInputMappings[nodeId][fieldName];
-          }
-        });
-      },
-
-      getFieldEntry: (nodeId, fieldName) => {
-        return get().nodeInputMappings[nodeId]?.[fieldName];
-      },
-
-      getNodeInputMapping: (nodeId) => {
-        const nodeData = get().nodeInputMappings[nodeId] || {};
-        return Object.values(nodeData);
-      },
-
-      clearNode: (nodeId) => {
-        set((state) => {
-          delete state.nodeInputMappings[nodeId];
-        });
-      },
-
-      loadNodeData: (nodeId, entries) => {
-        set((state) => {
-          state.nodeInputMappings[nodeId] = {};
-          entries.forEach((entry) => {
-            state.nodeInputMappings[nodeId][entry.type] = entry;
+        setFieldValue: (nodeId, fieldName, value) => {
+          set((state) => {
+            if (!state.nodeInputMappings[nodeId]) {
+              state.nodeInputMappings[nodeId] = {};
+            }
+            if (!state.nodeInputMappings[nodeId][fieldName]) {
+              state.nodeInputMappings[nodeId][fieldName] = {
+                type: fieldName,
+                value: '',
+                valueType: 'immediate',
+              };
+            }
+            state.nodeInputMappings[nodeId][fieldName].value = value;
           });
-        });
-      },
+        },
 
-      addCustomField: (nodeId, fieldName, typeHint) => {
-        set((state) => {
-          if (!state.nodeInputMappings[nodeId]) {
+        setFieldValueType: (nodeId, fieldName, valueType) => {
+          set((state) => {
+            if (!state.nodeInputMappings[nodeId]) {
+              state.nodeInputMappings[nodeId] = {};
+            }
+            if (!state.nodeInputMappings[nodeId][fieldName]) {
+              state.nodeInputMappings[nodeId][fieldName] = {
+                type: fieldName,
+                value: '',
+                valueType: 'immediate',
+              };
+            }
+            state.nodeInputMappings[nodeId][fieldName].valueType = valueType;
+          });
+        },
+
+        setFieldTypeHint: (nodeId, fieldName, typeHint) => {
+          set((state) => {
+            if (!state.nodeInputMappings[nodeId]) {
+              state.nodeInputMappings[nodeId] = {};
+            }
+            if (!state.nodeInputMappings[nodeId][fieldName]) {
+              state.nodeInputMappings[nodeId][fieldName] = {
+                type: fieldName,
+                value: '',
+                valueType: 'immediate',
+              };
+            }
+            state.nodeInputMappings[nodeId][fieldName].typeHint = typeHint;
+          });
+        },
+
+        setFieldAutoSeeded: (nodeId, fieldName, autoSeeded) => {
+          set((state) => {
+            const entry = state.nodeInputMappings[nodeId]?.[fieldName];
+            if (entry) entry.autoSeeded = autoSeeded;
+          });
+        },
+
+        setFieldDefaultValue: (nodeId, fieldName, defaultValue) => {
+          set((state) => {
+            if (!state.nodeInputMappings[nodeId]) {
+              state.nodeInputMappings[nodeId] = {};
+            }
+            if (!state.nodeInputMappings[nodeId][fieldName]) {
+              state.nodeInputMappings[nodeId][fieldName] = {
+                type: fieldName,
+                value: '',
+                valueType: 'immediate',
+              };
+            }
+            if (defaultValue === undefined) {
+              delete state.nodeInputMappings[nodeId][fieldName].defaultValue;
+            } else {
+              state.nodeInputMappings[nodeId][fieldName].defaultValue =
+                defaultValue;
+            }
+          });
+        },
+
+        initializeField: (nodeId, fieldName, entry) => {
+          set((state) => {
+            if (!state.nodeInputMappings[nodeId]) {
+              state.nodeInputMappings[nodeId] = {};
+            }
+            // Don't overwrite if already exists
+            if (!state.nodeInputMappings[nodeId][fieldName]) {
+              state.nodeInputMappings[nodeId][fieldName] = entry;
+            }
+          });
+        },
+
+        removeField: (nodeId, fieldName) => {
+          set((state) => {
+            if (state.nodeInputMappings[nodeId]) {
+              delete state.nodeInputMappings[nodeId][fieldName];
+            }
+          });
+        },
+
+        getFieldEntry: (nodeId, fieldName) => {
+          return get().nodeInputMappings[nodeId]?.[fieldName];
+        },
+
+        getNodeInputMapping: (nodeId) => {
+          const nodeData = get().nodeInputMappings[nodeId] || {};
+          return Object.values(nodeData);
+        },
+
+        clearNode: (nodeId) => {
+          set((state) => {
+            delete state.nodeInputMappings[nodeId];
+          });
+        },
+
+        loadNodeData: (nodeId, entries) => {
+          set((state) => {
             state.nodeInputMappings[nodeId] = {};
-          }
-          // Don't overwrite if field already exists
-          if (!state.nodeInputMappings[nodeId][fieldName]) {
-            state.nodeInputMappings[nodeId][fieldName] = {
-              type: fieldName,
-              value: '',
-              valueType: 'immediate',
-              typeHint,
-            };
-          }
-        });
-      },
+            entries.forEach((entry) => {
+              state.nodeInputMappings[nodeId][entry.type] = entry;
+            });
+          });
+        },
 
-      renameField: (nodeId, oldName, newName) => {
-        set((state) => {
-          const nodeData = state.nodeInputMappings[nodeId];
-          if (!nodeData || !nodeData[oldName] || nodeData[newName]) {
-            return; // Don't rename if source doesn't exist or target exists
-          }
+        addCustomField: (nodeId, fieldName, typeHint) => {
+          set((state) => {
+            if (!state.nodeInputMappings[nodeId]) {
+              state.nodeInputMappings[nodeId] = {};
+            }
+            // Don't overwrite if field already exists
+            if (!state.nodeInputMappings[nodeId][fieldName]) {
+              state.nodeInputMappings[nodeId][fieldName] = {
+                type: fieldName,
+                value: '',
+                valueType: 'immediate',
+                typeHint,
+              };
+            }
+          });
+        },
 
-          nodeData[newName] = { ...nodeData[oldName], type: newName };
-          delete nodeData[oldName];
-        });
-      },
-    })),
-    { name: 'node-form-store' }
+        renameField: (nodeId, oldName, newName) => {
+          set((state) => {
+            const nodeData = state.nodeInputMappings[nodeId];
+            if (!nodeData || !nodeData[oldName] || nodeData[newName]) {
+              return; // Don't rename if source doesn't exist or target exists
+            }
+
+            nodeData[newName] = { ...nodeData[oldName], type: newName };
+            delete nodeData[oldName];
+          });
+        },
+      })),
+      { name: 'node-form-store' }
+    )
   )
 );

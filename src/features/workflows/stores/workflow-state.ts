@@ -70,6 +70,22 @@ export interface WorkflowState {
    * and starts it clean. The one way a fetched or imported graph gets in.
    */
   setExecutionGraph: (graph: ExecutionGraphDto) => void;
+  /**
+   * Replaces the canvas's nodes with an edited copy of them. An edit: the
+   * workflow is changed, structurally when the edit adds, removes or rewires.
+   */
+  editNodes: (
+    update: (nodes: Node[]) => Node[],
+    options?: { structural?: boolean }
+  ) => void;
+  /**
+   * Takes an abandoned edit back out of the nodes. Not an edit: with
+   * `dirtyBefore`, the workflow is as changed as it was before that edit.
+   */
+  revertNodes: (
+    update: (nodes: Node[]) => Node[],
+    dirtyBefore?: { isDirty: boolean; isStructurallyDirty: boolean }
+  ) => void;
   resetState: () => void;
   /** With `savedRevision`, clears only if nothing was edited since then. */
   clearDirtyFlag: (savedRevision?: number) => void;

@@ -1,9 +1,6 @@
-import {
-  dirtied,
-  useWorkflowStore,
-} from '@/features/workflows/stores/workflowStore';
+import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
-import type { StepNodeData } from '@/features/workflows/types/execution-graph';
+import { StepNodeData } from '@/features/workflows/types/execution-graph';
 import { canvasNodeStepId } from '@/features/workflows/utils/execution-graph/canvas-ids';
 import { withMemoryConversation } from './NodeForm/memory-conversation';
 
@@ -54,10 +51,7 @@ export function applyStepEdit(
     data.inputMapping as Parameters<typeof withMemoryConversation>[1]
   );
   if (synced) {
-    useWorkflowStore.setState((state) => ({
-      nodes: synced,
-      ...dirtied(state),
-    }));
+    useWorkflowStore.getState().editNodes(() => synced);
   }
   return { savedId };
 }

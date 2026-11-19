@@ -457,13 +457,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         });
 
         if (skippedNodeIds.length > 0) {
-          const newMap = new Map(currentStore.nodeExecutionStatus);
-          skippedNodeIds.forEach((nodeId) => newMap.delete(nodeId));
-
-          useExecutionStore.setState({
-            nodeExecutionStatus: newMap,
-            statusVersion: currentStore.statusVersion + 1,
-          });
+          currentStore.clearNodeStatuses(skippedNodeIds);
         }
       }
     } else if (
@@ -525,13 +519,7 @@ export function useWorkflowExecution(workflowId: string | undefined) {
 
         // Clear status for all skipped nodes in one update
         if (skippedNodeIds.length > 0) {
-          const newMap = new Map(currentStore.nodeExecutionStatus);
-          skippedNodeIds.forEach((nodeId) => newMap.delete(nodeId));
-
-          useExecutionStore.setState({
-            nodeExecutionStatus: newMap,
-            statusVersion: currentStore.statusVersion + 1,
-          });
+          currentStore.clearNodeStatuses(skippedNodeIds);
         }
       }
     } else {

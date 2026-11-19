@@ -1,4 +1,5 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand';
+import { editorStore } from './editor-scope';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
@@ -74,96 +75,109 @@ interface ExecutionState {
   resetExecution: () => void;
   setPanelOpen: (open: boolean) => void;
   setSelectedInvocationId: (id: string | null) => void;
+  /** Forgets the status of steps a finished run never reached. */
+  clearNodeStatuses: (nodeIds: string[]) => void;
 }
 
-export const useExecutionStore = create<ExecutionState>()(
-  devtools(
-    immer((set) => ({
-      // Initial state
-      executingInstanceId: null,
-      workflowId: null,
-      debugMode: false,
-      instanceStatus: null,
-      panelOpen: false,
-      isSuspended: false,
-      breakpointHit: null,
-      selectedInvocationId: null,
-      nodeExecutionStatus: new Map(),
-      stepDebugData: new Map(),
-      statusVersion: 0,
+export const useExecutionStore = editorStore('execution', () =>
+  createStore<ExecutionState>()(
+    devtools(
+      immer((set) => ({
+        // Initial state
+        executingInstanceId: null,
+        workflowId: null,
+        debugMode: false,
+        instanceStatus: null,
+        panelOpen: false,
+        isSuspended: false,
+        breakpointHit: null,
+        selectedInvocationId: null,
+        nodeExecutionStatus: new Map(),
+        stepDebugData: new Map(),
+        statusVersion: 0,
 
-      // Actions
-      startExecution: (instanceId, workflowId, debugMode) => {
-        set((state) => {
-          state.executingInstanceId = instanceId;
-          state.workflowId = workflowId;
-          state.debugMode = debugMode;
-          state.isSuspended = false;
-          state.breakpointHit = null;
-          state.panelOpen = false; // Don't open automatically - user must click "View Details"
-          state.nodeExecutionStatus = new Map();
-          state.stepDebugData = new Map();
-          state.instanceStatus = 'queued';
-          state.statusVersion += 1; // Increment to clear previous execution
-        });
-      },
+        // Actions
+        startExecution: (instanceId, workflowId, debugMode) => {
+          set((state) => {
+            state.executingInstanceId = instanceId;
+            state.workflowId = workflowId;
+            state.debugMode = debugMode;
+            state.isSuspended = false;
+            state.breakpointHit = null;
+            state.panelOpen = false; // Don't open automatically - user must click "View Details"
+            state.nodeExecutionStatus = new Map();
+            state.stepDebugData = new Map();
+            state.instanceStatus = 'queued';
+            state.statusVersion += 1; // Increment to clear previous execution
+          });
+        },
 
-      updateNodeStatus: (nodeId, status) => {
-        set((state) => {
-          state.nodeExecutionStatus.set(nodeId, status);
-          state.statusVersion += 1;
-        });
-      },
+        updateNodeStatus: (nodeId, status) => {
+          set((state) => {
+            state.nodeExecutionStatus.set(nodeId, status);
+            state.statusVersion += 1;
+          });
+        },
 
-      updateInstanceStatus: (status) => {
-        set((state) => {
-          state.instanceStatus = status;
-        });
-      },
+        updateInstanceStatus: (status) => {
+          set((state) => {
+            state.instanceStatus = status;
+          });
+        },
 
-      setSuspended: (suspended, breakpointHit) => {
-        set((state) => {
-          state.isSuspended = suspended;
-          state.breakpointHit = breakpointHit ?? null;
-          state.statusVersion += 1;
-        });
-      },
+        setSuspended: (suspended, breakpointHit) => {
+          set((state) => {
+            state.isSuspended = suspended;
+            state.breakpointHit = breakpointHit ?? null;
+            state.statusVersion += 1;
+          });
+        },
 
-      setStepDebugData: (stepId, data) => {
-        set((state) => {
-          const existing = state.stepDebugData.get(stepId);
-          state.stepDebugData.set(stepId, { ...existing, ...data });
-        });
-      },
+        setStepDebugData: (stepId, data) => {
+          set((state) => {
+            const existing = state.stepDebugData.get(stepId);
+            state.stepDebugData.set(stepId, { ...existing, ...data });
+          });
+        },
 
-      resetExecution: () => {
-        set((state) => {
-          state.executingInstanceId = null;
-          state.workflowId = null;
-          state.debugMode = false;
-          state.isSuspended = false;
-          state.breakpointHit = null;
-          state.instanceStatus = null;
-          state.panelOpen = false;
-          state.selectedInvocationId = null;
-          state.nodeExecutionStatus = new Map();
-          state.stepDebugData = new Map();
-          state.statusVersion += 1; // Increment to force re-render
-        });
-      },
+        resetExecution: () => {
+          set((state) => {
+            state.executingInstanceId = null;
+            state.workflowId = null;
+            state.debugMode = false;
+            state.isSuspended = false;
+            state.breakpointHit = null;
+            state.instanceStatus = null;
+            state.panelOpen = false;
+            state.selectedInvocationId = null;
+            state.nodeExecutionStatus = new Map();
+            state.stepDebugData = new Map();
+            state.statusVersion += 1; // Increment to force re-render
+          });
+        },
 
-      setPanelOpen: (open) => {
-        set((state) => {
-          state.panelOpen = open;
-        });
-      },
+        setPanelOpen: (open) => {
+          set((state) => {
+            state.panelOpen = open;
+          });
+        },
 
-      setSelectedInvocationId: (id) => {
-        set((state) => {
-          state.selectedInvocationId = id;
-        });
-      },
-    })),
-    { name: 'execution-store' }
+        setSelectedInvocationId: (id) => {
+          set((state) => {
+            state.selectedInvocationId = id;
+          });
+        },
+
+        clearNodeStatuses: (nodeIds) => {
+          set((state) => {
+            const statuses = new Map(state.nodeExecutionStatus);
+            nodeIds.forEach((nodeId) => statuses.delete(nodeId));
+            state.nodeExecutionStatus = statuses;
+            state.statusVersion += 1;
+          });
+        },
+      })),
+      { name: 'execution-store' }
+    )
   )
 );
