@@ -1,4 +1,4 @@
-import { useCustomQuery } from '@/shared/hooks/api';
+import { useCustomQuery, keepPreviousData } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import {
   getRateLimits,
@@ -12,6 +12,8 @@ import {
 export function useRateLimits(interval?: string) {
   return useCustomQuery({
     queryKey: ['analytics', 'rateLimits', interval],
+    // The table stays up while another interval loads.
+    placeholderData: keepPreviousData,
     queryFn: () => getRateLimits(interval),
     refetchInterval: 30 * 1000,
     refetchIntervalInBackground: false,

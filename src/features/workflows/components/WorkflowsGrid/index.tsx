@@ -15,6 +15,7 @@ import {
   useCustomMutation,
   useCustomQuery,
   isEntitlementDenial,
+  keepPreviousWithin,
 } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys.ts';
 import { queryClient } from '@/shared/queries/query-client';
@@ -240,6 +241,11 @@ export function WorkflowsGrid({
       pageSize,
       searchTerm,
     ],
+    // The rows stay up across a page or a search of this folder; another
+    // folder starts empty.
+    placeholderData: keepPreviousWithin(
+      queryKeys.workflows.inFolder(folderPath ?? '/', false)
+    ),
     queryFn: async () => {
       const requestPage = (serverPage: number) =>
         getWorkflowsInFolder({

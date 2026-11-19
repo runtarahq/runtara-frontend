@@ -24,7 +24,11 @@ import {
   ImportPreviewResponse,
 } from '@/generated/RuntaraRuntimeApi';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { useCustomQuery, useCustomMutation } from '@/shared/hooks/api';
+import {
+  useCustomQuery,
+  useCustomMutation,
+  keepPreviousWithin,
+} from '@/shared/hooks/api';
 
 // Define PageObjectInstance locally to match the old API structure
 interface PageObjectInstance {
@@ -59,6 +63,11 @@ export function useObjectInstanceDtos(
     }),
     queryFn: (context) => getInstancesBySchema(context),
     enabled: !!schemaId && !!connectionId,
+    // The rows stay up across a page, sort or filter of this schema; another
+    // schema's table starts empty.
+    placeholderData: keepPreviousWithin<PageObjectInstance>(
+      queryKeys.objects.instances.bySchema(schemaId || '', connectionId)
+    ),
   });
 }
 

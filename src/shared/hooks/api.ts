@@ -39,6 +39,29 @@ interface CustomQueryOptions<TData = unknown> extends Omit<
   queryFn: QueryFnType<TData>;
 }
 
+export { keepPreviousData };
+
+/**
+ * `placeholderData` for a list: keeps the previous answer on screen while the
+ * next loads, as long as both are of the same thing. `scope` is the leading
+ * part of the key the two must share (the list's schema, its folder); what
+ * follows it in the key (the page, the filters) may differ. A list of
+ * another thing starts clean.
+ */
+export function keepPreviousWithin<TData>(scope: QueryKey) {
+  return (
+    previous: TData | undefined,
+    previousQuery: { queryKey: QueryKey } | undefined
+  ): TData | undefined =>
+    previousQuery &&
+    scope.every(
+      (part, index) =>
+        JSON.stringify(previousQuery.queryKey[index]) === JSON.stringify(part)
+    )
+      ? previous
+      : undefined;
+}
+
 export function useCustomQuery<TData = unknown>({
   queryKey,
   queryFn,
@@ -52,9 +75,13 @@ export function useCustomQuery<TData = unknown>({
     return queryFn(context);
   };
 
+  // No placeholder by default: a query whose key changes shows nothing until
+  // its own answer arrives. Keeping the previous answer on screen is right
+  // for a list that is paged or filtered, and wrong for anything keyed by
+  // what it is about, where it showed one thing's data under another's
+  // name. A list asks for it (`keepPreviousData`, `keepPreviousWithin`).
   const customOptions = {
     refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
     ...options,
   };
 

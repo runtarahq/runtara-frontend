@@ -1,4 +1,4 @@
-import { useCustomQuery } from '@/shared/hooks/api';
+import { useCustomQuery, keepPreviousData } from '@/shared/hooks/api';
 import { getTenantMetrics, getSystemAnalytics } from '../queries';
 import { subDays, subHours } from 'date-fns';
 import { DateRangeOption } from '@/shared/components/date-range-selector';
@@ -90,6 +90,8 @@ export function useTenantMetrics(dateRange: DateRangeOption) {
     // Granularity is part of the key: two periods could otherwise share a
     // cached response bucketed at a width neither asked for.
     queryKey: queryKeys.analytics.tenant(dateRange, granularity),
+    // The figures of the period before stay up while another period loads.
+    placeholderData: keepPreviousData,
     // The window ends now at each fetch: computed once, every refresh asked
     // for the same past window (AN-1).
     queryFn: () => {
@@ -130,6 +132,7 @@ export function usePreviousTenantMetrics(dateRange: DateRangeOption) {
 
   return useCustomQuery({
     queryKey: queryKeys.analytics.tenantPrevious(dateRange, granularity),
+    placeholderData: keepPreviousData,
     // Moves with the displayed window, which ends now at each fetch.
     queryFn: () => {
       const current = getDateRangeParams(dateRange);
