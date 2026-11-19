@@ -1,4 +1,3 @@
-import type { SchemaField as EditorSchemaField } from '@/features/workflows/components/WorkflowEditor/EditorSidebar/SchemaFieldsEditor';
 import {
   useWorkflowSettings,
   type WorkflowChanges,
@@ -39,6 +38,7 @@ import { isWaitingSuspension } from '@/features/workflows/utils/suspension';
 import { useNavigationBlockerStore } from '@/shared/stores/navigationBlockerStore';
 import { UnsavedChangesDialog } from '@/shared/components/unsaved-changes-dialog';
 import { dropSavedEntries } from './drop-saved-entries';
+import { parseWorkflowImport } from './import-workflow';
 import { prepareWorkflowSave } from './save-workflow';
 import { graphOptions, mergeWorkflowSettings } from './workflow-settings';
 import { useOneAtATime } from './use-one-at-a-time';
@@ -52,11 +52,7 @@ import { ValidationPanel } from '@/features/workflows/components/ValidationPanel
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { convertServerErrors } from '@/features/workflows/utils/validation-helpers';
 
-import {
-  parseSchema,
-  buildSchemaFromFields,
-  type SchemaField,
-} from '@/features/workflows/utils/schema';
+import { buildSchemaFromFields } from '@/features/workflows/utils/schema';
 import {
   NODE_TYPES,
   NODE_TYPE_SIZES,
@@ -68,7 +64,6 @@ import {
   writeCanvasDetail,
 } from '@/features/workflows/components/WorkflowEditor/editor-preferences';
 import type { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
-import { MEMORY_PRESET_MIB } from '@/features/workflows/utils/memory';
 import { isActiveStatus } from '@/shared/utils/status-display';
 
 function hasOwn(object: object, key: string) {
@@ -1026,107 +1021,20 @@ export function Workflow() {
 
   // Internal import handler (bypasses unsaved changes check)
   const performImportJSON = useCallback((jsonString: string) => {
+    // What the file holds (./import-workflow.ts); applying it is the page's.
+    const imported = parseWorkflowImport(jsonString);
+    if (!imported.ok) {
+      toast.error(
+        imported.reason === 'not-a-graph'
+          ? 'Invalid execution graph format'
+          : 'Failed to import execution graph'
+      );
+      return;
+    }
     try {
-      const parsed = JSON.parse(jsonString);
-
-      // Handle new format with wrapper: { name, description, executionGraph }
-      const executionGraph = parsed.executionGraph ?? parsed;
-
-      if (
-        executionGraph &&
-        (executionGraph.steps || executionGraph.executionPlan)
-      ) {
-        // Extract variables from execution graph and convert to UI format
-        // API format: { varName: { type, value }, ... }
-        // UI format: [{ name, value, type }, ...]
-        const variablesObj = executionGraph.variables || {};
-        const variables = Object.entries(variablesObj).map(
-          ([name, val]: [string, any]) => ({
-            name,
-            value: val?.value ?? val ?? '',
-            type: val?.type ?? 'string',
-            description: val?.description ?? null,
-          })
-        );
-
-        // Extract and parse input/output schemas from execution graph
-        // Convert SchemaField[] to the required format with all fields having defaults
-        const normalizeSchemaFields = (
-          fields: SchemaField[]
-        ): EditorSchemaField[] =>
-          fields.map((field) => ({
-            ...field,
-            type: field.type ?? 'string',
-            required: field.required ?? true,
-            description: field.description ?? '',
-            properties: field.properties
-              ? normalizeSchemaFields(field.properties)
-              : undefined,
-          }));
-        const inputSchemaFields = normalizeSchemaFields(
-          parseSchema(executionGraph.inputSchema)
-        );
-        const outputSchemaFields = normalizeSchemaFields(
-          parseSchema(executionGraph.outputSchema)
-        );
-        // State has no required fields; its schema builder omits `required`.
-        const stateSchemaFields = normalizeSchemaFields(
-          parseSchema(executionGraph.stateSchema)
-        ).map((field) => ({ ...field, required: false }));
-
-        // Extract execution timeout from execution graph
-        const executionTimeoutSeconds = executionGraph.executionTimeoutSeconds;
-        const rateLimitBudgetMs = executionGraph.rateLimitBudgetMs;
-
-        // Stage the workflow changes (variables, schemas, timeout)
-        const workflowChanges: typeof stagedWorkflowChanges = {};
-        workflowChanges.variables = variables;
-        workflowChanges.inputSchemaFields = inputSchemaFields;
-        workflowChanges.outputSchemaFields = outputSchemaFields;
-        workflowChanges.stateSchemaFields = stateSchemaFields;
-        if (parsed.name !== undefined || executionGraph.name !== undefined) {
-          workflowChanges.name = parsed.name ?? executionGraph.name ?? '';
-        }
-        if (
-          parsed.description !== undefined ||
-          executionGraph.description !== undefined
-        ) {
-          workflowChanges.description =
-            parsed.description ?? executionGraph.description ?? '';
-        }
-        if (executionTimeoutSeconds !== undefined) {
-          workflowChanges.executionTimeoutSeconds = executionTimeoutSeconds;
-        }
-        if (rateLimitBudgetMs !== undefined) {
-          workflowChanges.rateLimitBudgetMs = rateLimitBudgetMs;
-        }
-        if (hasOwn(executionGraph, 'durable')) {
-          workflowChanges.durable = executionGraph.durable ?? null;
-        } else if (hasOwn(parsed, 'durable')) {
-          workflowChanges.durable = parsed.durable ?? null;
-        }
-        if (executionGraph.entryPoint !== undefined) {
-          workflowChanges.entryPoint = executionGraph.entryPoint;
-        }
-        // Exports from before memory was a number carry a tier preset.
-        const importedMemoryMb =
-          parsed.memoryMb ?? MEMORY_PRESET_MIB[parsed.memoryTier as string];
-        if (importedMemoryMb !== undefined) {
-          workflowChanges.memoryMb = importedMemoryMb;
-        }
-        if (parsed.trackEvents !== undefined) {
-          workflowChanges.trackEvents = parsed.trackEvents;
-        }
-
-        setStagedWorkflowChanges(workflowChanges);
-
-        // Use the store to set the execution graph (for nodes/edges)
-        useWorkflowStore.getState().setExecutionGraph(executionGraph);
-
-        toast.info('Execution graph imported successfully');
-      } else {
-        toast.error('Invalid execution graph format');
-      }
+      setStagedWorkflowChanges(imported.settings);
+      useWorkflowStore.getState().setExecutionGraph(imported.executionGraph);
+      toast.info('Execution graph imported successfully');
     } catch (error) {
       console.error('Error importing execution graph:', error);
       toast.error('Failed to import execution graph');

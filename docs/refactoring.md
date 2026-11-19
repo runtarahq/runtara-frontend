@@ -315,18 +315,18 @@ the store's geometry into pure functions of `(nodes, edges)` beside the layout
 engine; `renameStep` must stay atomic in the store. Write tests for the save
 pipeline before moving it.
 
-**Status: done for one seam in each module; more seams remain.**
+**Status: done for the seams below; more remain.**
 
-| Module                        | Lines now | What moved out, with tests                                                                                |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------- |
-| `WF/pages/Workflow/index.tsx` | 1,365     | `save-workflow.ts` (`prepareWorkflowSave`) and `workflow-settings.ts` (the settings merge, once of three) |
-| `WE/index.tsx`                | 1,374     | `pending-step.ts` (`planPendingStep`: the placement of a picked step)                                     |
-| `WF/stores/workflowStore.ts`  | 1,136     | `canvas-geometry.ts` (`insertStepBetween`, `expandParentToFitChildren`)                                   |
+| Module                        | Lines now | What moved out, with tests                                                                                                                           |
+| ----------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WF/pages/Workflow/index.tsx` | 1,272     | `save-workflow.ts` (`prepareWorkflowSave`), `workflow-settings.ts` (the settings merge, once of three), `import-workflow.ts` (`parseWorkflowImport`) |
+| `WE/index.tsx`                | 1,374     | `pending-step.ts` (`planPendingStep`: the placement of a picked step)                                                                                |
+| `WF/stores/workflowStore.ts`  | 1,136     | `canvas-geometry.ts` (`insertStepBetween`, `expandParentToFitChildren`)                                                                              |
 
 Remaining:
 
 - `pages/Workflow/index.tsx`: compilation watch and rebuild, version
-  switching, import, the unsaved-changes guard, the two execute handlers.
+  switching, the unsaved-changes guard, the two execute handlers.
 - `WE/index.tsx`: node save with validation and rename, pending-node commit,
   viewport fitting.
 - `workflowStore.ts`: `onNodesChange`, whose geometry reads and writes the
