@@ -685,6 +685,8 @@ export class WorkflowBuilderPage {
 
   async addCanvasAiMemory(
     sourceStepName: string,
+    /** The connection the provider keeps the memory in, by its title. */
+    connectionName: string,
     conversationId = 'e2e-conversation'
   ): Promise<void> {
     await this.useCanvas();
@@ -712,6 +714,10 @@ export class WorkflowBuilderPage {
         .click();
     }
     await conversationInput.fill(conversationId);
+    // The provider works through a connection, chosen here: its own step is
+    // not on the canvas.
+    await panel.getByRole('combobox', { name: 'Memory connection' }).click();
+    await this.page.getByRole('option', { name: connectionName }).click();
     await panel.getByTestId('node-config-save').click();
     await expect(panel).toHaveCount(0);
     await expect(

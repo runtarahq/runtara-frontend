@@ -297,6 +297,40 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
     return (providerNode?.data as any)?.agentId || null;
   }, [nodes, inputMapping]);
 
+  // The connection the memory provider keeps the conversation in. A provider
+  // that works through a connection (the object model, on a database) cannot
+  // run without one, and its step is hidden: this form is where it is chosen.
+  const memoryProvider = useMemo(() => {
+    const stepId = (inputMapping || []).find(
+      (item: any) => item.type === 'memoryProviderStepId'
+    )?.value;
+    const node = stepId ? nodes.find((n) => n.id === stepId) : undefined;
+    const agent = agents.find((a) => a.id === currentMemoryAgentId) as
+      { supportsConnections?: boolean; integrationIds?: string[] } | undefined;
+    return {
+      connectionId: (node?.data as { connectionId?: string } | undefined)
+        ?.connectionId,
+      needsConnection: Boolean(agent?.supportsConnections),
+      integrationIds: agent?.integrationIds ?? [],
+    };
+  }, [agents, currentMemoryAgentId, inputMapping, nodes]);
+  const memoryConnections = useMemo(
+    () =>
+      (connectionsQuery.data ?? []).filter((connection: any) =>
+        memoryProvider.integrationIds.includes(connection.integrationId)
+      ),
+    [connectionsQuery.data, memoryProvider.integrationIds]
+  );
+  // What the form chose, or what the provider has until it chooses.
+  const memoryConnectionChoice = (inputMapping || []).find(
+    (item: any) => item.type === 'memoryConnectionId'
+  );
+  const memoryConnectionId = String(
+    memoryConnectionChoice
+      ? (memoryConnectionChoice.value ?? '')
+      : (memoryProvider.connectionId ?? '')
+  );
+
   // Helper to get current value from inputMapping array
   const getValue = (fieldName: string) => {
     const mapping = inputMapping || [];
@@ -493,6 +527,7 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
       'memoryMaxMessages',
       'memoryStrategy',
       'memoryProviderStepId',
+      'memoryConnectionId',
     ]);
 
     // (a) Clear the form's memory entries
@@ -1029,6 +1064,43 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
                 />
               </FormControl>
             </FormItem>
+
+            {/* The provider's connection */}
+            {memoryProvider.needsConnection && (
+              <FormItem>
+                <FormLabel>Memory connection *</FormLabel>
+                <FormDescription>
+                  Where the conversation history is kept
+                </FormDescription>
+                <Select
+                  value={memoryConnectionId || undefined}
+                  onValueChange={(value) =>
+                    updateField('memoryConnectionId', value)
+                  }
+                  disabled={connectionsQuery.isFetching}
+                >
+                  <FormControl>
+                    <SelectTrigger aria-label="Memory connection">
+                      <SelectValue placeholder="Select a connection" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {memoryConnections.length === 0 ? (
+                      <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+                        No connection this provider can use. Create one in
+                        Connections.
+                      </div>
+                    ) : (
+                      memoryConnections.map((connection: any) => (
+                        <SelectItem key={connection.id} value={connection.id}>
+                          {connection.title}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </FormItem>
+            )}
 
             {/* Compaction (Advanced) */}
             <div className="rounded-lg border">

@@ -1,10 +1,11 @@
-import { test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   randomDoubleStep,
   WorkflowBuilderPage,
 } from '../../pages/WorkflowBuilderPage';
 
 const runId = Date.now();
+const apiBase = `${process.env.E2E_RUNTIME_URL || 'http://127.0.0.1:7001'}/api/runtime`;
 
 const stepType = (stepTypeName: string) =>
   ({
@@ -203,11 +204,28 @@ test.describe('Workflow builder local UI', () => {
     );
   });
 
-  test('canvas wires AI Agent tool and memory controls', async ({ page }) => {
+  test('canvas wires AI Agent tool and memory controls', async ({
+    page,
+    request,
+  }) => {
     const builder = new WorkflowBuilderPage(page);
     const connectionName = `E2E Workflow Builder OpenAI ${runId}`;
     await builder.createOpenAiConnection(connectionName);
     createdConnectionNames.push(connectionName);
+    // The memory provider keeps the conversation in a database: it needs a
+    // connection to one. The workflow is saved, not run, so it need not open.
+    const memoryConnection = `E2E Workflow Builder memory ${runId}`;
+    const created = await request.post(`${apiBase}/connections`, {
+      data: {
+        title: memoryConnection,
+        integrationId: 'postgres',
+        connectionParameters: {
+          database_url: 'postgres://user:pass@localhost:5432/memory',
+        },
+      },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    createdConnectionNames.push(memoryConnection);
     await rememberWorkflow(builder, workflowName('ai-agent-routes'));
 
     await builder.beginFirstCanvasStep(stepType('AiAgent'));
@@ -216,7 +234,7 @@ test.describe('Workflow builder local UI', () => {
     await builder.addCanvasAiTool('AI coordinator', randomDoubleStep, {
       name: 'Tool random double',
     });
-    await builder.addCanvasAiMemory('AI coordinator');
+    await builder.addCanvasAiMemory('AI coordinator', memoryConnection);
 
     await builder.saveWorkflow();
     await builder.reloadAndWait();

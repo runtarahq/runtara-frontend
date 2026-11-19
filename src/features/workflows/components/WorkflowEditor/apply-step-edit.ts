@@ -2,7 +2,7 @@ import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';
 import { useValidationStore } from '@/features/workflows/stores/validationStore';
 import { StepNodeData } from '@/features/workflows/types/execution-graph';
 import { canvasNodeStepId } from '@/features/workflows/utils/execution-graph/canvas-ids';
-import { withMemoryConversation } from './NodeForm/memory-conversation';
+import { withMemorySettings } from './NodeForm/memory-provider';
 
 /**
  * What the node form submits, apart from the step's data: a staged rename of
@@ -46,9 +46,9 @@ export function applyStepEdit(
     useValidationStore.getState().renameStep(nodeId, savedId);
   }
   useWorkflowStore.getState().updateNode(savedId, data as StepNodeData);
-  const synced = withMemoryConversation(
+  const synced = withMemorySettings(
     useWorkflowStore.getState().nodes,
-    data.inputMapping as Parameters<typeof withMemoryConversation>[1]
+    data.inputMapping as Parameters<typeof withMemorySettings>[1]
   );
   if (synced) {
     useWorkflowStore.getState().editNodes(() => synced);

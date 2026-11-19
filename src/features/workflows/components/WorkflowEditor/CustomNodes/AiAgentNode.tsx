@@ -1,3 +1,4 @@
+import { memoryProviderInputs } from '../NodeForm/memory-provider';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Handle, Node, NodeProps, Position } from '@xyflow/react';
 import { Plus, CheckCircle2, XCircle, Pause } from 'lucide-react';
@@ -337,23 +338,11 @@ function AiAgentNodeComponent({
         storeNodes.map((n) => n.id)
       );
 
-      // Pre-populate memory provider step with required inputs
-      // (conversation_id and messages are normally filled at runtime by the AI Agent,
-      //  but the static validation requires them in inputMapping)
-      const memoryStepInputMapping = [
-        {
-          type: 'conversation_id',
-          value: '',
-          valueType: 'reference',
-          typeHint: 'string',
-        },
-        {
-          type: 'messages',
-          value: '',
-          valueType: 'reference',
-          typeHint: 'json',
-        },
-      ];
+      // The provider's inputs, mapped for the validator (the agent fills
+      // them at run time): the ones its capability has.
+      const memoryStepInputMapping = memoryProviderInputs(
+        result.capabilityInputs
+      );
 
       const nodeData = {
         ...form.initialValues,
@@ -461,6 +450,10 @@ function AiAgentNodeComponent({
     <>
       <BaseNode
         id={id}
+        // The card draws its own header, so it names itself here, as every
+        // other step on the canvas is named.
+        data-step-name={String((data as { name?: string }).name ?? '')}
+        data-step-type="AiAgent"
         selected={selected}
         executionStatus={executionStatus}
         hasUnsavedChanges={hasUnsavedChanges}

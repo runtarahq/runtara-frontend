@@ -1,3 +1,4 @@
+import { withMemorySettings } from './NodeForm/memory-provider';
 import type { Edge, Node } from '@xyflow/react';
 
 import {
@@ -322,6 +323,14 @@ export async function validateNodeEditWithRust({
     );
     candidateEdges = edges;
   }
+
+  // An AI Agent's edit carries its memory provider's settings: validate the
+  // graph as it will be once they are copied over, as saving the edit does.
+  candidateNodes =
+    withMemorySettings(
+      candidateNodes,
+      data.inputMapping as Parameters<typeof withMemorySettings>[1]
+    ) ?? candidateNodes;
 
   const graphOptions = buildGraphOptions(workflow);
   if (pendingNode?.becomesEntryPoint) {
