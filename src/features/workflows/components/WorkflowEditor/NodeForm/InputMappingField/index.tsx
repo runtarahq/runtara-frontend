@@ -1,9 +1,6 @@
 import { useController, useFieldArray, useFormContext } from 'react-hook-form';
 import { Icons } from '@/shared/components/icons.tsx';
-import {
-  ConditionEditor,
-  type Condition,
-} from '@/shared/components/ui/condition-editor';
+import { ConditionEditor, type Condition } from '@/shared/conditions';
 import { ErrorConditionTemplates } from '@/shared/components/ErrorConditionTemplates';
 import { FieldError } from '@/shared/components/ui/form';
 import { useCallback, useContext, useEffect, useMemo, useRef } from 'react';

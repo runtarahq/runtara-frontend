@@ -3,7 +3,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { NodeFormContext } from './NodeFormContext';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
-import { ConditionEditor } from '@/shared/components/ui/condition-editor';
+import { ConditionEditor } from '@/shared/conditions';
 import { composeConditionSuggestions } from './InputMappingValueField/VariableSuggestions';
 import { IterationVariablesField } from './IterationVariablesField';
 

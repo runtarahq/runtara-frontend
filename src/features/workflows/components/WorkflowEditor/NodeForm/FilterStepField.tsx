@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { NodeFormContext } from './NodeFormContext';
 import { Label } from '@/shared/components/ui/label';
-import { ConditionEditor } from '@/shared/components/ui/condition-editor';
+import { ConditionEditor } from '@/shared/conditions';
 import { composeConditionSuggestions } from './InputMappingValueField/VariableSuggestions';
 import { SourceMappingValueField } from './SourceMappingValueField';
 import { useWorkflowStore } from '@/features/workflows/stores/workflowStore';

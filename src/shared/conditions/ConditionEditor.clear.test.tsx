@@ -1,8 +1,8 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { TooltipProvider } from './tooltip';
-import { ConditionEditor } from './condition-editor';
+import { TooltipProvider } from '@/shared/components/ui/tooltip';
+import { ConditionEditor } from './ConditionEditor';
 
 const condition = (left: string) =>
   JSON.stringify({
