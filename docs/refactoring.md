@@ -653,17 +653,17 @@ it was, with tests for the parts and the browser audit specs run after.
 - `npm ci --no-audit`, and no dependency-update automation, although
   `package.json` carries 8 undocumented `overrides`.
 
-**Status: done, with the attestation steps untested.** Every action is pinned
-to a commit and both base images to a digest; dependabot moves the pins. A
-release bundles the console once, the image wraps that bundle
-(`BUNDLE=prebuilt` in the `Dockerfile`), and the GitHub release is created
-after the image is pushed. The release job runs what a pull request is held
-to. The tarball and the image carry a provenance attestation, and the image
-an SBOM. CI audits the shipped dependencies.
+**Status: done.** Every action is pinned to a commit and both base images to a
+digest; dependabot moves the pins. A release bundles the console once, the
+image wraps that bundle (`BUNDLE=prebuilt` in the `Dockerfile`), and the
+GitHub release is created after the image is pushed. The release job runs
+what a pull request is held to. The tarball and the image carry a provenance
+attestation, and the image an SBOM. CI audits the shipped dependencies.
 
-The image was built both ways locally and its files compared with the
-bundle's. The attestation steps need GitHub's signing service and have not
-run. The `overrides` in `package.json` are still undocumented.
+The prerelease `v10.0.1-rc.1` ran the workflow end to end: its three jobs
+passed, the tarball matches its checksum, and `gh attestation verify` accepts
+both the tarball and the image. The `overrides` in `package.json` are still
+undocumented.
 
 ### M14. Test and tooling gaps
 
@@ -688,13 +688,13 @@ run. The `overrides` in `package.json` are still undocumented.
 
 - `expectMatchesSnapshot` compares wherever a baseline for the platform is
   committed and skips where there is none, with no flag. The **Visual
-  baselines** workflow renders them on the runner the mocked job uses.
+  baselines** workflow renders them on the runner the mocked job uses; the
+  eighteen it rendered are committed. The mocked job has not yet run against
+  them: it runs on a pull request.
 
-Not done: no baselines are committed, because that workflow has to run on
-GitHub first; and the real-backend projects run in no workflow. They need a
-runtara server: its evaluation stack could be started in a job, but that
-could not be tried from a developer's machine here, and an untried job was
-not added.
+Not done: the real-backend projects run in no workflow. They need a runtara
+server: its evaluation stack could be started in a job, but that could not be
+tried from a developer's machine here, and an untried job was not added.
 
 ## Low priority
 
