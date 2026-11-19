@@ -260,12 +260,15 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8081
           E2E_RUNTIME_URL: http://127.0.0.1:7101
           CI: 'true'
+          STALE_TESTS: >-
+            prompts a reconnect after a save that resets authorization|creates
+            an OAuth connection without supplying the managed realm_id field
         run: >-
           npx playwright test --project=local-ui
           e2e/tests/e2e/connections.local.e2e.spec.ts
           e2e/tests/e2e/connection-crud.local.e2e.spec.ts
           e2e/tests/e2e/connection-editor.local.e2e.spec.ts
-          --grep-invert "prompts a reconnect after a save that resets authorization|creates an OAuth connection without supplying the managed realm_id field"
+          --grep-invert "$STALE_TESTS"
 
       - name: Server logs
         if: failure()
