@@ -56,3 +56,7 @@ storybook-static
 # JetBrains AI
 .junie/
 coverage
+
+# Visual baselines are kept for the CI runners' platform only (e2e/README.md).
+e2e/**/*-darwin.png
+e2e/**/*-win32.png

@@ -88,13 +88,23 @@ By default it **fails on `critical` violations only**. Set `E2E_A11Y_STRICT=true
 
 ## Visual regression
 
-`view.expectMatchesSnapshot('name')` calls `toHaveScreenshot()` under the hood, but **only when `E2E_VISUAL=true`**. Snapshots are platform-specific (darwin vs linux font rendering differs), so we generate and compare them on a canonical platform — the CI ubuntu runners.
+`view.expectMatchesSnapshot('name')` compares the page with its baseline image
+wherever a baseline for the platform is committed, and does nothing where
+there is none. Baselines are platform-specific (fonts render differently on
+macOS and Linux), and the repository keeps only Linux ones, the CI runners'.
+So the comparison runs in CI and is skipped on a developer's machine; other
+platforms' images are git-ignored.
 
-Workflow:
+To add or refresh baselines:
 
-1. Land a PR that adds specs without snapshots. The `mocked` gate passes because `E2E_VISUAL` is unset.
-2. To enable visual regression for a given spec, set `E2E_VISUAL=true` in the CI workflow and run `--update-snapshots` once; commit the generated `*.png` files under `__snapshots__/` directories. Subsequent runs enforce them.
-3. Locally, to regenerate: `E2E_VISUAL=true npm run test:e2e:mocked:update` (but only commit the linux version — run in the docker-compose image for an accurate match).
+1. Run the **Visual baselines** workflow (`.github/workflows/visual-baselines.yml`)
+   on the branch. It renders every snapshot on a CI runner and uploads them as
+   the `visual-baselines` artifact.
+2. Unpack the artifact over `e2e/` and commit the `*.png` files. From then on
+   the `mocked` job compares against them.
+
+`npm run test:e2e:mocked:update` writes baselines for the machine it runs on,
+which is useful to see what a snapshot captures; they are not committed.
 
 ## CI
 
