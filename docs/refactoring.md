@@ -163,14 +163,15 @@ the serializer strips them with a 15-name destructure
 (`serialize-steps.ts:42-93`). A new UI field missing from that list would leak
 into the saved DSL (_inferred_).
 
-**Refactoring.**
+**Refactoring, as proposed at the audit** (all three are done; the status
+below says how each was):
 
-1. In runtara, make the OpenAPI schema reference `ExecutionGraph` where it now
-   emits `any`, then regenerate.
+1. Have the generated client type `executionGraph` as `ExecutionGraph`
+   instead of `any`.
 2. Type the converter against the generated `Step` union and delete the
    hand-written step types.
-3. Split `node.data` into `{ step, ui }` so serialization takes `step` and
-   never has to strip.
+3. Separate a node's form-only fields from the step's own, so that saving a
+   step cannot carry one into the DSL.
 
 **Status: done.**
 
@@ -327,7 +328,8 @@ reads the token from `useToken()` to know there is one; it does not send it.
 | `WF/stores/workflowStore.ts`                | 1,460 | About 60% canvas geometry: `insertNodeBetween` and `onNodesChange` are 300 lines each, with a duplicated parent-expand block |
 | `WF/pages/Workflow/useWorkflowExecution.ts` | 635   | A 300-line effect copying polled run status into `executionStore`; no tests                                                  |
 
-Seams in `pages/Workflow/index.tsx`:
+Seams in `pages/Workflow/index.tsx`, as found at the audit (every one below,
+and those of `WE/index.tsx`, has since been taken out; see the status):
 
 - compilation watch and rebuild (`:124-359`, `:1136-1162`)
 - version switching (`:446-507`)
