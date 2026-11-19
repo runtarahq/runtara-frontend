@@ -26,6 +26,8 @@ releases are independent, so a console fix ships without a server release.
   (see `package.json`). `npm run generate-api-runtime-release` regenerates
   `src/generated/RuntaraRuntimeApi.ts` from the same release's `openapi.json`.
   Moving to a new runtara minor means bumping that URL and regenerating.
+  `npm run check-api-runtime-release` tells whether the client checked in is
+  that release's, and CI runs it on every pull request.
 - **Releasing.** Set `version` in `package.json`, merge, and push the tag
   `vX.Y.Z`. The release workflow builds with `VITE_RUNTARA_VERSION` set and
   publishes `runtara-frontend-X.Y.Z.tar.gz` (the contents of `dist/`) with its
@@ -138,6 +140,7 @@ to the console's `oauth-complete.html`.
 - `npm test` — Vitest
 - `npm run test:e2e` — Playwright (see `e2e/README.md`)
 - `npm run generate-api-runtime-release` — regenerate the runtime API client from the pinned runtara release's `openapi.json`
+- `npm run check-api-runtime-release` — fail when the checked-in runtime API client is not that release's
 - `npm run generate-api-runtime-local` / `generate-api-management-local` — regenerate TypeScript API clients from a running server
 
 ## Project layout

@@ -42,6 +42,29 @@ jobs:
       - name: ${{ matrix.check.name }}
         run: ${{ matrix.check.cmd }}
 
+  # The checked-in runtime client against the pinned runtara release's
+  # openapi.json (scripts/generate-api-runtime-release.mjs --check).
+  #
+  # It reports and does not gate yet: the client checked in is ahead of
+  # v10.0.0 (API key scopes, revoking a user's keys), generated from a server
+  # that has not been released. Drop `continue-on-error` with the bump to the
+  # runtara release that carries them.
+  api-client:
+    name: API client matches the pinned release
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run check-api-runtime-release
+
   e2e-mocked:
     name: E2E (mocked)
     # Playwright 1.59.1 supports Ubuntu 24.04; ubuntu-latest has moved to
