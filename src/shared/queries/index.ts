@@ -1,6 +1,5 @@
-import * as ManagementAPI from '@/generated/RuntaraManagementApi.ts';
 import * as RuntimeAPI from '@/generated/RuntaraRuntimeApi.ts';
-import type { AxiosHeaders } from 'axios';
+import axios, { type AxiosHeaders } from 'axios';
 import { currentAccessToken } from '@/shared/auth/access-token';
 import { config } from '@/shared/config/runtimeConfig';
 import { useAuthStore } from '@/shared/stores/authStore.ts';
@@ -11,13 +10,13 @@ import { reportResponseStatus } from './response-status';
 const API_BASE_URL = config.apiBaseUrl;
 
 /**
- * Management API client - single shared instance
- * Used for management operations
+ * The server outside the runtime API: its health check, and the one
+ * management route the console calls (./server.ts). A plain HTTP client: a
+ * generated client for the management API could only be regenerated from a
+ * running server, never from a release, so it went stale; the two calls it
+ * was kept for are written out and tested instead.
  */
-export const ManagementAPIClient = new ManagementAPI.Api({
-  format: 'json',
-  baseURL: API_BASE_URL,
-});
+export const ServerHTTP = axios.create({ baseURL: API_BASE_URL });
 
 /**
  * Runtime API client - single shared instance
@@ -68,9 +67,9 @@ const statusInterceptor = (error: any) => {
   return Promise.reject(error);
 };
 
-for (const client of [ManagementAPIClient, RuntimeREST]) {
-  client.instance.interceptors.request.use(attachAccessToken);
-  client.instance.interceptors.response.use(undefined, statusInterceptor);
+for (const instance of [ServerHTTP, RuntimeREST.instance]) {
+  instance.interceptors.request.use(attachAccessToken);
+  instance.interceptors.response.use(undefined, statusInterceptor);
 }
 
-export * from './billing';
+export * from './server';

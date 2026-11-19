@@ -142,7 +142,7 @@ to the console's `oauth-complete.html`.
 - `npm run test:e2e` — Playwright (see `e2e/README.md`)
 - `npm run generate-api-runtime-release` — regenerate the runtime API client from the pinned runtara release's `openapi.json`
 - `npm run check-api-runtime-release` — fail when the checked-in runtime API client is not that release's
-- `npm run generate-api-runtime-local` / `generate-api-management-local` — regenerate TypeScript API clients from a running server
+- `npm run generate-api-runtime-local` — regenerate the runtime API client from a running server
 
 ## Project layout
 
