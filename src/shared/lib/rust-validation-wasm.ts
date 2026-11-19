@@ -89,6 +89,19 @@ export function ensureRustValidationInitialized(): Promise<unknown> {
   return initPromise;
 }
 
+/**
+ * Starts loading the validator ahead of its first use, where one is likely:
+ * the workflow editor and the schema-driven forms call this when they mount.
+ * It is 4 MB, so the app does not fetch it at start for pages that never
+ * validate. A failed preload is only logged; the first real use tries again
+ * and reports for itself.
+ */
+export function preloadRustValidation(): void {
+  ensureRustValidationInitialized().catch((error) => {
+    console.warn('[validation] WASM preload failed', error);
+  });
+}
+
 /** Initialize workflow metadata after the shared validator is available. */
 export async function ensureWorkflowValidationInitialized(): Promise<void> {
   await ensureRustValidationInitialized();

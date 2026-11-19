@@ -48,6 +48,7 @@ import {
 } from './CustomNodes';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { useEditingNode } from './use-editing-node';
+import { preloadRustValidation } from '@/shared/lib/rust-validation-wasm';
 import { applyStepEdit, stepEditOf } from './apply-step-edit';
 import {
   CANVAS_FIT_VIEW_OPTIONS,
@@ -154,6 +155,8 @@ type WorkflowEditorProps = {
 };
 
 export function WorkflowEditor(props: WorkflowEditorProps) {
+  // The editor validates on every step save: fetch the validator as it opens.
+  useEffect(() => preloadRustValidation(), []);
   return (
     <ReactFlowProvider>
       <WorkflowEditorContent {...props} />
