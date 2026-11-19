@@ -2,6 +2,10 @@ import {
   processCompositeValue,
   processMappingEntry,
 } from '@/features/workflows/utils/mapping-serialization';
+import type {
+  ExecutionGraphStepDto,
+  StepNodeData,
+} from '@/features/workflows/types/execution-graph';
 import { buildSchemaFromFields } from '@/features/workflows/utils/schema';
 import { convertConditionArguments } from '@/shared/utils/condition-type-conversion';
 import {
@@ -29,7 +33,55 @@ function normalizeConditionExpression(condition: any): any {
     ),
   };
 }
-export function serializeSteps(steps: Record<string, any>) {
+/**
+ * Fields a canvas node holds for the step's form and nothing else: the
+ * deserializer (or the form) puts them in `node.data`, and no DSL step has
+ * them. They are taken out before a step is saved, here and nowhere else, so
+ * a new one is added to this list, not to a destructuring pattern.
+ */
+export const UI_ONLY_STEP_FIELDS = [
+  'inputSchemaFields',
+  'variablesFields',
+  'splitInputSchemaFields',
+  'splitOutputSchemaFields',
+  'embedWorkflowConfig',
+  'splitVariablesFields',
+  'splitParallelism',
+  'splitSequential',
+  'splitDontStopOnFailed',
+  'formTabs',
+  'startMode',
+  'selectedTriggerId',
+  'executionTimeout',
+  'retryStrategy',
+  'subgraphMeta',
+] as const;
+
+/** A canvas node as `composeExecutionGraph` hands it over to be saved. */
+export interface SerializableStepNode {
+  data: StepNodeData;
+  measured?: { width?: number; height?: number };
+  position?: { x: number; y: number };
+  subgraph?: { steps: Record<string, SerializableStepNode> } & Record<
+    string,
+    unknown
+  >;
+}
+
+function withoutUiOnlyFields<T extends Record<string, unknown>>(data: T): T {
+  const kept: Record<string, unknown> = { ...data };
+  for (const field of UI_ONLY_STEP_FIELDS) delete kept[field];
+  return kept as T;
+}
+
+/**
+ * The canvas nodes of one graph as DSL steps (`DslStep`), each with where it
+ * is drawn (`renderingParameters`, which `composeExecutionGraph` moves to the
+ * graph's `nodes`).
+ */
+export function serializeSteps(
+  steps: Record<string, SerializableStepNode> | undefined
+): Record<string, ExecutionGraphStepDto> {
   const cleaned: Record<string, any> = {};
 
   if (!steps) {
@@ -37,34 +89,21 @@ export function serializeSteps(steps: Record<string, any>) {
   }
 
   for (const [id, step] of Object.entries(steps)) {
-    const { measured, position, subgraph, data } = step;
-    // Destructure to exclude UI-only fields from the cleaned data
+    const { measured, position, subgraph } = step;
+    const data: Record<string, any> = step.data;
+    // Fields the form keeps under its own names, turned into the DSL's below.
     const {
       inputMapping = [],
       inputSchema,
       outputSchema,
       childWorkflowId,
       childVersion,
-      inputSchemaFields: _1,
-      variablesFields: _2,
-      splitInputSchemaFields: _3,
-      splitOutputSchemaFields: _4,
-      embedWorkflowConfig: _5,
-      splitVariablesFields: _6,
-      splitParallelism: _7,
-      splitSequential: _8,
-      splitDontStopOnFailed: _9,
       splitMaxRetries,
       splitRetryDelay,
       splitTimeout,
       splitAllowNull,
       splitConvertSingleValue,
       splitBatchSize,
-      formTabs: _10,
-      startMode: _11,
-      selectedTriggerId: _12,
-      executionTimeout: _13,
-      retryStrategy: _14,
       groupByKey,
       groupByExpectedKeys,
       filterCondition,
@@ -72,25 +111,9 @@ export function serializeSteps(steps: Record<string, any>) {
       whileMaxIterations,
       whileTimeout,
       whileVariablesFields,
-      subgraphMeta: _15,
-      ...restData
+      ...ownData
     } = data;
-    // Suppress unused variable warnings for destructured exclusions
-    void _1;
-    void _2;
-    void _3;
-    void _4;
-    void _5;
-    void _6;
-    void _7;
-    void _8;
-    void _9;
-    void _10;
-    void _11;
-    void _12;
-    void _13;
-    void _14;
-    void _15;
+    const restData = withoutUiOnlyFields(ownData);
 
     if (subgraph) {
       data.subgraph = {
@@ -361,7 +384,7 @@ export function serializeSteps(steps: Record<string, any>) {
       delete cleaned[id].maxRetries;
       const isWait =
         restData.stepType === 'WaitForSignal' ||
-        (restData.stepType as string) === 'WaitForInstances';
+        restData.stepType === 'WaitForInstances';
       for (const [canonical, legacy] of DURATION_FIELDS) {
         // A Wait step's own `timeoutMs` is a mapping, not a step duration.
         if (!(isWait && canonical === 'timeoutMs')) {
@@ -1199,5 +1222,5 @@ export function serializeSteps(steps: Record<string, any>) {
     }
   }
 
-  return cleaned;
+  return cleaned as Record<string, ExecutionGraphStepDto>;
 }

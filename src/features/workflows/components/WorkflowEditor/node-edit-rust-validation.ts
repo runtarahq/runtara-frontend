@@ -5,7 +5,7 @@ import {
   NODE_TYPES,
   STEP_TYPES,
 } from '@/features/workflows/config/workflow';
-import type { ExecutionGraphStepDto } from '@/features/workflows/types/execution-graph';
+import type { StepNodeData } from '@/features/workflows/types/execution-graph';
 import type { ValidationMessage } from '@/features/workflows/types/validation';
 import {
   validateExecutionGraphWithRust,
@@ -44,7 +44,7 @@ type WorkflowValidationContext = {
 
 export type PendingNodeCandidate = {
   id: string;
-  data: Partial<ExecutionGraphStepDto>;
+  data: StepNodeData;
   position: { x: number; y: number };
   parentId?: string;
   sourceNodeId?: string;
@@ -74,22 +74,19 @@ export type NodeEditRustValidationResult = {
   rustValidation: RustWorkflowValidationResult;
 };
 
-function stepNodeType(data: Partial<ExecutionGraphStepDto>, fallback?: string) {
+function stepNodeType(data: StepNodeData, fallback?: string) {
   const stepType = data.stepType as keyof typeof STEP_TYPES | undefined;
   return stepType
     ? STEP_TYPES[stepType] || fallback || NODE_TYPES.BasicNode
     : fallback || NODE_TYPES.BasicNode;
 }
 
-function toNodeData(
-  nodeId: string,
-  data: form.SchemaType
-): Partial<ExecutionGraphStepDto> {
+function toNodeData(nodeId: string, data: form.SchemaType): StepNodeData {
   return {
     ...data,
     id: nodeId,
     inputMapping: data.inputMapping || [],
-  } as unknown as Partial<ExecutionGraphStepDto>;
+  } as unknown as StepNodeData;
 }
 
 function buildExistingNodeCandidate(
@@ -97,10 +94,7 @@ function buildExistingNodeCandidate(
   nodeId: string,
   data: form.SchemaType
 ): Node {
-  const nodeType = stepNodeType(
-    data as unknown as Partial<ExecutionGraphStepDto>,
-    node.type
-  );
+  const nodeType = stepNodeType(data as unknown as StepNodeData, node.type);
 
   return {
     ...node,
@@ -171,9 +165,7 @@ function buildPendingEdges(
   nodeId: string,
   data: form.SchemaType
 ): Edge[] {
-  const nodeType = stepNodeType(
-    data as unknown as Partial<ExecutionGraphStepDto>
-  );
+  const nodeType = stepNodeType(data as unknown as StepNodeData);
   const isConditional =
     nodeType === NODE_TYPES.ConditionalNode || data.stepType === 'Conditional';
   let candidateEdges = [...edges];

@@ -36,7 +36,7 @@ import {
   snapPositionToGrid,
 } from '@/features/workflows/config/workflow-editor.ts';
 import { validateConnection } from '@/features/workflows/utils/graph-validation';
-import { ExecutionGraphStepDto } from '@/features/workflows/types/execution-graph';
+import type { StepNodeData } from '@/features/workflows/types/execution-graph';
 
 import * as form from './NodeForm/NodeFormItem.tsx';
 import {
@@ -1188,7 +1188,7 @@ function WorkflowEditorContent({
         savedId =
           useWorkflowStore.getState().lastStepRename?.newId ?? renameStepTo;
       }
-      updateNode(savedId, data as unknown as Partial<ExecutionGraphStepDto>);
+      updateNode(savedId, data as unknown as StepNodeData);
       // An AI Agent's conversation id reaches its memory provider on Save
       // only (ED-33).
       const synced = withMemoryConversation(

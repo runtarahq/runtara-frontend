@@ -1,7 +1,7 @@
 import type { Node, Edge, NodeChange, EdgeChange } from '@xyflow/react';
 import type {
   ExecutionGraphDto,
-  ExecutionGraphStepDto,
+  StepNodeData,
 } from '@/features/workflows/types/execution-graph';
 import type { ValidationError } from '@/shared/hooks/api';
 
@@ -40,7 +40,7 @@ export interface WorkflowState {
   // Pending new node (for deferred creation until user confirms in dialog)
   pendingNewNode: {
     id: string;
-    data: Partial<ExecutionGraphStepDto>;
+    data: StepNodeData;
     position: { x: number; y: number };
     parentId?: string;
     sourceNodeId?: string; // Node to connect FROM (new node is target)
@@ -97,11 +97,11 @@ export interface WorkflowState {
 
   // Actions - Node Operations
   addNode: (
-    step: Partial<ExecutionGraphStepDto>,
+    step: StepNodeData,
     position: { x: number; y: number },
     parentId?: string
   ) => string;
-  updateNode: (nodeId: string, updates: Partial<ExecutionGraphStepDto>) => void;
+  updateNode: (nodeId: string, updates: StepNodeData) => void;
   /**
    * Switch a node to the container node type (WaitForSignal "Add on-wait
    * flow"): children added with this node as parentId then form the nested
@@ -156,7 +156,7 @@ export interface WorkflowState {
     sourceNodeId: string,
     targetNodeId: string,
     sourceHandle: string,
-    newStepData: Partial<ExecutionGraphStepDto>,
+    newStepData: StepNodeData,
     position: { x: number; y: number }
   ) => void;
 

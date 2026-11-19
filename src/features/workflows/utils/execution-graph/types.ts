@@ -1,24 +1,15 @@
 import type {
+  ExecutionGraphDto,
   ExecutionGraphStepDto,
-  ExecutionGraphTransitionDto,
 } from '@/features/workflows/types/execution-graph';
-import type { Note } from '@/generated/RuntaraRuntimeApi';
 
-export type ExecutionGraphTransition = Required<ExecutionGraphTransitionDto>;
+export type ExecutionGraphStep = ExecutionGraphStepDto;
 
-export type ExecutionGraphStep = ExecutionGraphStepDto &
-  Required<
-    Pick<
-      ExecutionGraphStepDto,
-      'id' | 'inputMapping' | 'name' | 'stepType' | 'renderingParameters'
-    >
-  > & { subgraph?: ExecutionGraph };
-
-export interface ExecutionGraph {
+/**
+ * The graph `composeExecutionGraph` returns: the DSL's, with an entry point,
+ * and its steps as the DSL defines them (`DslStep`).
+ */
+export type ExecutionGraph = ExecutionGraphDto & {
   steps?: Record<string, ExecutionGraphStep>;
-  executionPlan?: ExecutionGraphTransition[];
   entryPoint: string;
-  notes?: Note[];
-  // Static variables defined at workflow version level
-  variables?: Record<string, any>;
-}
+};

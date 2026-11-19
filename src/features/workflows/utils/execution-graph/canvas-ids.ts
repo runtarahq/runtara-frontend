@@ -1,6 +1,7 @@
-import type {
-  ExecutionGraphDto,
-  ExecutionGraphStepDto,
+import {
+  type ExecutionGraphDto,
+  type ExecutionGraphStepDto,
+  stepSubgraph,
 } from '@/features/workflows/types/execution-graph';
 
 /**
@@ -32,11 +33,11 @@ export function canvasScopeKey(
 export function canvasOnWaitGraph(
   step: ExecutionGraphStepDto
 ): (ExecutionGraphDto & Record<string, unknown>) | undefined {
-  if ((step.stepType as string) !== 'WaitForSignal') {
+  if (step.stepType !== 'WaitForSignal') {
     return undefined;
   }
-  const rawOnWait = (step as Record<string, unknown>).onWait as
-    (ExecutionGraphDto & Record<string, unknown>) | undefined;
+  const rawOnWait = step.onWait as
+    (ExecutionGraphDto & Record<string, unknown>) | null | undefined;
   if (
     rawOnWait &&
     typeof rawOnWait === 'object' &&
@@ -80,7 +81,7 @@ export function assignCanvasNodeIds(
         taken.add(nodeId);
         nodeIds.set(canvasScopeKey(parentNodeId, stepId), nodeId);
 
-        const nested = step.subgraph ?? canvasOnWaitGraph(step);
+        const nested = stepSubgraph(step) ?? canvasOnWaitGraph(step);
         if (nested?.steps) {
           nextLevel.push({ steps: nested.steps, parentNodeId: nodeId });
         }

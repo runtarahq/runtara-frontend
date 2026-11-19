@@ -5,7 +5,12 @@ import {
   ShapeFieldJson,
 } from '@/features/workflows/utils/step-output-shapes';
 import { appendPathSegment } from '@/features/workflows/utils/reference-path';
-import { ExecutionGraph } from '../CustomNodes/utils.tsx';
+import {
+  type ExecutionGraphDto,
+  stepInputMapping,
+  stepOnWait,
+  stepSubgraph,
+} from '@/features/workflows/types/execution-graph';
 import { findAgentById } from '@/shared/utils/agent-id';
 
 export type ParameterType =
@@ -60,7 +65,7 @@ export function composePreviousSteps({
   /** The enclosing container step id (any depth); undefined = top level. */
   containerId?: string;
   agents: ExtendedAgent[];
-  executionGraph: ExecutionGraph | null;
+  executionGraph: ExecutionGraphDto | null;
   workflows?: WorkflowDto[];
 }): StepInfo[] {
   if (!executionGraph) {
@@ -73,9 +78,9 @@ export function composePreviousSteps({
   let graph = executionGraph;
   if (containerId) {
     const containerStep = findStepDeep(executionGraph, containerId);
-    const containerGraph =
-      containerStep?.subgraph ??
-      (containerStep as { onWait?: ExecutionGraph } | null)?.onWait;
+    const containerGraph = containerStep
+      ? (stepSubgraph(containerStep) ?? stepOnWait(containerStep))
+      : undefined;
     if (!containerGraph) {
       return [];
     }
@@ -107,18 +112,15 @@ export function composePreviousSteps({
  * subgraphs and WaitForSignal onWait graphs.
  */
 export function findStepDeep(
-  graph: ExecutionGraph,
+  graph: ExecutionGraphDto,
   id: string
-): NonNullable<ExecutionGraph['steps']>[string] | null {
+): NonNullable<ExecutionGraphDto['steps']>[string] | null {
   const direct = graph.steps?.[id];
   if (direct) {
     return direct;
   }
   for (const step of Object.values(graph.steps ?? {})) {
-    const nested = [
-      step.subgraph,
-      (step as { onWait?: ExecutionGraph }).onWait,
-    ];
+    const nested = [stepSubgraph(step), stepOnWait(step)];
     for (const sub of nested) {
       if (sub) {
         const found = findStepDeep(sub, id);
@@ -136,7 +138,7 @@ export function findStepDeep(
  */
 function buildStepInfoList(
   stepIds: string[],
-  executionGraph: ExecutionGraph,
+  executionGraph: ExecutionGraphDto,
   agents: ExtendedAgent[],
   workflows: WorkflowDto[]
 ): StepInfo[] {
@@ -151,7 +153,7 @@ function buildStepInfoList(
     const outputs: StepParameter[] = [];
 
     // Process inputMapping to create StepParameters
-    for (const [inputKey] of Object.entries(step.inputMapping || {})) {
+    for (const [inputKey] of Object.entries(stepInputMapping(step))) {
       // When referencing previous steps, use .outputs instead of .inputs
       const inputPath = appendPathSegment(
         `steps['${prevStepId}'].outputs`,
@@ -348,7 +350,7 @@ function buildStepInfoList(
 
     result.push({
       id: prevStepId,
-      name: step.name,
+      name: step.name ?? '',
       stepType: step.stepType,
       inputs,
       outputs,
@@ -485,7 +487,7 @@ function shapeSiblingParameter(
  */
 function findParentStepIds(
   stepId: string,
-  executionGraph: ExecutionGraph
+  executionGraph: ExecutionGraphDto
 ): string[] {
   if (!executionGraph.executionPlan) return [];
 
@@ -502,7 +504,7 @@ function findParentStepIds(
  */
 function findPreviousSteps(
   parentStepIds: string[],
-  executionGraph: ExecutionGraph | null
+  executionGraph: ExecutionGraphDto | null
 ): string[] {
   // Always include the parent steps themselves as previous steps
   if (!executionGraph || !executionGraph.executionPlan) {

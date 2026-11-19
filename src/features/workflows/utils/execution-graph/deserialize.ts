@@ -18,16 +18,12 @@ import { assignCanvasNodeIds } from './canvas-ids';
 import { applyStoredNodeVisualState } from './visual-state';
 import { normalizeNodesAndEdges } from './deserialize-steps';
 
-export function executionGraphToReactFlow(
-  executionGraph: ExecutionGraphDto & { notes?: Note[]; nodes?: unknown }
-) {
+export function executionGraphToReactFlow(executionGraph: ExecutionGraphDto) {
   // Migrate legacy Start steps if present
   let graphToProcess = executionGraph;
   if (needsStartStepMigration(executionGraph)) {
     const migrationResult = migrateStartStep(executionGraph);
-    graphToProcess = migrationResult.executionGraph as ExecutionGraphDto & {
-      notes?: Note[];
-    };
+    graphToProcess = migrationResult.executionGraph;
 
     // Log migration for debugging
     if (migrationResult.wasMigrated) {
@@ -39,7 +35,8 @@ export function executionGraphToReactFlow(
     }
   }
 
-  const { steps = {}, executionPlan = [], notes = [] } = graphToProcess;
+  const { steps = {}, executionPlan = [] } = graphToProcess;
+  const notes: Note[] = graphToProcess.notes ?? [];
   const { nodes: parsedNodes, edges } = normalizeNodesAndEdges(
     steps,
     executionPlan || [],

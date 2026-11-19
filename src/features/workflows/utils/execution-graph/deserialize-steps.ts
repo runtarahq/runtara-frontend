@@ -1,9 +1,10 @@
 import type { ValueType } from '@/generated/RuntaraRuntimeApi';
 import type { Node, Edge } from '@xyflow/react';
-import type {
-  ExecutionGraphDto,
-  ExecutionGraphStepDto,
-  ExecutionGraphTransitionDto,
+import {
+  type ExecutionGraphDto,
+  type ExecutionGraphStepDto,
+  type ExecutionGraphTransitionDto,
+  stepSubgraph,
 } from '@/features/workflows/types/execution-graph';
 import {
   NODE_TYPES,
@@ -52,7 +53,11 @@ export function normalizeNodesAndEdges(
 
   // nodes
   for (const [id, step] of Object.entries(steps)) {
-    const { subgraph, ...data } = step;
+    const subgraph = stepSubgraph(step);
+    const { subgraph: _nested, ...data } = step as ExecutionGraphStepDto & {
+      subgraph?: unknown;
+    };
+    void _nested;
     // The form keeps the short duration names (see DURATION_FIELDS). Only
     // Agent and EmbedWorkflow carry them on the step; the Wait steps' own
     // `timeoutMs` is a mapping and stays as it is.
@@ -69,14 +74,18 @@ export function normalizeNodesAndEdges(
     // state field it writes. The raw key leaves node.data so a save rebuilds
     // it from the rows.
     const setStateValues =
-      (step.stepType as string) === 'SetState'
+      step.stepType === 'SetState'
         ? ((data as Record<string, unknown>).values as
             Record<string, unknown> | undefined)
         : undefined;
     if (setStateValues !== undefined) {
       delete (data as Record<string, unknown>).values;
     }
-    const { inputMapping = setStateValues ?? {} } = data;
+    // Absent only: a mapping the step carries, even an empty one, is kept.
+    const ownInputMapping = (data as { inputMapping?: Record<string, unknown> })
+      .inputMapping;
+    const inputMapping: Record<string, unknown> =
+      ownInputMapping === undefined ? (setStateValues ?? {}) : ownInputMapping;
 
     // WaitForSignal `onWait` is a nested ExecutionGraph (DSL field name
     // differs from `subgraph`, machinery is identical). A non-empty onWait
@@ -311,7 +320,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For Switch steps, parse config into inputMapping format for the UI
-        ...((step.stepType as string) === 'Switch'
+        ...(step.stepType === 'Switch'
           ? (() => {
               const config = (data as any).config;
               const switchInputMapping: any[] = [];
@@ -377,7 +386,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For Filter steps, parse config into form fields
-        ...((step.stepType as string) === 'Filter'
+        ...(step.stepType === 'Filter'
           ? (() => {
               const config = (data as any).config;
               const filterInputMapping = config?.value
@@ -401,7 +410,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For While steps, parse condition and config into form fields
-        ...((step.stepType as string) === 'While'
+        ...(step.stepType === 'While'
           ? (() => {
               const config = (data as any).config;
               const whileVariablesFields = config?.variables
@@ -449,7 +458,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For GroupBy steps, parse config into form fields
-        ...((step.stepType as string) === 'GroupBy'
+        ...(step.stepType === 'GroupBy'
           ? (() => {
               const config = (data as any).config;
               const groupByInputMapping = config?.value
@@ -476,7 +485,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For AiAgent steps, parse config into form fields
-        ...((step.stepType as string) === 'AiAgent'
+        ...(step.stepType === 'AiAgent'
           ? (() => {
               const config = (data as any).config;
               const aiInputMapping: any[] = [];
@@ -677,7 +686,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For Delay steps, parse durationMs into inputMapping format
-        ...((step.stepType as string) === 'Delay'
+        ...(step.stepType === 'Delay'
           ? (() => {
               const delayStep = data as any;
               const duration = delayStep.durationMs;
@@ -697,7 +706,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For WaitForSignal steps, parse top-level fields into inputMapping
-        ...((step.stepType as string) === 'WaitForSignal'
+        ...(step.stepType === 'WaitForSignal'
           ? (() => {
               const waitStep = data as any;
               const waitInputMapping: any[] = [];
@@ -771,7 +780,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For WaitForInstances steps, parse top-level fields into inputMapping
-        ...((step.stepType as string) === 'WaitForInstances'
+        ...(step.stepType === 'WaitForInstances'
           ? (() => {
               const waitStep = data as any;
               const ids = waitStep.instanceIds;
@@ -812,7 +821,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For Log steps, parse top-level fields into inputMapping
-        ...((step.stepType as string) === 'Log'
+        ...(step.stepType === 'Log'
           ? (() => {
               const logStep = data as any;
               const logInputMapping: any[] = [
@@ -842,7 +851,7 @@ export function normalizeNodesAndEdges(
             })()
           : {}),
         // For Error steps, parse top-level fields into inputMapping
-        ...((step.stepType as string) === 'Error'
+        ...(step.stepType === 'Error'
           ? (() => {
               const errorStep = data as any;
               const errorInputMapping: any[] = [
@@ -950,7 +959,7 @@ export function normalizeNodesAndEdges(
   for (let i = 0; i < executionPlan.length; i++) {
     const edge = executionPlan[i];
     const sourceStep = steps[edge.fromStep ?? ''];
-    const isSwitchSource = (sourceStep?.stepType as string) === 'Switch';
+    const isSwitchSource = sourceStep?.stepType === 'Switch';
 
     let sourceHandle: string;
 
