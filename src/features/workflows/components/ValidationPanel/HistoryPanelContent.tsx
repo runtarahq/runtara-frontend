@@ -1,3 +1,4 @@
+import { stepEventsPollInterval } from './step-events-poll';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { queryKeys } from '@/shared/queries/query-keys';
@@ -126,13 +127,17 @@ export function HistoryPanelContent({ workflowId }: HistoryPanelContentProps) {
     queryFn: () =>
       getStepSummaries(workflowId, selectedInstanceId!, stepFilters),
     enabled: !!selectedInstanceId,
-    refetchInterval: () => {
+    refetchInterval: (query) => {
       const selectedInstance = data?.find(
         (inst: ExecutionHistoryItem) => inst.instanceId === selectedInstanceId
       );
-      return selectedInstance && isActiveStatus(selectedInstance.status)
-        ? 2000
-        : false;
+      return stepEventsPollInterval({
+        runIsActive: Boolean(
+          selectedInstance && isActiveStatus(selectedInstance.status)
+        ),
+        stepsLoaded: query.state.data?.data?.steps?.length ?? 0,
+        fetches: query.state.dataUpdateCount,
+      });
     },
   });
 

@@ -1,3 +1,4 @@
+import { useRefreshRunsOnStatus } from './use-refresh-runs';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -124,6 +125,9 @@ export function useWorkflowExecution(workflowId: string | undefined) {
         return status === 'suspended' ? 3000 : 2000;
       },
     });
+
+  // The run in the lists of runs, as soon as it starts and as it changes.
+  useRefreshRunsOnStatus(executingInstanceId, executionInstanceData?.status);
 
   // Poll step events (only in debug/trackEvents mode)
   const { data: executionStepEventsData, refetch: refetchStepEvents } =
