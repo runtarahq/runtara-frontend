@@ -207,9 +207,9 @@ test.describe
     expect(inputData).not.toHaveProperty('notes');
   });
 
-  // ── Optional field clear button works ──────────────────────────────────
+  // ── An emptied optional field is not sent ──────────────────────────────────
 
-  test('optional field clear button removes field from payload', async ({
+  test('an optional field that is emptied is left out of the payload', async ({
     page,
   }) => {
     await page.goto(`/workflows/${workflowId}`);

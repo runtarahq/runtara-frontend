@@ -540,37 +540,53 @@ export class WorkflowBuilderPage {
     });
   }
 
+  /**
+   * Presses Save and expects the workflow not to be saved: the validator's
+   * errors are listed and no save reaches the server, or the server refuses
+   * the one that does.
+   */
   async expectSaveValidationFailure(): Promise<void> {
     const saveButton = this.page.getByTitle('Save changes');
     await expect(saveButton).toBeEnabled({ timeout: 10000 });
 
+    // Problems may already list errors from when a step was added, and Save
+    // reads "Save changes" until a save completes, so neither proves a
+    // refusal. What does: no save goes through.
+    const saved = this.page
+      .waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          /\/workflows\/[^/]+\/update$/.test(new URL(response.url()).pathname),
+        { timeout: 4000 }
+      )
+      .then(
+        (response) => response.ok(),
+        () => false
+      );
     await saveButton.click();
+    expect(await saved, 'the workflow was saved').toBe(false);
 
-    await expect(
-      this.page.getByRole('button', { name: /Problems/ })
-    ).toBeVisible({
-      timeout: 15000,
-    });
-    await this.page.getByRole('button', { name: /Problems/ }).click();
-    await expect(
-      this.page.getByRole('button', { name: /Errors \([1-9]/ })
-    ).toBeVisible({
-      timeout: 15000,
-    });
+    const problems = this.page.getByRole('button', { name: /Problems/ });
+    const errors = this.page.getByRole('button', { name: /Errors \([1-9]/ });
+    await expect(problems).toBeVisible({ timeout: 15000 });
+    if (!(await errors.isVisible())) await problems.click();
+    await expect(errors).toBeVisible({ timeout: 15000 });
     await expect(this.page.getByTitle('Save changes')).toBeVisible({
       timeout: 10000,
     });
   }
 
+  /** Clears the listed problems; there must be some to clear. */
   async clearValidationMessages(): Promise<void> {
-    await this.page.getByRole('button', { name: /Problems/ }).click();
     const clearButton = this.page.getByTitle('Clear all messages');
-    if (await clearButton.isVisible().catch(() => false)) {
-      await clearButton.click();
-      await expect(this.page.getByText('No problems detected')).toBeVisible({
-        timeout: 10000,
-      });
+    // The Problems tab toggles its panel: open it only if it is closed.
+    if (!(await clearButton.isVisible())) {
+      await this.page.getByRole('button', { name: /Problems/ }).click();
     }
+    await clearButton.click();
+    await expect(this.page.getByText('No problems detected')).toBeVisible({
+      timeout: 10000,
+    });
   }
 
   async reloadAndWait(): Promise<void> {
