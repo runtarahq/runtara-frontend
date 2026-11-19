@@ -198,7 +198,7 @@ export function normalizeNodesAndEdges(
         // (./step-deserializers.ts).
         ...(stepDeserializer(step.stepType)?.({
           id,
-          data,
+          data: data as ExecutionGraphStepDto,
           parsedInputSchema,
           executionPlan,
         }) ?? {}),

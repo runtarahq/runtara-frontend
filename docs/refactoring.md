@@ -177,9 +177,11 @@ Remaining:
 
 - Step 1 is a change in runtara: `executionGraph` is still `any` on the
   workflow DTOs.
-- The bodies of the per-step serializers and deserializers still build their
-  steps untyped (`Record<string, any>`); the `any` count barely moved. Their
-  signatures are the place to type them, one step type at a time.
+- Each per-step deserializer takes its step typed as the generated client
+  defines it (`StepDeserializeContext<'Split'>`), so what it reads from the
+  DSL is checked. The serializers still build their steps untyped
+  (`Record<string, any>`): they spread the node's data and delete from it, and
+  typing their result means building it field by field instead.
 - Step 3, splitting `node.data`, is not done: the forms read the flat shape
   throughout.
 
@@ -266,7 +268,7 @@ local server (item 2).
    base URL, auth header, 401 and 503 handling, and one error type.
 3. Move the `AiAgentStepField` fetch to `features/connections/queries`.
 
-**Status: done, except removing the token parameter.**
+**Status: done.**
 
 - `currentAccessToken()` (`src/shared/auth/access-token.ts`) is the one place
   the stored token is read.
@@ -275,14 +277,15 @@ local server (item 2).
 - `runtimeFetch()` (`src/shared/queries/runtime-fetch.ts`) is `fetch` for the
   runtime API, with the tenant's base URL, the token, and the same handling of
   a 401 and a 503 as the interceptor (`reportResponseStatus`).
-- The nine raw `fetch` calls and the validator's loader go through it and take
-  no token. The model lookup moved to the connections queries.
+- The nine raw `fetch` calls and the validator's loader go through it. The
+  model lookup moved to the connections queries.
+- No query function takes a token: 83 signatures lost the parameter,
+  `useCustomQuery`, `useTableQuery` and `useCustomMutation` no longer pass
+  one, and `createAuthHeaders` is gone.
 
-Remaining: query functions on the generated client still take a token and
-call `createAuthHeaders` (about 70 call sites). The interceptor makes that
-redundant, so the parameter can go feature by feature; `useCustomQuery` and
-`useCustomMutation` still pass it. The 9 untyped `RuntimeREST.instance.*`
-calls are unchanged.
+Remaining: the 9 untyped `RuntimeREST.instance.*` calls are unchanged. A
+component that gates on having a session (the run buttons, the OAuth flow)
+still reads the token from `useToken()`.
 
 ### H5. God modules in the editor
 

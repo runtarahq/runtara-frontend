@@ -1,4 +1,6 @@
+import type { MappingValue } from '@/generated/RuntaraRuntimeApi';
 import type {
+  DslStepOf,
   ExecutionGraphTransitionDto,
   StepType,
 } from '@/features/workflows/types/execution-graph';
@@ -20,19 +22,19 @@ import { readDuration, mapMatchTypeFromAPI } from './field-values';
  * ./step-serializers.ts turn them back.
  */
 
-export interface StepDeserializeContext {
+export interface StepDeserializeContext<T extends StepType = StepType> {
   /** The step's id in its graph. */
   id: string;
-  /** The DSL step's own fields, without its nested graph. */
-  data: Record<string, any>;
+  /** The DSL step, as the generated client types it. */
+  data: DslStepOf<T>;
   /** The step's `inputSchema`, parsed when it was stored as a string. */
   parsedInputSchema: any;
   /** The plan of the graph the step is in. */
   executionPlan: ExecutionGraphTransitionDto[];
 }
 
-type StepDeserializer = (
-  ctx: StepDeserializeContext
+type StepDeserializer<T extends StepType> = (
+  ctx: StepDeserializeContext<T>
 ) => Record<string, unknown>;
 
 function normalizeSchemaFieldForEditor(field: SchemaField): SchemaField {
@@ -55,28 +57,53 @@ export const safeParseValue = (value: any): any => {
 };
 
 /**
+ * A mapping value's fields, whatever its variant. The generated union gives a
+ * composite no `value` and an immediate no `default`, so a field read off the
+ * union does not type-check, though the DSL stores each variant the same way.
+ */
+interface MappingFields {
+  valueType?: 'reference' | 'immediate' | 'composite' | 'template';
+  value?: any;
+  type?: string;
+  default?: unknown;
+}
+
+function mappingFields(
+  value: MappingValue | null | undefined
+): MappingFields | undefined {
+  return (value ?? undefined) as MappingFields | undefined;
+}
+
+/**
+ * The row the form edits a step's source in (`config.value` of a Split,
+ * Switch, Filter or GroupBy); none while it is unset. The DSL's `type` is
+ * carried as the row's hint, so a save writes it back.
+ */
+function sourceValueRows(value: MappingValue | null | undefined) {
+  const source = mappingFields(value);
+  if (!source) return [];
+  return [
+    {
+      type: 'value',
+      value: source.value,
+      typeHint: source.type ?? 'auto',
+      valueType: source.valueType || 'reference',
+      ...(source.default !== undefined ? { defaultValue: source.default } : {}),
+    },
+  ];
+}
+
+/**
  * For Split steps, parse config, inputSchema and outputSchema into UI fields
  */
 function deserializeSplit(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'Split'>
 ): Record<string, unknown> {
   const { data, parsedInputSchema } = ctx;
-  const config = (data as any).config;
+  const config = data.config;
   // Convert config.value to inputMapping format for the UI.
   // Carry the backend `type` through so the save path can round-trip it.
-  const splitInputMapping = config?.value
-    ? [
-        {
-          type: 'value',
-          value: config.value.value,
-          typeHint: config.value.type ?? 'auto',
-          valueType: config.value.valueType || 'reference',
-          ...(config.value.default !== undefined
-            ? { defaultValue: config.value.default }
-            : {}),
-        },
-      ]
-    : [];
+  const splitInputMapping = sourceValueRows(config?.value);
 
   // Convert config.variables to splitVariablesFields format
   const splitVariablesFields = config?.variables
@@ -126,12 +153,10 @@ function deserializeSplit(
     splitInputSchemaFields: parsedInputSchema
       ? parseSchema(parsedInputSchema).map(normalizeSchemaFieldForEditor)
       : [],
-    splitOutputSchemaFields: (data as any).outputSchema
-      ? parseSchema((data as any).outputSchema).map(
-          normalizeSchemaFieldForEditor
-        )
+    splitOutputSchemaFields: data.outputSchema
+      ? parseSchema(data.outputSchema).map(normalizeSchemaFieldForEditor)
       : [],
-    outputSchema: safeParseValue((data as any).outputSchema),
+    outputSchema: safeParseValue(data.outputSchema),
     // Config fields
     splitVariablesFields,
     splitParallelism: config?.parallelism ?? 0,
@@ -150,24 +175,17 @@ function deserializeSplit(
  * For Switch steps, parse config into inputMapping format for the UI
  */
 function deserializeSwitch(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'Switch'>
 ): Record<string, unknown> {
   const { data } = ctx;
-  const config = (data as any).config;
+  const config = data.config;
   const switchInputMapping: any[] = [];
 
   // Convert config.value to value field. Carry the backend `type`
   // and `default` through so the save path can round-trip them.
-  if (config?.value) {
-    switchInputMapping.push({
-      type: 'value',
-      value: config.value.value,
-      typeHint: config.value.type ?? 'auto',
-      valueType: config.value.valueType || 'reference',
-      ...(config.value.default !== undefined
-        ? { defaultValue: config.value.default }
-        : {}),
-    });
+  const sourceRows = sourceValueRows(config?.value);
+  if (sourceRows.length > 0) {
+    switchInputMapping.push(...sourceRows);
   } else {
     switchInputMapping.push({
       type: 'value',
@@ -218,23 +236,11 @@ function deserializeSwitch(
  * For Filter steps, parse config into form fields
  */
 function deserializeFilter(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'Filter'>
 ): Record<string, unknown> {
   const { data } = ctx;
-  const config = (data as any).config;
-  const filterInputMapping = config?.value
-    ? [
-        {
-          type: 'value',
-          value: config.value.value,
-          typeHint: config.value.type ?? 'auto',
-          valueType: config.value.valueType || 'reference',
-          ...(config.value.default !== undefined
-            ? { defaultValue: config.value.default }
-            : {}),
-        },
-      ]
-    : [];
+  const config = data.config;
+  const filterInputMapping = sourceValueRows(config?.value);
 
   return {
     inputMapping: filterInputMapping,
@@ -246,10 +252,10 @@ function deserializeFilter(
  * For While steps, parse condition and config into form fields
  */
 function deserializeWhile(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'While'>
 ): Record<string, unknown> {
   const { data } = ctx;
-  const config = (data as any).config;
+  const config = data.config;
   const whileVariablesFields = config?.variables
     ? Object.entries(config.variables).map(([name, variable]) => {
         const typedVariable = variable as {
@@ -286,7 +292,7 @@ function deserializeWhile(
     : [];
   return {
     inputMapping: [],
-    whileCondition: (data as any).condition,
+    whileCondition: data.condition,
     whileMaxIterations: config?.maxIterations ?? 10,
     whileTimeout: readDuration(config, 'timeoutMs') ?? null,
     whileVariablesFields,
@@ -297,23 +303,11 @@ function deserializeWhile(
  * For GroupBy steps, parse config into form fields
  */
 function deserializeGroupBy(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'GroupBy'>
 ): Record<string, unknown> {
   const { data } = ctx;
-  const config = (data as any).config;
-  const groupByInputMapping = config?.value
-    ? [
-        {
-          type: 'value',
-          value: config.value.value,
-          typeHint: config.value.type ?? 'auto',
-          valueType: config.value.valueType || 'reference',
-          ...(config.value.default !== undefined
-            ? { defaultValue: config.value.default }
-            : {}),
-        },
-      ]
-    : [];
+  const config = data.config;
+  const groupByInputMapping = sourceValueRows(config?.value);
 
   return {
     inputMapping: groupByInputMapping,
@@ -328,39 +322,43 @@ function deserializeGroupBy(
  * For AiAgent steps, parse config into form fields
  */
 function deserializeAiAgent(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'AiAgent'>
 ): Record<string, unknown> {
   const { data, id, executionPlan } = ctx;
-  const config = (data as any).config;
+  const config = data.config;
+  const systemPrompt = mappingFields(config?.systemPrompt);
+  const userPrompt = mappingFields(config?.userPrompt);
+  const model = mappingFields(config?.model);
+  const temperature = mappingFields(config?.temperature);
+  const maxTokens = mappingFields(config?.maxTokens);
   const aiInputMapping: any[] = [];
 
-  if (config?.systemPrompt) {
+  if (systemPrompt) {
     aiInputMapping.push({
       type: 'systemPrompt',
-      value: config.systemPrompt.value ?? '',
-      valueType: config.systemPrompt.valueType || 'immediate',
+      value: systemPrompt.value ?? '',
+      valueType: systemPrompt.valueType || 'immediate',
       typeHint: 'string',
     });
   }
 
-  if (config?.userPrompt) {
+  if (userPrompt) {
     aiInputMapping.push({
       type: 'userPrompt',
-      value: config.userPrompt.value ?? '',
-      valueType: config.userPrompt.valueType || 'immediate',
+      value: userPrompt.value ?? '',
+      valueType: userPrompt.valueType || 'immediate',
       typeHint: 'string',
     });
   }
 
-  if (config?.model) {
+  if (model) {
     aiInputMapping.push({
       type: 'model',
-      value: config.model.value ?? '',
-      valueType: config.model.valueType || 'immediate',
-      typeHint: config.model.type || 'string',
-      ...(config.model.valueType === 'reference' &&
-      config.model.default !== undefined
-        ? { defaultValue: config.model.default }
+      value: model.value ?? '',
+      valueType: model.valueType || 'immediate',
+      typeHint: model.type || 'string',
+      ...(model.valueType === 'reference' && model.default !== undefined
+        ? { defaultValue: model.default }
         : {}),
     });
   }
@@ -374,28 +372,27 @@ function deserializeAiAgent(
     });
   }
 
-  if (config?.temperature !== undefined && config.temperature !== null) {
+  if (temperature) {
     aiInputMapping.push({
       type: 'temperature',
-      value: config.temperature.value ?? '',
-      valueType: config.temperature.valueType || 'immediate',
-      typeHint: config.temperature.type || 'number',
-      ...(config.temperature.valueType === 'reference' &&
-      config.temperature.default !== undefined
-        ? { defaultValue: config.temperature.default }
+      value: temperature.value ?? '',
+      valueType: temperature.valueType || 'immediate',
+      typeHint: temperature.type || 'number',
+      ...(temperature.valueType === 'reference' &&
+      temperature.default !== undefined
+        ? { defaultValue: temperature.default }
         : {}),
     });
   }
 
-  if (config?.maxTokens !== undefined && config.maxTokens !== null) {
+  if (maxTokens) {
     aiInputMapping.push({
       type: 'maxTokens',
-      value: config.maxTokens.value ?? '',
-      valueType: config.maxTokens.valueType || 'immediate',
-      typeHint: config.maxTokens.type || 'integer',
-      ...(config.maxTokens.valueType === 'reference' &&
-      config.maxTokens.default !== undefined
-        ? { defaultValue: config.maxTokens.default }
+      value: maxTokens.value ?? '',
+      valueType: maxTokens.valueType || 'immediate',
+      typeHint: maxTokens.type || 'integer',
+      ...(maxTokens.valueType === 'reference' && maxTokens.default !== undefined
+        ? { defaultValue: maxTokens.default }
         : {}),
     });
   }
@@ -433,11 +430,12 @@ function deserializeAiAgent(
       typeHint: 'boolean',
     });
 
-    if (config.memory.conversationId) {
+    const conversationId = mappingFields(config.memory.conversationId);
+    if (conversationId) {
       aiInputMapping.push({
         type: 'memoryConversationId',
-        value: config.memory.conversationId.value ?? '',
-        valueType: config.memory.conversationId.valueType || 'reference',
+        value: conversationId.value ?? '',
+        valueType: conversationId.valueType || 'reference',
         typeHint: 'string',
       });
     }
@@ -517,7 +515,7 @@ function deserializeAiAgent(
  * For Delay steps, parse durationMs into inputMapping format
  */
 function deserializeDelay(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'Delay'>
 ): Record<string, unknown> {
   const { data } = ctx;
   const delayStep = data as any;
@@ -541,7 +539,7 @@ function deserializeDelay(
  * For WaitForSignal steps, parse top-level fields into inputMapping
  */
 function deserializeWaitForSignal(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'WaitForSignal'>
 ): Record<string, unknown> {
   const { data } = ctx;
   const waitStep = data as any;
@@ -616,7 +614,7 @@ function deserializeWaitForSignal(
  * For WaitForInstances steps, parse top-level fields into inputMapping
  */
 function deserializeWaitForInstances(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'WaitForInstances'>
 ): Record<string, unknown> {
   const { data } = ctx;
   const waitStep = data as any;
@@ -660,7 +658,9 @@ function deserializeWaitForInstances(
 /**
  * For Log steps, parse top-level fields into inputMapping
  */
-function deserializeLog(ctx: StepDeserializeContext): Record<string, unknown> {
+function deserializeLog(
+  ctx: StepDeserializeContext<'Log'>
+): Record<string, unknown> {
   const { data } = ctx;
   const logStep = data as any;
   const logInputMapping: any[] = [
@@ -693,7 +693,7 @@ function deserializeLog(ctx: StepDeserializeContext): Record<string, unknown> {
  * For Error steps, parse top-level fields into inputMapping
  */
 function deserializeError(
-  ctx: StepDeserializeContext
+  ctx: StepDeserializeContext<'Error'>
 ): Record<string, unknown> {
   const { data } = ctx;
   const errorStep = data as any;
@@ -740,31 +740,36 @@ function deserializeError(
  * server adds does not compile until it says here how it is loaded. `null` is
  * a step whose form edits its own fields as they are.
  */
-export const STEP_DESERIALIZERS: { [T in StepType]: StepDeserializer | null } =
-  {
-    Finish: null,
-    Agent: null,
-    Conditional: null,
-    EmbedWorkflow: null,
-    SetState: null,
-    GetState: null,
-    Split: deserializeSplit,
-    Switch: deserializeSwitch,
-    Filter: deserializeFilter,
-    While: deserializeWhile,
-    GroupBy: deserializeGroupBy,
-    AiAgent: deserializeAiAgent,
-    Delay: deserializeDelay,
-    WaitForSignal: deserializeWaitForSignal,
-    WaitForInstances: deserializeWaitForInstances,
-    Log: deserializeLog,
-    Error: deserializeError,
-  };
+export const STEP_DESERIALIZERS: {
+  [T in StepType]: StepDeserializer<T> | null;
+} = {
+  Finish: null,
+  Agent: null,
+  Conditional: null,
+  EmbedWorkflow: null,
+  SetState: null,
+  GetState: null,
+  Split: deserializeSplit,
+  Switch: deserializeSwitch,
+  Filter: deserializeFilter,
+  While: deserializeWhile,
+  GroupBy: deserializeGroupBy,
+  AiAgent: deserializeAiAgent,
+  Delay: deserializeDelay,
+  WaitForSignal: deserializeWaitForSignal,
+  WaitForInstances: deserializeWaitForInstances,
+  Log: deserializeLog,
+  Error: deserializeError,
+};
 
 /** The deserializer of a stored step type; none for a name that is not one. */
-export function stepDeserializer(stepType: unknown): StepDeserializer | null {
+export function stepDeserializer(
+  stepType: unknown
+): StepDeserializer<StepType> | null {
   return typeof stepType === 'string' &&
     Object.prototype.hasOwnProperty.call(STEP_DESERIALIZERS, stepType)
-    ? STEP_DESERIALIZERS[stepType as StepType]
+    ? (STEP_DESERIALIZERS[
+        stepType as StepType
+      ] as StepDeserializer<StepType> | null)
     : null;
 }
