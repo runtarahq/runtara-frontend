@@ -41,7 +41,7 @@ Rare or hard-to-reach claims, worked through as a group: those whose evidence ne
 
 ## Working with the specs
 
-Run them with `npx playwright test -c e2e/audit/playwright.audit.config.ts`. This uses the installed Chrome, takes about 16 minutes, and sits outside the mocked PR gate.
+Run them with `npx playwright test -c e2e/audit/playwright.audit.config.ts`. This uses the installed Chrome, takes about 16 minutes, and sits outside the mocked PR gate: CI runs it on `main` and nightly (`.github/workflows/audit.yml`).
 
 Each test states the correct behaviour. While a defect exists, its assertions sit inside `knownDefect()` (`e2e/audit/helpers.ts`), which expects them to fail:
 

@@ -27,6 +27,7 @@
     "test:e2e:docker": "docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit",
     "test:e2e:smoke": "playwright test --project=smoke",
     "test:e2e:local": "playwright test --project=e2e",
+    "test:e2e:audit": "playwright test -c e2e/audit/playwright.audit.config.ts",
     "test:e2e:mocked": "playwright test --project=mocked",
     "test:e2e:mocked:headed": "playwright test --project=mocked --headed",
     "test:e2e:mocked:update": "playwright test --project=mocked --update-snapshots",
