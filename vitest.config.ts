@@ -35,6 +35,18 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      // The generated client is not ours to test.
+      exclude: ['src/generated/**', '**/*.test.{ts,tsx}', 'src/test/**'],
+      // A floor, just under what the suite covers today: a change that
+      // lowers coverage fails, and the floor is raised as it grows.
+      thresholds: {
+        statements: 63,
+        branches: 54,
+        functions: 58,
+        lines: 64,
+      },
+    },
     // Exclude e2e tests - those are run with Playwright, not Vitest
     exclude: [
       '**/node_modules/**',

@@ -21,12 +21,14 @@ jobs:
       fail-fast: false
       matrix:
         check:
-          # `lint` gates on ESLint errors only: most of today's warnings are
-          # react-refresh/only-export-components, an HMR-ergonomics rule.
-          - { name: lint, cmd: 'npm run lint' }
+          # Errors fail, and so does a warning beyond the 21 there are today
+          # (most are react-refresh/only-export-components, an
+          # HMR-ergonomics rule): the count may only go down.
+          - { name: lint, cmd: 'npm run lint -- --max-warnings 21' }
           - { name: format, cmd: 'npm run format:check' }
           - { name: typecheck, cmd: 'npx tsc -b --pretty' }
-          - { name: unit, cmd: 'npm test' }
+          # With the coverage floor of vitest.config.ts.
+          - { name: unit, cmd: 'npm run test:coverage' }
           - { name: knip, cmd: 'npm run knip' }
           # The build, then the first load against its budget
           # (scripts/check-bundle-size.mjs).
