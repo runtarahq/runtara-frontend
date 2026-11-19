@@ -6,6 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
+import { buildWorkflow as sharedWorkflow } from '@/test/builders';
 import { WorkflowsGrid } from './index';
 
 /**
@@ -52,19 +53,12 @@ function buildWorkflow(index: number): WorkflowDto {
     Date.UTC(2026, 0, 1) - index * 3_600_000
   ).toISOString();
 
-  return {
+  return sharedWorkflow({
     id: `wf-${index}`,
     name: `Workflow ${String(index).padStart(2, '0')}`,
-    description: '',
     created: updated,
     updated,
-    currentVersionNumber: 1,
-    lastVersionNumber: 1,
-    executionGraph: {},
-    inputSchema: {},
-    outputSchema: {},
-    path: '/',
-  } as unknown as WorkflowDto;
+  });
 }
 
 const allWorkflows = Array.from({ length: WORKFLOW_COUNT }, (_, i) =>

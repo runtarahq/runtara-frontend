@@ -10,6 +10,11 @@ import type {
   Schema,
 } from '@/generated/RuntaraRuntimeApi';
 
+// Server objects for tests, each with the fields a page needs and overrides
+// for what a test is about. Unit tests and the Playwright specs build from
+// these same defaults (e2e/fixtures re-exports them), so a DTO that changes
+// shape is corrected once.
+
 type DeepPartial<T> = T extends object
   ? { [K in keyof T]?: DeepPartial<T[K]> }
   : T;

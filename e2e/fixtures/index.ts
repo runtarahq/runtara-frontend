@@ -19,5 +19,6 @@ export { test as authTest } from './auth.fixture';
 export { test as apiTest, mockData as apiMockData } from './api.fixture';
 export { test as mockTest } from './mock.fixture';
 export { test as a11yTest } from './a11y.fixture';
-export * from './builders';
+// The builders unit tests use too: one description of each DTO's defaults.
+export * from '../../src/test/builders';
 export type { MockApi } from './mock.fixture';

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
+import { buildWorkflow as sharedWorkflow } from '@/test/builders';
 import { ChatPage } from './index';
 
 const mocks = vi.hoisted(() => ({
@@ -38,20 +39,11 @@ const WORKFLOW_ID = 'wf-chat';
 const INSTANCE_ID = 'inst-chat';
 
 function buildWorkflow(supportsChat: boolean): WorkflowDto {
-  return {
+  return sharedWorkflow({
     id: WORKFLOW_ID,
     name: 'Probe workflow',
-    description: '',
-    created: '2026-07-27T10:00:00.000Z',
-    updated: '2026-07-27T10:00:00.000Z',
-    currentVersionNumber: 1,
-    lastVersionNumber: 1,
-    executionGraph: {},
-    inputSchema: {},
-    outputSchema: {},
-    path: '/',
     supportsChat,
-  } as unknown as WorkflowDto;
+  });
 }
 
 function renderChat(instanceId?: string) {

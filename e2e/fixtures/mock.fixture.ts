@@ -14,7 +14,7 @@ import {
   buildConnectionType,
   buildObjectModelConnection,
   paginated,
-} from './builders';
+} from '../../src/test/builders';
 
 type JsonBody = Record<string, unknown> | Array<unknown>;
 
