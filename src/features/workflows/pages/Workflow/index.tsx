@@ -37,7 +37,11 @@ import { useCompilationWatch } from './use-compilation-watch';
 import { useUnsavedChangesGuard } from './use-unsaved-changes-guard';
 import { useVersionSelection, useWorkflowLoad } from './use-workflow-load';
 import { prepareWorkflowSave } from './save-workflow';
-import { graphOptions, mergeWorkflowSettings } from './workflow-settings';
+import {
+  graphOptions,
+  mergeWorkflowSettings,
+  withSavedSettings,
+} from './workflow-settings';
 import { useOneAtATime } from './use-one-at-a-time';
 import { BackgroundBuildWatch } from './build-watch';
 import { rebuildWorkflowVersion } from '@/features/workflows/queries';
@@ -57,10 +61,6 @@ import {
 } from '@/features/workflows/components/WorkflowEditor/editor-preferences';
 import type { CanvasDetailLevel } from '@/features/workflows/components/WorkflowEditor/CustomNodes/node-size';
 import { isActiveStatus } from '@/shared/utils/status-display';
-
-function hasOwn(object: object, key: string) {
-  return Object.prototype.hasOwnProperty.call(object, key);
-}
 
 // The page of one workflow. Its editor state lives in stores of its own
 // (stores/editor-scope), made when the page opens on a workflow and dropped
@@ -192,50 +192,12 @@ function WorkflowPage() {
         // make it the active version. currentVersionNumber should only change when
         // explicitly activating a version via setCurrentVersion API.
         if (currentCachedData) {
+          // What was saved is what the server now holds: the staged settings
+          // over the cached ones, by the one rule that merges them. The
+          // active version (currentVersionNumber) is not touched.
           const updatedData = {
             ...currentCachedData,
-            data: {
-              ...currentCachedData.data,
-              // Update name and description if they were changed
-              ...(savedStagedChanges.name !== undefined && {
-                name: savedStagedChanges.name,
-              }),
-              ...(savedStagedChanges.description !== undefined && {
-                description: savedStagedChanges.description,
-              }),
-              ...(savedStagedChanges.variables !== undefined && {
-                variables: savedStagedChanges.variables,
-              }),
-              ...(savedStagedChanges.inputSchemaFields !== undefined && {
-                inputSchemaFields: savedStagedChanges.inputSchemaFields,
-              }),
-              ...(savedStagedChanges.outputSchemaFields !== undefined && {
-                outputSchemaFields: savedStagedChanges.outputSchemaFields,
-              }),
-              ...(savedStagedChanges.stateSchemaFields !== undefined && {
-                stateSchemaFields: savedStagedChanges.stateSchemaFields,
-              }),
-              ...(savedStagedChanges.executionTimeoutSeconds !== undefined && {
-                executionTimeoutSeconds:
-                  savedStagedChanges.executionTimeoutSeconds,
-              }),
-              ...(savedStagedChanges.rateLimitBudgetMs !== undefined && {
-                rateLimitBudgetMs: savedStagedChanges.rateLimitBudgetMs,
-              }),
-              ...(hasOwn(savedStagedChanges, 'durable') && {
-                durable: savedStagedChanges.durable,
-              }),
-              ...(savedStagedChanges.entryPoint !== undefined && {
-                entryPoint: savedStagedChanges.entryPoint,
-              }),
-              ...(hasOwn(savedStagedChanges, 'memoryMb') && {
-                memoryMb: savedStagedChanges.memoryMb,
-              }),
-              ...(savedStagedChanges.trackEvents !== undefined && {
-                trackEvents: savedStagedChanges.trackEvents,
-              }),
-              // Keep the original currentVersionNumber (the active version)
-            },
+            data: withSavedSettings(currentCachedData.data, savedStagedChanges),
           };
 
           // Update the current query's cached data

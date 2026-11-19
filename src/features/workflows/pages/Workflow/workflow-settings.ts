@@ -52,6 +52,17 @@ export function mergeWorkflowSettings(
 
 export type MergedWorkflowSettings = ReturnType<typeof mergeWorkflowSettings>;
 
+/**
+ * A loaded workflow after a save of `saved`: everything it held, with its
+ * settings as that save left them.
+ */
+export function withSavedSettings<T extends WorkflowChanges>(
+  workflow: T,
+  saved: WorkflowChanges
+): T & MergedWorkflowSettings {
+  return { ...workflow, ...mergeWorkflowSettings(workflow, saved) };
+}
+
 type GraphVariables = Record<
   string,
   { type: string; value: unknown; description?: string }

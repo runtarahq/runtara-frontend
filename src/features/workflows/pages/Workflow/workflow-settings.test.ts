@@ -3,6 +3,7 @@ import {
   graphOptions,
   graphVariables,
   mergeWorkflowSettings,
+  withSavedSettings,
   type WorkflowVariable,
 } from './workflow-settings';
 
@@ -135,5 +136,56 @@ describe('graphOptions', () => {
       entryPoint: 'first',
     });
     expect(Object.keys(options.inputSchema ?? {})).toEqual(['orderId']);
+  });
+});
+
+describe('withSavedSettings', () => {
+  const loaded = {
+    id: 'wf-1',
+    currentVersionNumber: 3,
+    executionGraph: { steps: {} },
+    name: 'Orders',
+    description: 'Old',
+    variables: [],
+    inputSchemaFields: [],
+    outputSchemaFields: [],
+    stateSchemaFields: [],
+    durable: true,
+    trackEvents: true,
+  };
+
+  it('leaves a saved workflow with its settings as the save left them', () => {
+    const after = withSavedSettings(loaded, {
+      name: 'Orders v2',
+      durable: false,
+      executionTimeoutSeconds: 60,
+    });
+
+    expect(after).toMatchObject({
+      name: 'Orders v2',
+      description: 'Old',
+      durable: false,
+      executionTimeoutSeconds: 60,
+      trackEvents: true,
+    });
+  });
+
+  it('keeps what is not a setting: the active version and the graph', () => {
+    const after = withSavedSettings(loaded, { name: 'Renamed' });
+
+    expect(after.id).toBe('wf-1');
+    expect(after.currentVersionNumber).toBe(3);
+    // The same object: the editor does not draw the graph again for a save.
+    expect(after.executionGraph).toBe(loaded.executionGraph);
+  });
+
+  it('changes nothing when nothing was staged', () => {
+    expect(withSavedSettings(loaded, {})).toEqual({
+      ...loaded,
+      executionTimeoutSeconds: undefined,
+      rateLimitBudgetMs: undefined,
+      entryPoint: undefined,
+      memoryMb: undefined,
+    });
   });
 });
