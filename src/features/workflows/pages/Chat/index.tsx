@@ -29,6 +29,10 @@ import { queryKeys } from '@/shared/queries/query-keys';
 import { getWorkflow, getWorkflowInstance } from '@/features/workflows/queries';
 import { fetchChatHistory } from '@/features/workflows/queries/chat';
 import {
+  workflowCanChat,
+  workflowWaits,
+} from '@/features/workflows/utils/given-inputs';
+import {
   conversationKeyOfRun,
   conversationPath,
 } from '@/features/workflows/utils/run-conversation';
@@ -63,9 +67,10 @@ export function ChatPage() {
     ?.data;
   const workflowName = workflow?.name ?? 'Chat';
 
-  // The server reports whether the graph contains a step that waits for a
-  // reply. Without one nothing ever reads what is typed here, so starting a
-  // session is a dead end and the page says so instead. Direct URLs still land
+  // A workflow can chat when a step of it waits for a reply, or when each
+  // message starts a run that reads its conversation. Without either nothing
+  // ever reads what is typed here, so starting a session is a dead end and
+  // the page says so instead. Direct URLs still land
   // here — this is the fallback for them, not a redirect.
   //
   // Resuming a run (`:instanceId`) or a conversation that exists is exempt:
@@ -73,7 +78,10 @@ export function ChatPage() {
   // a run that is holding a pending input. Refusing that would block the one
   // reply the user came to give.
   const isWorkflowLoaded = !!workflow;
-  const supportsChat = workflow?.supportsChat === true;
+  const supportsChat = workflowCanChat(workflow);
+  // A run that waits is begun when the chat opens, so that it can speak
+  // first. A run per message has nothing to begin until something is said.
+  const speaksFirst = workflowWaits(workflow);
   const isDeadEnd =
     isWorkflowLoaded && !instanceId && !routeKey && !supportsChat;
 
@@ -171,13 +179,17 @@ export function ChatPage() {
         });
     } else {
       store.initChat(workflowId, workflowName);
-      // Start a new conversation: the workflow begins, and speaks first. Its
+      // Start a new conversation: a workflow that waits begins, and speaks
+      // first; one that runs per message waits for the first message. Its
       // URL becomes the conversation's, so a refresh reopens the same one.
-      void startSession((key) => {
-        if (!isShown()) return;
-        started.current = key;
-        navigate(chatUrl(key), { replace: true });
-      });
+      void startSession(
+        (key) => {
+          if (!isShown()) return;
+          started.current = key;
+          navigate(chatUrl(key), { replace: true });
+        },
+        { speaksFirst }
+      );
     }
   }, [workflowId, instanceId, routeKey, isWorkflowLoaded, isDeadEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -385,7 +397,10 @@ export function ChatPage() {
             <p className="mt-1 max-w-md text-xs text-muted-foreground">
               A conversation needs a step that waits for your reply. Add a Wait
               for signal step — on its own, or as an AI Agent tool — and this
-              workflow will start accepting messages.
+              workflow will start accepting messages. A workflow that answers
+              each message with a run of its own can chat too, once it reads the
+              conversation it is given: map an AI Agent&apos;s memory to the
+              conversation.
             </p>
             <Button variant="secondary" className="mt-4" onClick={handleBack}>
               Open workflow

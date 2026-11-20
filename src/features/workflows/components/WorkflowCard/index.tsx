@@ -13,6 +13,7 @@ import { Button } from '@/shared/components/ui/button.tsx';
 import { Can } from '@/shared/components/Can';
 import { TableCell, TableRow } from '@/shared/components/ui/table';
 import { parseSchema } from '@/features/workflows/utils/schema';
+import { workflowCanChat } from '@/features/workflows/utils/given-inputs';
 import { Spinner } from '@/shared/components/ui/spinner';
 
 interface WorkflowCardProps {
@@ -55,10 +56,10 @@ export function WorkflowCard({
   const rawSchema =
     (workflow as any).inputSchema ?? (workflow as any).input_schema ?? {};
   const hasInputs = parseSchema(rawSchema).length > 0;
-  // The server answers whether this workflow has a step that waits for a reply.
-  // Without one the chat surface accepts messages nothing ever reads, so the
-  // row does not offer the action at all.
-  const supportsChat = workflow.supportsChat === true;
+  // Whether anything would read what is typed: a step that waits for a
+  // reply, or a run per message that reads its conversation. Without either
+  // the row does not offer the action at all.
+  const supportsChat = workflowCanChat(workflow);
 
   return (
     <TableRow className={cn('group', className)}>

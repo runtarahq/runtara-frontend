@@ -77,6 +77,44 @@ export function stepsCanChat(steps: { data?: unknown }[] | undefined): boolean {
   );
 }
 
+/** Whether a saved input schema declares `name`, as a map of fields by name
+ * or as a JSON Schema with `properties`. */
+function declares(schema: unknown, name: string): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  const fields = schema as Record<string, unknown>;
+  const properties = fields.properties;
+  return (
+    name in fields ||
+    (!!properties && typeof properties === 'object' && name in properties)
+  );
+}
+
+/**
+ * Whether a saved workflow's run stays to be told more: it has a step that
+ * waits, which the server answers (`supportsChat`). Such a workflow is begun
+ * when a chat opens, so that it can speak first.
+ */
+export function workflowWaits(
+  workflow: { supportsChat?: boolean | null } | null | undefined
+): boolean {
+  return workflow?.supportsChat === true;
+}
+
+/**
+ * Whether a saved workflow can be chatted with. Either its run waits to be
+ * told more, or it declares the conversation among its inputs: then each
+ * message starts a run of its own, which reads the conversation it is given
+ * and ends with its answer.
+ */
+export function workflowCanChat(
+  workflow:
+    { supportsChat?: boolean | null; inputSchema?: unknown } | null | undefined
+): boolean {
+  return (
+    workflowWaits(workflow) || declares(workflow?.inputSchema, 'conversation')
+  );
+}
+
 /** The given fields a workflow's own input schema does not declare: one it
  * declares under the same name is the workflow's to describe. */
 export function givenInputFields(

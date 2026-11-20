@@ -828,6 +828,28 @@ it("opens a new chat as the console's, then lets the workflow speak first", asyn
   act(() => result.current.cancelStream());
 });
 
+it('opens a new chat and sends nothing when the workflow runs once per message', async () => {
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  vi.mocked(openConversation).mockResolvedValue({
+    ...standing(),
+    instanceId: undefined,
+  });
+  const opened = vi.fn();
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void result.current.startSession(opened, { speaksFirst: false });
+    await settle();
+  });
+  const key = vi.mocked(openConversation).mock.calls[0][2];
+  expect(opened).toHaveBeenCalledWith(key);
+  expect(sendConversationMessage).not.toHaveBeenCalled();
+  // It is read all the same, for what the first message brings.
+  expect(vi.mocked(streamEvents).mock.calls[0][2]).toBe(key);
+  expect(useChatStore.getState().status).toBe('idle');
+  act(() => result.current.cancelStream());
+});
+
 it('names an untitled conversation by the first thing said in it, once', async () => {
   vi.mocked(openConversation).mockResolvedValue(standing());
   vi.mocked(sendConversationMessage).mockImplementation(
