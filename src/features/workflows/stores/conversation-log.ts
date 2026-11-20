@@ -59,7 +59,7 @@ function writtenLineId(instanceId: string, replyId: string): string {
 }
 
 /** What a message says, as text: its own, or what it carries. An answer to
- * a form is its fields, one to a line. */
+ * a form is its fields, one to a line; a lone field is its value. */
 export function messageText(
   message: Pick<Message, 'text' | 'payload'>
 ): string {
@@ -72,6 +72,9 @@ export function messageText(
   if (fields.length === 0) return '';
   if (fields.length === 1 && typeof fields[0][1] === 'string')
     return fields[0][1];
+  // A go-ahead given or refused is read as the word for it.
+  if (fields.length === 1 && typeof fields[0][1] === 'boolean')
+    return fields[0][1] ? 'Yes' : 'No';
   return fields
     .map(
       ([name, value]) =>
@@ -105,6 +108,20 @@ function awaitInput(log: ConversationLog, request: WaitingForInputData) {
   log.waitingForInput = log.pendingInputs[0];
   log.pendingInputError = null;
   log.status = 'waiting_for_input';
+}
+
+/**
+ * The transcript without the questions of requests that are open: each is
+ * asked where it is answered, in place of the message box, and takes its
+ * place in the transcript once it is answered or gone.
+ */
+export function withoutOpenRequests(
+  messages: ChatMessage[],
+  open: { requestId: string }[]
+): ChatMessage[] {
+  if (open.length === 0) return messages;
+  const ids = new Set(open.map((request) => request.requestId));
+  return messages.filter((m) => !m.request || !ids.has(m.request));
 }
 
 /** A request is answered or gone: it is no longer offered. */
@@ -329,8 +346,20 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
         schema && typeof schema === 'object' ? Object.keys(schema) : [];
       const isSimple =
         keys.length === 0 || (keys.length === 1 && keys[0] === 'message');
-      if (!isSimple)
-        note(log, event, event.body.message || 'Waiting for input...');
+      // What it asks is the workflow's own words, and stays above the
+      // answer once it is given. One that asks nothing in words is shown by
+      // the request itself, where the message box is.
+      if (!isSimple && event.body.message?.trim())
+        put(log, {
+          ...line(
+            event,
+            `seq:${String(event.seq)}`,
+            'assistant',
+            event.body.message
+          ),
+          format: 'plain',
+          request: event.body.requestId,
+        });
       break;
     }
 

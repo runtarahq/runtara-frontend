@@ -18,6 +18,7 @@ import { StructuredErrorDisplay } from '@/shared/components/StructuredErrorDispl
 import {
   getWorkflowInstance,
   getPendingInput,
+  getInstanceOpenActions,
   getStepSummaries,
 } from '@/features/workflows/queries';
 import { RunStatusPill } from '@/features/invocation-history/components/RunLinks';
@@ -25,6 +26,7 @@ import { ActionForm } from '@/features/workflows/components/ActionForm';
 import { InputRetryPanel } from '@/features/workflows/components/ManagedInputSubmissions';
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
 import { StatePanel } from '../components/RunStateCard';
+import { RequestContext } from '../components/RequestContext';
 import { StateValue, type StateField } from '../components/StateValue';
 import {
   OperationHeader,
@@ -57,6 +59,14 @@ export function RunPage() {
   const pending = useCustomQuery({
     queryKey: ['operations', tenant, 'pending', workflowId, instanceId],
     queryFn: (token: string) => getPendingInput(token, workflowId, instanceId),
+    refetchInterval: finished ? false : 10_000,
+    placeholderData: undefined,
+  });
+  // What each request is about (its label and context), by request id.
+  const actions = useCustomQuery({
+    queryKey: ['operations', tenant, 'actions', workflowId, instanceId],
+    queryFn: (token: string) =>
+      getInstanceOpenActions(token, workflowId, instanceId),
     refetchInterval: finished ? false : 10_000,
     placeholderData: undefined,
   });
@@ -144,6 +154,7 @@ export function RunPage() {
               onRefresh={() => {
                 void run.refetch();
                 void pending.refetch();
+                void actions.refetch();
                 void steps.refetch();
               }}
             />
@@ -214,6 +225,12 @@ export function RunPage() {
               <p>Loading requests…</p>
             ) : pending.data?.length ? (
               pending.data.map((request) => {
+                const action = actions.data?.find(
+                  (candidate) => candidate.requestId === request.requestId
+                );
+                const title =
+                  action?.label || request.toolName || 'Workflow request';
+                const message = action?.message || request.message;
                 const retained = [...submissions.inputs]
                   .reverse()
                   .find(
@@ -229,12 +246,11 @@ export function RunPage() {
                     <h2 className="-mx-4 -mt-4 border-b px-4 py-3 text-sm font-semibold">
                       Decision needed
                     </h2>
-                    <h3 className="text-sm font-semibold">
-                      {request.toolName || 'Workflow request'}
-                    </h3>
-                    {request.message ? (
-                      <p className="text-sm">{request.message}</p>
+                    <h3 className="text-sm font-semibold">{title}</h3>
+                    {message && message !== title ? (
+                      <p className="text-sm">{message}</p>
                     ) : null}
+                    <RequestContext context={action?.context} />
                     <Can
                       permission="workflow:execute"
                       fallback={<p>Read only</p>}

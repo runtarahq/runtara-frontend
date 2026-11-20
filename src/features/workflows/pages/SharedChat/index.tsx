@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/utils';
 import { ChatInput } from '@/features/workflows/components/ChatInput';
 import { ChatMessageList } from '@/features/workflows/components/ChatMessageList';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
+import { withoutOpenRequests } from '@/features/workflows/stores/conversation-log';
 import type { SharedChat } from '@/features/workflows/utils/shared-chat-link';
 import { useConversationChat } from '../Chat/useChatStream';
 
@@ -71,11 +72,11 @@ function Conversation({ chat }: { chat: SharedChat }) {
   // A line may lead into the console, where this page's reader cannot go.
   const shown = useMemo(
     () =>
-      messages
+      withoutOpenRequests(messages, pendingInputs)
         // What the runs did is the workspace's to see.
         .filter((m) => !m.activity)
         .map((m) => (m.link ? { ...m, link: undefined } : m)),
-    [messages]
+    [messages, pendingInputs]
   );
   const over = status === 'error';
 
@@ -121,6 +122,7 @@ function Conversation({ chat }: { chat: SharedChat }) {
           working={
             status === 'streaming' && !messages.some((m) => m.isStreaming)
           }
+          asked={pendingInputs.length > 0}
         />
       )}
 

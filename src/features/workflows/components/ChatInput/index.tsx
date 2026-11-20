@@ -6,7 +6,7 @@ import {
   useRef,
   KeyboardEvent,
 } from 'react';
-import { ArrowUp, Square } from 'lucide-react';
+import { ArrowUp, ChevronRight, Square } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button.tsx';
 import { Textarea } from '@/shared/components/ui/textarea.tsx';
 import {
@@ -14,6 +14,7 @@ import {
   WaitingForInputData,
 } from '@/features/workflows/types/chat';
 import { ChatFormInput } from './ChatFormInput';
+import { RequestCard } from './RequestCard';
 
 interface ChatInputProps {
   onSend: (message: string) => Promise<boolean>;
@@ -152,39 +153,47 @@ export function ChatInput({
 
   if (pendingInputs.length > 1 && !waitingForInput) {
     return (
-      <div className="space-y-2 border-t p-4">
-        <p className="text-sm">Choose which request to answer</p>
-        {pendingInputs.map((input) => (
-          <Button
-            key={JSON.stringify([input.instanceId, input.requestId])}
-            variant="secondary"
-            onClick={() => onSelectInput(input)}
-          >
-            {input.message || input.toolName || input.requestId}
-          </Button>
-        ))}
-      </div>
+      <RequestCard title="Choose which request to answer">
+        <ul className="space-y-1.5">
+          {pendingInputs.map((input) => (
+            <li key={JSON.stringify([input.instanceId, input.requestId])}>
+              <button
+                type="button"
+                onClick={() => onSelectInput(input)}
+                className="flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <span className="min-w-0 flex-1">
+                  {input.message || input.toolName || input.requestId}
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </RequestCard>
     );
   }
   const chooser =
     pendingInputs.length > 1 ? (
-      <Button variant="secondary" onClick={() => onSelectInput(null)}>
+      <button
+        type="button"
+        onClick={() => onSelectInput(null)}
+        className="shrink-0 rounded-full px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
         Choose another request
-      </Button>
+      </button>
     ) : null;
   if (isWaiting && !isSimpleMessageSchema && waitingForInput) {
     return (
-      <div>
-        {chooser}
-        <ChatFormInput
-          key={JSON.stringify([
-            waitingForInput.instanceId,
-            waitingForInput.requestId,
-          ])}
-          waitingForInput={waitingForInput}
-          onSubmit={onSubmitInput}
-        />
-      </div>
+      <ChatFormInput
+        key={JSON.stringify([
+          waitingForInput.instanceId,
+          waitingForInput.requestId,
+        ])}
+        waitingForInput={waitingForInput}
+        onSubmit={onSubmitInput}
+        aside={chooser}
+      />
     );
   }
 
@@ -197,14 +206,7 @@ export function ChatInput({
   return (
     <div className="bg-background px-4 pb-3 pt-2">
       <div className="mx-auto w-full max-w-3xl">
-        {chooser}
-        {isWaiting &&
-          !isSimpleMessageSchema &&
-          (waitingForInput?.message || schemaFieldDescription) && (
-            <div className="mb-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-              {waitingForInput?.message || schemaFieldDescription}
-            </div>
-          )}
+        {chooser && <div className="mb-1.5 flex justify-end">{chooser}</div>}
 
         <div
           className="flex cursor-text items-end gap-2 rounded-2xl border bg-background py-2 pl-4 pr-2 shadow-sm transition-shadow focus-within:border-ring focus-within:ring-1 focus-within:ring-ring"

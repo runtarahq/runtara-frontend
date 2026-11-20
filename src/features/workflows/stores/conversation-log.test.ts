@@ -10,7 +10,9 @@ import {
   applyOpening,
   applyPieces,
   applyState,
+  messageText,
   runError,
+  withoutOpenRequests,
   type ConversationLog,
 } from './conversation-log';
 
@@ -50,6 +52,59 @@ const spoken = (log: ConversationLog) =>
   log.messages
     .filter((m) => m.role !== 'system')
     .map((m) => [m.role, m.content]);
+
+describe('what a run asks for', () => {
+  const asked = () =>
+    read([
+      {
+        kind: 'waiting_for_input',
+        body: {
+          requestId: 'r',
+          instanceId: 'run',
+          message: 'Deploy to production?',
+          responseSchema: { approved: { type: 'boolean' } },
+        },
+      } as never,
+    ]);
+
+  it("is the workflow's own words, shown where it is answered while it is open", () => {
+    const log = asked();
+    expect(spoken(log)).toEqual([['assistant', 'Deploy to production?']]);
+    expect(withoutOpenRequests(log.messages, log.pendingInputs)).toEqual([]);
+  });
+
+  it('stays above its answer once it is answered', () => {
+    const log = read(
+      [
+        {
+          kind: 'message',
+          body: { id: 'm', payload: { approved: true }, inReplyTo: 'r' },
+        },
+        {
+          kind: 'message_delivered',
+          body: { messageId: 'm', requestId: 'r', instanceId: 'run' },
+        },
+      ] as never,
+      asked()
+    );
+    expect(
+      withoutOpenRequests(log.messages, log.pendingInputs).map((m) => [
+        m.role,
+        m.content,
+      ])
+    ).toEqual([
+      ['assistant', 'Deploy to production?'],
+      ['user', 'Yes'],
+    ]);
+  });
+
+  it('reads a lone yes or no as the word for it', () => {
+    expect(messageText({ payload: { approved: false } })).toBe('No');
+    expect(messageText({ payload: { approved: true, note: 'ok' } })).toBe(
+      'approved: true\nnote: ok'
+    );
+  });
+});
 
 describe('the conversation log', () => {
   it('shows a message from another sender under that sender', () => {

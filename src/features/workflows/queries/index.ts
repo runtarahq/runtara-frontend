@@ -923,6 +923,39 @@ export async function deleteFolder(token: string, folderPath: string) {
 
 // --- WaitForSignal: Pending Input & Signal Delivery ---
 
+export type OpenAction =
+  import('@/generated/RuntaraRuntimeApi').WorkflowRuntimeAction;
+
+/**
+ * A run's open actions: its waits for an answer, each with the label,
+ * message and context its workflow gave it (`action` on the wait step).
+ */
+export async function getInstanceOpenActions(
+  token: string,
+  workflowId: string,
+  instanceId: string,
+  signal?: AbortSignal
+): Promise<OpenAction[]> {
+  const url = `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/instances/${encodeURIComponent(instanceId)}/actions`;
+  const response = await fetch(url, {
+    method: 'GET',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch open actions: ${response.statusText}`);
+  }
+  const json = await response.json();
+  // API returns { success, data: { actions: [...], count } }
+  if (!json.success || !Array.isArray(json.data?.actions)) {
+    throw new Error('Invalid open actions response');
+  }
+  return json.data.actions;
+}
+
 export type PendingInput =
   import('@/generated/RuntaraRuntimeApi').PendingInputResponse;
 
