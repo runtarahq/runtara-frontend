@@ -30,6 +30,9 @@ export interface ConversationLog {
   firstSeq: number;
   /** Whether there are kept events before `firstSeq`. */
   hasEarlier: boolean;
+  /** The sender this page's own messages are from, where it has one: a
+   * page that talks through a conversation token is given its sender. */
+  self?: string | null;
   /** What a person calls the conversation: `null` when it has no title,
    * `undefined` until the conversation has been read. */
   title: string | null | undefined;
@@ -248,7 +251,10 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       const sender = event.body.sender;
       put(log, {
         ...line(event, messageLineId(event.body.id), 'user', text),
-        ...(sender ? { sender: sender.name || sender.id } : {}),
+        // This page's own messages are not shown as someone else's.
+        ...(sender && sender.id !== log.self
+          ? { sender: sender.name || sender.id }
+          : {}),
         ...(event.body.inReplyTo ? { answers: event.body.inReplyTo } : {}),
       });
       break;

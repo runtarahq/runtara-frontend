@@ -44,8 +44,21 @@ export interface CaughtUp {
  * console does not know is passed on as it is, for its reader to ignore. */
 export type ConversationStreamEvent = ConversationEvent | CaughtUp;
 
+// Where the runtime API is, when it is not where the signed-in console's
+// is: a page that holds a conversation token has no session to tell it.
+let runtimeBase: string | null = null;
+
+/**
+ * Reads conversations from the runtime API at `base` from now on, in place
+ * of the signed-in console's. For a page that is given a conversation token
+ * and the API's address together, and is the only thing running.
+ */
+export function readConversationsAt(base: string | null) {
+  runtimeBase = base ? base.replace(/\/$/, '') : null;
+}
+
 function conversationsUrl(workflowId: string): string {
-  return `${getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/conversations`;
+  return `${runtimeBase ?? getRuntimeBaseUrl()}/workflows/${encodeURIComponent(workflowId)}/conversations`;
 }
 
 function conversationUrl(workflowId: string, key: string): string {

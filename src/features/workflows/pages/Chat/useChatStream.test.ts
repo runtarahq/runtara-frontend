@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { titleFrom, useChatStream } from './useChatStream';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { titleFrom, useChatStream, useConversationChat } from './useChatStream';
 import { useChatStore } from '../../stores/chatStore';
 import { getPendingInput } from '../../queries';
 import {
@@ -940,5 +940,100 @@ it('ends the chat when the conversation to reopen is gone', async () => {
   expect(useChatStore.getState()).toMatchObject({
     error: 'This conversation was deleted',
     loading: false,
+  });
+});
+
+describe('a chat that holds a conversation token', () => {
+  const guest = () =>
+    renderHook(() =>
+      useConversationChat('workflow', 'rtc_token', { restricted: true })
+    );
+
+  it('does only what the token may: it names nothing and reads no run', async () => {
+    const events = stream();
+    vi.mocked(streamEvents).mockResolvedValue(events.body);
+    vi.mocked(getConversation).mockResolvedValue(standing(waiting));
+    vi.mocked(sendConversationMessage).mockImplementation(
+      async (_token, _workflow, _key, message) => delivered(message.id)
+    );
+    const { result } = guest();
+    await act(async () => {
+      void result.current.reconnect('conversation');
+      await settle();
+      events.push('run_started', { instanceId: 'run-1', messageId: 'm' });
+      events.push('waiting_for_input', waiting);
+      events.caughtUp();
+      await settle();
+      await settle();
+    });
+    act(() => useChatStore.getState().setTitle(null));
+    await act(() => result.current.sendMessage('Hello'));
+    expect(vi.mocked(sendConversationMessage).mock.calls[0][0]).toBe(
+      'rtc_token'
+    );
+    expect(sentMessage(0)).toMatchObject({
+      text: 'Hello',
+      inReplyTo: 'request',
+    });
+    expect(openConversation).not.toHaveBeenCalled();
+    expect(getPendingInput).not.toHaveBeenCalled();
+    act(() => result.current.cancelStream());
+  });
+
+  it('ends when its token is no longer taken', async () => {
+    vi.mocked(readBack).mockRejectedValue(
+      new ConversationError(
+        'Invalid or expired conversation token',
+        undefined,
+        401
+      )
+    );
+    vi.mocked(streamEvents).mockRejectedValue(
+      new ConversationError(
+        'Invalid or expired conversation token',
+        undefined,
+        401
+      )
+    );
+    const { result } = guest();
+    await act(() => result.current.reconnect('conversation'));
+    expect(streamEvents).toHaveBeenCalledTimes(1);
+    expect(useChatStore.getState()).toMatchObject({
+      error: 'This link has expired or is not valid',
+      status: 'error',
+      loading: false,
+    });
+  });
+
+  it("shows the token's own sender's messages as this page's own", async () => {
+    const events = stream();
+    vi.mocked(streamEvents).mockResolvedValue(events.body);
+    act(() => useChatStore.getState().setSelf('link:1'));
+    const { result } = guest();
+    await act(async () => {
+      void result.current.reconnect('conversation');
+      await settle();
+      events.push('message', {
+        id: 'mine',
+        text: 'From this page',
+        sender: { id: 'link:1', name: 'Guest' },
+      });
+      events.push('message', {
+        id: 'theirs',
+        text: 'From the console',
+        sender: { id: 'user-7', name: 'Olena' },
+      });
+      await settle();
+    });
+    expect(
+      useChatStore.getState().messages.map((m) => [m.content, m.sender])
+    ).toEqual([
+      ['From this page', undefined],
+      ['From the console', 'Olena'],
+    ]);
+    act(() => {
+      result.current.cancelStream();
+      useChatStore.getState().setSelf(null);
+    });
   });
 });
