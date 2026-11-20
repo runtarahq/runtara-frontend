@@ -25,14 +25,20 @@ vi.mock('@/features/workflows/queries', async (importOriginal) => ({
   getWorkflowInstance: mocks.getWorkflowInstance,
 }));
 
-vi.mock('@/features/workflows/queries/chat', async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import('@/features/workflows/queries/chat')
-  >()),
-  sendConversationMessage: mocks.sendConversationMessage,
-  streamConversationEvents: mocks.streamConversationEvents,
+vi.mock('@/features/workflows/queries/chat', () => ({
   fetchChatHistory: mocks.fetchChatHistory,
 }));
+
+vi.mock(
+  '@/features/workflows/queries/conversations',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('@/features/workflows/queries/conversations')
+    >()),
+    sendMessage: mocks.sendConversationMessage,
+    streamEvents: mocks.streamConversationEvents,
+  })
+);
 
 const WORKFLOW_ID = 'wf-chat';
 const INSTANCE_ID = 'inst-chat';
@@ -87,9 +93,9 @@ beforeEach(() => {
   });
   // A stream with nothing on it yet: enough to prove the conversation was
   // opened without standing up a real one.
-  mocks.streamConversationEvents.mockResolvedValue({
-    body: new ReadableStream({ start() {} }),
-  } as unknown as Response);
+  mocks.streamConversationEvents.mockResolvedValue(
+    new ReadableStream({ start() {} })
+  );
   mocks.getWorkflowInstance.mockResolvedValue({ inputs: { data: {} } });
   mocks.fetchChatHistory.mockResolvedValue([]);
 });
