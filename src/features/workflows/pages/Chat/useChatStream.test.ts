@@ -4,6 +4,7 @@ import { useChatStream } from './useChatStream';
 import { useChatStore } from '../../stores/chatStore';
 import {
   ConversationError,
+  getConversation,
   sendMessage as sendConversationMessage,
   streamEvents,
 } from '../../queries/conversations';
@@ -15,6 +16,7 @@ vi.mock('./useChatInputs', () => ({
 vi.mock('@/shared/hooks/useToken', () => ({ useToken: () => 'token' }));
 vi.mock('../../queries/conversations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../queries/conversations')>()),
+  getConversation: vi.fn(),
   sendMessage: vi.fn(),
   streamEvents: vi.fn(),
 }));
@@ -57,6 +59,14 @@ function stream() {
       controller.enqueue(
         encoder.encode(
           `id: ${String(seq)}\nevent: ${kind}\ndata: ${JSON.stringify(event)}\n\n`
+        )
+      );
+    },
+    /** What the stream sends once it has sent what was kept. */
+    caughtUp() {
+      controller.enqueue(
+        encoder.encode(
+          `event: caught_up\ndata: ${JSON.stringify({ kind: 'caught_up', body: { lastSeq: seq } })}\n\n`
         )
       );
     },
@@ -271,8 +281,10 @@ it.each(['before', 'after'])(
       await settle();
     });
     expect(transcript()).toEqual([['user', 'Hello']]);
-    expect(useChatStore.getState().error).toBe('boom');
-    expect(useChatStore.getState().status).toBe('error');
+    expect(useChatStore.getState().messages.at(-1)?.content).toBe(
+      'Error: boom'
+    );
+    expect(useChatStore.getState().error).toBeNull();
   }
 );
 
@@ -302,6 +314,43 @@ it('shows a reply with an id once, however often it is read', async () => {
     ['assistant', 'Once.'],
     ['assistant', 'Once.'],
   ]);
+});
+
+it('is loading until the stream has caught up, then takes its status from the conversation', async () => {
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  vi.mocked(getConversation).mockResolvedValue({
+    id: 'id',
+    key: 'conversation',
+    workflowId: 'workflow',
+    createdAt: 'now',
+    updatedAt: 'now',
+    instanceId: 'run-2',
+    waitingFor: { requestId: 'r', message: 'What next?' },
+    lastSeq: 2,
+    queued: 0,
+    replyEvents: [],
+  });
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void result.current.reconnect('conversation');
+    await settle();
+    // An old run that failed: what was, not what is.
+    events.push('run_started', { instanceId: 'run-1', messageId: 'm' });
+    events.push('run_ended', { instanceId: 'run-1', status: 'failed' });
+    await settle();
+  });
+  expect(useChatStore.getState().loading).toBe(true);
+  expect(getConversation).not.toHaveBeenCalled();
+  await act(async () => {
+    events.caughtUp();
+    await settle();
+  });
+  expect(useChatStore.getState().loading).toBe(false);
+  expect(getConversation).toHaveBeenCalledTimes(1);
+  expect(useChatStore.getState().status).toBe('waiting_for_input');
+  expect(useChatStore.getState().instanceId).toBe('run-2');
+  expect(useChatStore.getState().error).toBeNull();
 });
 
 it('reads on from the last event it saw when a stream ends', async () => {

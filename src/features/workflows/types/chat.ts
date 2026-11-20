@@ -42,6 +42,10 @@ export interface ChatMessage {
   data?: unknown;
   /** Files a reply names: the conversation keeps none of them. */
   attachments?: ChatAttachment[];
+  /** A line that reports a failure, or something to look into. */
+  tone?: 'error' | 'warning';
+  /** Why a message this line shows was not taken. */
+  failure?: string;
 }
 
 export interface ChatAttachment {

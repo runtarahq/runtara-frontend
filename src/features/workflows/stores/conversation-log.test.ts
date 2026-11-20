@@ -2,15 +2,21 @@ import { describe, expect, it } from 'vitest';
 import type {
   ConversationEvent,
   ConversationEventKind,
+  ConversationState,
 } from '@/generated/RuntaraRuntimeApi';
-import { applyEvent, type ConversationLog } from './conversation-log';
+import {
+  applyEvent,
+  applyState,
+  type ConversationLog,
+} from './conversation-log';
 
 function empty(): ConversationLog {
   return {
     messages: [],
     instanceId: null,
     status: 'idle',
-    error: null,
+    loading: false,
+    lastSeq: 0,
     waitingForInput: null,
     pendingInputs: [],
     pendingInputError: null,
@@ -22,9 +28,9 @@ function read(
   events: (ConversationEventKind & { turn?: string })[],
   log = empty()
 ): ConversationLog {
-  events.forEach((event, at) =>
+  events.forEach((event) =>
     applyEvent(log, {
-      seq: log.messages.length + at + 1000,
+      seq: log.lastSeq + 1,
       createdAt: 'now',
       ...event,
     } as ConversationEvent)
@@ -142,5 +148,77 @@ describe('the conversation log', () => {
       'm2',
       'm2',
     ]);
+  });
+
+  it('says of a failed message where it is shown, and of a hidden one apart', () => {
+    const log = read([
+      { kind: 'message', body: { id: 'opening', payload: {} } },
+      { kind: 'message', body: { id: 'm', text: 'Hello' } },
+      { kind: 'message_failed', body: { messageId: 'm', reason: 'too late' } },
+      {
+        kind: 'message_failed',
+        body: { messageId: 'opening', reason: 'no such workflow' },
+      },
+    ]);
+    expect(
+      log.messages.map((m) => [m.role, m.content, m.failure, m.tone])
+    ).toEqual([
+      ['user', 'Hello', 'too late', undefined],
+      ['system', 'no such workflow', undefined, 'error'],
+    ]);
+  });
+
+  it('shows a failed run as a line, and the conversation goes on', () => {
+    const log = read([
+      {
+        kind: 'run_started',
+        body: { instanceId: 'run-1', messageId: 'm' },
+      },
+      {
+        kind: 'run_ended',
+        body: { instanceId: 'run-1', status: 'failed', error: 'boom' },
+      },
+    ]);
+    expect(log.messages.at(-1)).toMatchObject({
+      role: 'system',
+      content: 'Error: boom',
+      tone: 'error',
+    });
+    expect(log.status).toBe('idle');
+  });
+
+  const state = (fields: Partial<ConversationState>): ConversationState => ({
+    id: 'id',
+    key: 'key',
+    workflowId: 'workflow',
+    createdAt: 'now',
+    updatedAt: 'now',
+    lastSeq: 0,
+    queued: 0,
+    replyEvents: [],
+    ...fields,
+  });
+
+  it('takes what the chat is doing from the conversation as it stands', () => {
+    const log = empty();
+    applyState(log, state({ instanceId: 'run-1' }));
+    expect([log.status, log.instanceId]).toEqual(['streaming', 'run-1']);
+    applyState(
+      log,
+      state({ instanceId: 'run-1', waitingFor: { requestId: 'r' } })
+    );
+    expect(log.status).toBe('waiting_for_input');
+    applyState(log, state({}));
+    expect(log.status).toBe('idle');
+  });
+
+  it('leaves a state older than the events it has read alone', () => {
+    const log = read([
+      { kind: 'run_started', body: { instanceId: 'run-1', messageId: 'm' } },
+      { kind: 'run_ended', body: { instanceId: 'run-1', status: 'completed' } },
+    ]);
+    // Read before the run ended, answered after.
+    applyState(log, state({ instanceId: 'run-1', lastSeq: 1 }));
+    expect(log.status).toBe('idle');
   });
 });

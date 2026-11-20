@@ -5,6 +5,7 @@ import { useChatStore } from '@/features/workflows/stores/chatStore';
 import type { Message } from '@/generated/RuntaraRuntimeApi';
 import {
   ConversationError,
+  getConversation,
   readStream,
   sendMessage as sendConversationMessage,
   streamEvents,
@@ -70,9 +71,29 @@ export function useChatStream(workflowId: string) {
             abortController.signal
           )) {
             if (!isCurrent()) return;
-            // Not kept, so not numbered: `caught_up`, and the pieces of a
-            // reply (`seq` 0).
-            if (!('seq' in event) || event.seq <= after) continue;
+            if (event.kind === 'caught_up') {
+              // What was kept has been read: the transcript is whole, and
+              // what the chat is doing is read from the conversation as it
+              // stands, not inferred from what was replayed.
+              failures = 0;
+              useChatStore.getState().setLoading(false);
+              void getConversation(
+                token,
+                workflowId,
+                key,
+                abortController.signal
+              )
+                .then((state) => {
+                  if (isCurrent())
+                    useChatStore.getState().applyConversationState(state);
+                })
+                .catch(() => {
+                  // The events still say what happens from here on.
+                });
+              continue;
+            }
+            // The pieces of a reply are not kept, and so not numbered.
+            if (event.seq <= after) continue;
             after = event.seq;
             failures = 0;
             useChatStore.getState().applyConversationEvent(event);
@@ -87,6 +108,7 @@ export function useChatStream(workflowId: string) {
           if (!isCurrent()) return;
           failures += 1;
           if (failures >= MAX_STREAM_FAILURES) {
+            store.setLoading(false);
             store.setError(
               err instanceof Error
                 ? err.message
@@ -163,6 +185,7 @@ export function useChatStream(workflowId: string) {
       const store = useChatStore.getState();
       const abortController = begin();
       store.setConversationKey(key);
+      store.setLoading(true);
       await follow(key, 0, abortController);
     },
     [begin, follow]
