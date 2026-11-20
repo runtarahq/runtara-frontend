@@ -10,6 +10,7 @@ import {
   applyOpening,
   applyPieces,
   applyState,
+  runError,
   type ConversationLog,
 } from './conversation-log';
 
@@ -192,6 +193,18 @@ describe('the conversation log', () => {
       tone: 'error',
     });
     expect(log.status).toBe('idle');
+  });
+
+  it("says a step's failure by its message, not as the JSON it arrives in", () => {
+    expect(
+      runError(
+        '{"agentId":"object-model","capabilityId":"load-memory","code":"OBJECT_MODEL_UPSTREAM_ERROR","message":"Database operation failed","retryable":true,"stepId":"ai"}'
+      )
+    ).toBe('Database operation failed (step ai, OBJECT_MODEL_UPSTREAM_ERROR)');
+    expect(runError('{"message":"Out of memory"}')).toBe('Out of memory');
+    expect(runError('boom')).toBe('boom');
+    expect(runError('{"unexpected":true}')).toBe('{"unexpected":true}');
+    expect(runError(null)).toBe('Execution failed');
   });
 
   it('shows a stopped run as stopped, not as a failure', () => {
