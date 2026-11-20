@@ -33,6 +33,8 @@ interface ChatStoreState {
   loading: boolean;
   /** The last kept event of the conversation applied. */
   lastSeq: number;
+  /** How many messages wait their turn in the conversation. */
+  queued: number;
   waitingForInput: WaitingForInputData | null;
   pendingInputs: WaitingForInputData[];
   pendingInputError: string | null;
@@ -56,6 +58,8 @@ interface ChatStoreState {
     content: string,
     answers?: string
   ) => void;
+  /** A message this page sent waits its turn. */
+  setMessageQueued: (messageId: string) => void;
   /** Says of a message this page sent why it was not taken. */
   setMessageFailure: (messageId: string, failure: string) => void;
   /** Applies one kept event of the conversation's log. */
@@ -104,6 +108,7 @@ export const useChatStore = create<ChatStoreState>()(
       status: 'idle' as ChatStatus,
       loading: false,
       lastSeq: 0,
+      queued: 0,
       waitingForInput: null,
       pendingInputs: [],
       pendingInputError: null,
@@ -121,6 +126,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.status = 'idle';
           state.loading = false;
           state.lastSeq = 0;
+          state.queued = 0;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;
@@ -139,6 +145,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.status = 'idle';
           state.loading = false;
           state.lastSeq = 0;
+          state.queued = 0;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;
@@ -172,6 +179,15 @@ export const useChatStore = create<ChatStoreState>()(
             turn: messageId,
             ...(answers ? { answers } : {}),
           });
+        });
+      },
+
+      setMessageQueued: (messageId) => {
+        set((state) => {
+          const line = state.messages.find(
+            (m) => m.id === messageLineId(messageId)
+          );
+          if (line) line.queued = true;
         });
       },
 
@@ -288,6 +304,7 @@ export const useChatStore = create<ChatStoreState>()(
         set((state) => {
           if (state.conversationKey !== key) {
             state.lastSeq = 0;
+            state.queued = 0;
             state.pendingInputs = [];
             state.waitingForInput = null;
             state.pendingInputError = null;
@@ -385,6 +402,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.status = 'idle';
           state.loading = false;
           state.lastSeq = 0;
+          state.queued = 0;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;

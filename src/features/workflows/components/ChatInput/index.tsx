@@ -43,7 +43,10 @@ export function ChatInput({
     setValue('');
   }, [waitingForInput?.requestId, waitingForInput?.instanceId]);
 
-  const isDisabled = (status === 'streaming' && !waitingForInput) || isSending;
+  // A message may be sent at any time: one sent while the run is busy waits
+  // its turn in the conversation.
+  const isDisabled = isSending;
+  const isBusy = status === 'streaming' && !waitingForInput;
   const isDone = status === 'done';
   const isWaiting = status === 'waiting_for_input';
   const canSend = value.trim().length > 0 && !isDisabled;
@@ -163,10 +166,10 @@ export function ChatInput({
           </div>
         )}
 
-      {isDisabled && (
+      {isBusy && (
         <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <Spinner className="size-3" />
-          AI is thinking...
+          Working... A message sent now waits its turn.
         </div>
       )}
 

@@ -24,6 +24,8 @@ export interface ConversationLog {
   loading: boolean;
   /** The last kept event applied. */
   lastSeq: number;
+  /** How many messages wait their turn, as the conversation last said. */
+  queued: number;
   waitingForInput: WaitingForInputData | null;
   pendingInputs: WaitingForInputData[];
   pendingInputError: string | null;
@@ -212,6 +214,12 @@ function applyActivity(log: ConversationLog, event: ConversationEvent) {
   }
 }
 
+/** A message's turn has come, or never will: it no longer waits. */
+function taken(log: ConversationLog, messageId: string) {
+  const sent = log.messages.find((m) => m.id === messageLineId(messageId));
+  if (sent?.queued) sent.queued = false;
+}
+
 function setInstance(log: ConversationLog, instanceId: string) {
   if (log.instanceId !== instanceId) {
     log.pendingInputs = [];
@@ -242,6 +250,7 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
 
     case 'run_started':
       setInstance(log, event.body.instanceId);
+      taken(log, event.body.messageId);
       note(log, event, 'Execution started');
       log.status = 'streaming';
       break;
@@ -249,6 +258,7 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
     case 'message_delivered':
       // The message answered this request: the run goes on with it.
       closeRequest(log, event.body.requestId);
+      taken(log, event.body.messageId);
       log.status = log.pendingInputs.length ? 'waiting_for_input' : 'streaming';
       break;
 
@@ -303,8 +313,10 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       const failed = log.messages.find(
         (m) => m.id === messageLineId(event.body.messageId)
       );
-      if (failed) failed.failure = reason;
-      else note(log, event, reason, 'error');
+      if (failed) {
+        failed.failure = reason;
+        failed.queued = false;
+      } else note(log, event, reason, 'error');
       break;
     }
 
@@ -321,7 +333,8 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       // One run of the conversation is over; the next message starts the
       // next one. A failure is a line where it happened, not a state of the
       // chat: the conversation goes on.
-      if (event.body.status !== 'completed')
+      if (event.body.status === 'stopped') note(log, event, 'Stopped');
+      else if (event.body.status !== 'completed')
         note(
           log,
           event,
@@ -354,6 +367,7 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
  */
 export function applyState(log: ConversationLog, state: ConversationState) {
   if (state.lastSeq < log.lastSeq) return;
+  log.queued = state.queued;
   if (state.instanceId) setInstance(log, state.instanceId);
   const waiting = state.waitingFor as WaitingForInput | null | undefined;
   if (waiting?.requestId) {

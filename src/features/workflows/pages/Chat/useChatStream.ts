@@ -10,6 +10,7 @@ import {
   getConversation,
   readStream,
   sendMessage as sendConversationMessage,
+  stopConversation,
   streamEvents,
 } from '@/features/workflows/queries/conversations';
 
@@ -22,6 +23,7 @@ const STREAM_RETRY_MS = 1000;
 const STREAMS_FULL_RETRY_MS = 15000;
 const STREAMS_FULL = 'Too many open chats in this workspace';
 const DELETED = 'This conversation was deleted';
+const QUEUE_FULL = 'Too many messages waiting; wait for a reply';
 
 interface Unconfirmed {
   conversationKey: string;
@@ -60,6 +62,22 @@ export function useChatStream(workflowId: string) {
       );
     },
     []
+  );
+
+  /** Reads the conversation as it stands: how many messages wait their
+   * turn, which run carries it and what that run waits for. */
+  const readState = useCallback(
+    async (key: string, signal?: AbortSignal) => {
+      try {
+        const state = await getConversation(token, workflowId, key, signal);
+        const current = useChatStore.getState();
+        if (current.conversationKey === key)
+          current.applyConversationState(state);
+      } catch {
+        // The events still say what happens from here on.
+      }
+    },
+    [token, workflowId]
   );
 
   /**
@@ -139,20 +157,9 @@ export function useChatStream(workflowId: string) {
               // stands, not inferred from what was replayed.
               failures = 0;
               useChatStore.getState().setLoading(false);
-              void getConversation(
-                token,
-                workflowId,
-                key,
-                abortController.signal
-              )
-                .then((state) => {
-                  if (!isCurrent()) return;
-                  useChatStore.getState().applyConversationState(state);
-                  void listOtherWaits(key);
-                })
-                .catch(() => {
-                  // The events still say what happens from here on.
-                });
+              void readState(key, abortController.signal).then(() => {
+                if (isCurrent()) void listOtherWaits(key);
+              });
               continue;
             }
             if (event.kind === 'reply_delta') {
@@ -168,11 +175,17 @@ export function useChatStream(workflowId: string) {
             after = event.seq;
             failures = 0;
             useChatStore.getState().applyConversationEvent(event);
-            if (
-              event.kind === 'waiting_for_input' &&
-              !useChatStore.getState().loading
-            )
+            const live = !useChatStore.getState().loading;
+            if (event.kind === 'waiting_for_input' && live)
               void listOtherWaits(key);
+            // A run began or ended while messages waited: how many still
+            // do is the conversation's to say.
+            if (
+              live &&
+              (event.kind === 'run_started' || event.kind === 'run_ended') &&
+              useChatStore.getState().queued > 0
+            )
+              void readState(key, abortController.signal);
           }
         } catch (err: unknown) {
           applyPieces();
@@ -207,7 +220,7 @@ export function useChatStream(workflowId: string) {
           await new Promise((resolve) => setTimeout(resolve, retryIn));
       }
     },
-    [token, workflowId, listOtherWaits]
+    [token, workflowId, listOtherWaits, readState]
   );
 
   /** Makes this the page's one stream, replacing any before it. */
@@ -336,6 +349,10 @@ export function useChatStream(workflowId: string) {
         }
         // Taken: it started a run or waits its turn. Either way a reply is
         // on its way, on the stream.
+        if (outcome.state === 'queued') {
+          current.setMessageQueued(message.id);
+          void readState(conversationKey);
+        }
         current.setStatus(
           current.pendingInputs.length ? 'waiting_for_input' : 'streaming'
         );
@@ -357,14 +374,19 @@ export function useChatStream(workflowId: string) {
         }
         if (useChatStore.getState().conversationKey === conversationKey)
           store.setError(
-            err instanceof Error ? err.message : 'Failed to send message'
+            err instanceof ConversationError &&
+              err.code === 'CONVERSATION_QUEUE_FULL'
+              ? QUEUE_FULL
+              : err instanceof Error
+                ? err.message
+                : 'Failed to send message'
           );
         return false;
       } finally {
         enqueueing.current = false;
       }
     },
-    [token, workflowId, settleUnconfirmed, listOtherWaits]
+    [token, workflowId, settleUnconfirmed, listOtherWaits, readState]
   );
 
   /**
@@ -473,6 +495,34 @@ export function useChatStream(workflowId: string) {
     [deliver]
   );
 
+  /**
+   * Stop the run that carries the conversation. The messages waiting their
+   * turn keep it, unless `clearQueue` drops them too. The conversation says
+   * when the run has stopped (`run_ended`).
+   */
+  const stop = useCallback(
+    async (clearQueue = false) => {
+      const store = useChatStore.getState();
+      const { conversationKey } = store;
+      if (!conversationKey) return;
+      store.setError(null);
+      try {
+        await stopConversation(token, workflowId, conversationKey, {
+          clearQueue,
+        });
+        if (clearQueue) void readState(conversationKey);
+      } catch (err: unknown) {
+        if (useChatStore.getState().conversationKey === conversationKey)
+          store.setError(
+            err instanceof Error ? err.message : 'The run could not be stopped'
+          );
+      }
+    },
+    [token, workflowId, readState]
+  );
+
+  /** Stops reading the conversation. The run is left to go on: leaving the
+   * page is not stopping it. */
   const cancelStream = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -494,6 +544,7 @@ export function useChatStream(workflowId: string) {
     refreshPendingInput,
     submitInput,
     retryMessage,
+    stop,
     /** Sends an unconfirmed answer to a run again, as the same operation. */
     retryResponse: submitRunInput,
     uncertainMessages,
