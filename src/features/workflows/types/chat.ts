@@ -36,6 +36,18 @@ export interface ChatMessage {
   /** Who said it, where it was not this page's user: an adapter's user, or
    * another workflow. */
   sender?: string;
+  /** What a reply's text is written in. Markdown unless it says otherwise. */
+  format?: 'markdown' | 'plain';
+  /** Structured data a reply carries beside its text. */
+  data?: unknown;
+  /** Files a reply names: the conversation keeps none of them. */
+  attachments?: ChatAttachment[];
+}
+
+export interface ChatAttachment {
+  name: string;
+  url: string;
+  contentType?: string | null;
 }
 
 export type ChatStatus =

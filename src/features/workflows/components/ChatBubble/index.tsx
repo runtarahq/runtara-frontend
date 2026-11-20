@@ -2,8 +2,10 @@ import { useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  Braces,
   ChevronDown,
   ChevronRight,
+  Paperclip,
   Wrench,
   Check,
   Brain,
@@ -12,7 +14,11 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/shared/components/ui/badge.tsx';
 import { cn } from '@/lib/utils.ts';
-import { ChatMessage, ChatSSEEvent } from '@/features/workflows/types/chat';
+import {
+  ChatAttachment,
+  ChatMessage,
+  ChatSSEEvent,
+} from '@/features/workflows/types/chat';
 import { Spinner } from '@/shared/components/ui/spinner';
 
 interface ChatBubbleProps {
@@ -148,8 +154,68 @@ function EventItem({ event }: { event: ChatSSEEvent }) {
   }
 }
 
+/** The data a reply carries beside its text, closed until asked for. */
+function ReplyData({ data }: { data: unknown }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="mt-2 border-t border-border/40 pt-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {expanded ? (
+          <ChevronDown className="size-3" />
+        ) : (
+          <ChevronRight className="size-3" />
+        )}
+        <Braces className="size-3" />
+        Data
+      </button>
+      {expanded && (
+        <pre className="mt-2 max-h-64 overflow-auto rounded bg-muted p-2 text-xs">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/** Only a link that is plainly one is followed: a workflow writes these. */
+function isLink(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+function Attachments({ attachments }: { attachments: ChatAttachment[] }) {
+  return (
+    <ul className="mt-2 space-y-1">
+      {attachments.map((attachment, at) => (
+        <li key={at} className="flex items-center gap-1.5 text-xs">
+          <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+          {isLink(attachment.url) ? (
+            <a
+              href={attachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="truncate underline"
+            >
+              {attachment.name || attachment.url}
+            </a>
+          ) : (
+            <span className="truncate">
+              {attachment.name || attachment.url}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ChatBubble({ message }: ChatBubbleProps) {
   const { role, content, events, isStreaming, sender } = message;
+  const { format, data, attachments } = message;
+  const hasData = data !== undefined && data !== null;
 
   if (role === 'user') {
     return (
@@ -186,7 +252,13 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   }
 
   // Don't render empty assistant bubbles (placeholder was created but no content arrived)
-  if (!content && !isStreaming && events.length === 0) {
+  if (
+    !content &&
+    !isStreaming &&
+    events.length === 0 &&
+    !hasData &&
+    !attachments?.length
+  ) {
     return null;
   }
 
@@ -199,7 +271,9 @@ export function ChatBubble({ message }: ChatBubbleProps) {
           isStreaming && !content && 'animate-pulse'
         )}
       >
-        {content ? (
+        {content && format === 'plain' ? (
+          <p className="whitespace-pre-wrap">{content}</p>
+        ) : content ? (
           <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
             <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
           </div>
@@ -214,6 +288,8 @@ export function ChatBubble({ message }: ChatBubbleProps) {
           <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground/60" />
         )}
 
+        {!!attachments?.length && <Attachments attachments={attachments} />}
+        {hasData && <ReplyData data={data} />}
         <EventDetails events={events} />
       </div>
     </div>
