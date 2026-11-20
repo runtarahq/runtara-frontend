@@ -160,8 +160,12 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       const text = messageText(event.body);
       // A message that says nothing is how a chat is opened: the workflow
       // begins, and no one is shown to have spoken.
-      if (text)
-        put(log, line(event, messageLineId(event.body.id), 'user', text));
+      if (!text) break;
+      const sender = event.body.sender;
+      put(log, {
+        ...line(event, messageLineId(event.body.id), 'user', text),
+        ...(sender ? { sender: sender.name || sender.id } : {}),
+      });
       break;
     }
 

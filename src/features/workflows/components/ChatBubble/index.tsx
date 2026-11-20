@@ -149,12 +149,23 @@ function EventItem({ event }: { event: ChatSSEEvent }) {
 }
 
 export function ChatBubble({ message }: ChatBubbleProps) {
-  const { role, content, events, isStreaming } = message;
+  const { role, content, events, isStreaming, sender } = message;
 
   if (role === 'user') {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-lg rounded-tr-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+      <div className="flex flex-col items-end gap-1">
+        {sender && (
+          <span className="px-1 text-xs text-muted-foreground">{sender}</span>
+        )}
+        <div
+          className={cn(
+            'max-w-[80%] rounded-lg rounded-tr-md px-4 py-2.5 text-sm',
+            // Someone else's message is told apart from this page's own.
+            sender
+              ? 'border bg-muted text-foreground'
+              : 'bg-primary text-primary-foreground'
+          )}
+        >
           <p className="whitespace-pre-wrap">{content}</p>
         </div>
       </div>
