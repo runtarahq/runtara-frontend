@@ -33,6 +33,9 @@ export interface ChatMessage {
   /** The id of the message this line belongs to: the one that started the
    * run, or the one that answered what it waited for. */
   turn?: string;
+  /** Who said it, where it was not this page's user: an adapter's user, or
+   * another workflow. */
+  sender?: string;
 }
 
 export type ChatStatus =
