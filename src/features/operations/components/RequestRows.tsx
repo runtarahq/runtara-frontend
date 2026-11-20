@@ -4,6 +4,7 @@ import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
 import { StateValue } from './StateValue';
 import type { AttentionRequest } from '../attention-requests';
+import { contextSummary } from '../request-context';
 
 const rowClass =
   'grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem]';
@@ -22,6 +23,9 @@ export function RequestRows({ requests }: { requests: AttentionRequest[] }) {
       {requests.map(({ row, workflowName, due, isOverdue }) => {
         const to = `/operations/runs/${row.workflowId}/${row.instanceId}`;
         const label = row.runLabel || row.instanceId.slice(0, 8);
+        // What the request is about, from its context, when its message
+        // does not say (a builder's proposed tool).
+        const about = row.message || contextSummary(row.context);
         return (
           <li key={`${row.instanceId}/${row.requestId}`} className={rowClass}>
             <Link
@@ -35,12 +39,12 @@ export function RequestRows({ requests }: { requests: AttentionRequest[] }) {
               <p className="truncate text-sm" title={row.label}>
                 {row.label}
               </p>
-              {row.message && (
+              {about && (
                 <p
                   className="truncate text-xs text-muted-foreground"
-                  title={row.message}
+                  title={about}
                 >
-                  {row.message}
+                  {about}
                 </p>
               )}
             </div>

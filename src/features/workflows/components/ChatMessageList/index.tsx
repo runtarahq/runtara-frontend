@@ -14,6 +14,9 @@ interface ChatMessageListProps {
   onLoadEarlier?: () => void;
   /** Whether a run is busy with nothing of a reply to show yet. */
   working?: boolean;
+  /** Whether a run asks for something, where the message box is: there is
+   * then nothing to invite, even with nothing said yet. */
+  asked?: boolean;
 }
 
 /** How near the top counts as having scrolled up to it. */
@@ -27,6 +30,7 @@ export function ChatMessageList({
   loadingEarlier = false,
   onLoadEarlier,
   working = false,
+  asked = false,
 }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,7 +68,7 @@ export function ChatMessageList({
     before.current = { firstId, height: container.scrollHeight };
   });
 
-  if (messages.length === 0 && !working) {
+  if (messages.length === 0 && !working && !asked) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center text-center">
         <MessageSquare className="mb-3 size-10 text-muted-foreground/40" />

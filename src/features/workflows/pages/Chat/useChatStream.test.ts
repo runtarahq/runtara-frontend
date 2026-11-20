@@ -561,7 +561,11 @@ it("sends a form's values as the payload of the answer", async () => {
   });
   expect(sentMessage(0).text).toBeUndefined();
   expect(submitInput).not.toHaveBeenCalled();
-  expect(transcript()).toEqual([['user', 'city: Lviv\nnights: 2']]);
+  // The question is the workflow's words, above the answer to it.
+  expect(transcript()).toEqual([
+    ['assistant', 'What next?'],
+    ['user', 'city: Lviv\nnights: 2'],
+  ]);
 });
 
 it('closes the form of a request that is gone, and says so of the answer', async () => {

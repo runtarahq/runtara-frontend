@@ -40,6 +40,10 @@ export interface ChatMessage {
   /** A reply joined in the middle of its writing: its pieces cannot be put
    * together, so it is shown when it is said whole. */
   joinedLate?: boolean;
+  /** The request this line asks: its question, in the workflow's words.
+   * While the request is open it is shown where it is answered, and not
+   * here as well. */
+  request?: string;
 }
 
 export interface ChatAttachment {

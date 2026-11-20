@@ -38,6 +38,7 @@ import {
 } from '@/features/workflows/utils/run-conversation';
 import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
+import { withoutOpenRequests } from '@/features/workflows/stores/conversation-log';
 import { useChatStream } from './useChatStream';
 import { ChatMessageList } from '@/features/workflows/components/ChatMessageList';
 import { ChatInput } from '@/features/workflows/components/ChatInput';
@@ -208,8 +209,12 @@ export function ChatPage() {
   // beside the conversation, not part of it: shown when asked for.
   const [activityShown, setActivityShown] = useState(false);
   const shownMessages = useMemo(
-    () => (activityShown ? messages : messages.filter((m) => !m.activity)),
-    [messages, activityShown]
+    () =>
+      withoutOpenRequests(
+        activityShown ? messages : messages.filter((m) => !m.activity),
+        pendingInputs
+      ),
+    [messages, activityShown, pendingInputs]
   );
 
   // A run is busy and has written nothing of a reply yet.
@@ -426,6 +431,7 @@ export function ChatPage() {
                 loadingEarlier={loadingEarlier}
                 onLoadEarlier={() => void loadEarlier()}
                 working={working}
+                asked={pendingInputs.length > 0}
               />
             )}
             {uncertainResponses?.map((response) => (
