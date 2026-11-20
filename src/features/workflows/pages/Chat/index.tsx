@@ -6,9 +6,11 @@ import {
   MessageSquareOff,
   PanelLeft,
   Settings,
+  Share2,
   Square,
 } from 'lucide-react';
 import { ConversationSettingsDialog } from '@/features/workflows/components/ConversationSettingsDialog';
+import { ShareConversationDialog } from '@/features/workflows/components/ShareConversationDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConversationList } from '@/features/workflows/components/ConversationList';
 import {
@@ -196,6 +198,7 @@ export function ChatPage() {
   // The workflow's conversations, beside the one shown.
   const [listShown, setListShown] = useState(true);
   const [settingsShown, setSettingsShown] = useState(false);
+  const [shareShown, setShareShown] = useState(false);
   const queryClient = useQueryClient();
   // The list has no stream of its own. What this page changes in it (a new
   // conversation, a title) is read again at once.
@@ -283,6 +286,17 @@ export function ChatPage() {
               onClick={() => setSettingsShown(true)}
             >
               <Settings className="size-4" />
+            </Button>
+          )}
+          {conversationKey && (
+            <Button
+              variant="secondary"
+              size="icon"
+              className="size-8"
+              aria-label="Share this conversation"
+              onClick={() => setShareShown(true)}
+            >
+              <Share2 className="size-4" />
             </Button>
           )}
           {queued > 1 && (
@@ -430,6 +444,13 @@ export function ChatPage() {
           workflowId={workflowId}
           conversationKey={conversationKey}
           onClose={() => setSettingsShown(false)}
+        />
+      )}
+      {shareShown && workflowId && conversationKey && (
+        <ShareConversationDialog
+          workflowId={workflowId}
+          conversationKey={conversationKey}
+          onClose={() => setShareShown(false)}
         />
       )}
     </div>
