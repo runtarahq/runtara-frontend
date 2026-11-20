@@ -55,7 +55,7 @@ export type ValueType =
   | "file";
 
 /** Trigger type for invocation triggers */
-export type TriggerType = "HTTP" | "CRON" | "EMAIL" | "APPLICATION" | "CHANNEL";
+export type TriggerType = "HTTP" | "CRON" | "EMAIL" | "APPLICATION";
 
 export type Tier = "default" | "starter" | "premium" | "enterprise";
 
@@ -66,6 +66,9 @@ export type Tier = "default" | "starter" | "premium" | "enterprise";
  * table, which speeds up `SIMILARITY_GTE` and `similarity()` scoring.
  */
 export type TextIndexKind = "none" | "trigram";
+
+/** What a text is written in. */
+export type TextFormat = "markdown" | "plain";
 
 /** Termination type providing context for why an execution terminated */
 export type TerminationType =
@@ -137,6 +140,9 @@ export type OperationDisplayKind =
   | "datetime"
   | "relative";
 
+/** What became of a message. */
+export type MessageState = "queued" | "started" | "delivered" | "failed";
+
 /** Memory allocation tier for workflow execution */
 export type MemoryTier = "S" | "M" | "L" | "XL";
 
@@ -205,24 +211,6 @@ export type ErrorSeverity = "info" | "warning" | "error" | "critical";
  */
 export type ErrorCategory = "transient" | "permanent";
 
-export type DeliveryState =
-  | "queued"
-  | "leased"
-  | "retry"
-  | "blocked"
-  | "accepted"
-  | "failed";
-
-export type DeliveryReason =
-  | "no_target"
-  | "ambiguous_target"
-  | "stale_target"
-  | "invalid_payload"
-  | "operation_conflict"
-  | "backend_unavailable"
-  | "explicit_failure"
-  | "launch_rejected";
-
 export type ControlKind =
   | "text"
   | "textarea"
@@ -246,7 +234,8 @@ export type ConnectionStatus =
   | "UNKNOWN"
   | "ACTIVE"
   | "REQUIRES_RECONNECTION"
-  | "INVALID_CREDENTIALS";
+  | "INVALID_CREDENTIALS"
+  | "PENDING_CONFIRMATION";
 
 /**
  * Canonical list of connection categories.
@@ -317,38 +306,6 @@ export type BulkValidationMode = "stop" | "skip";
 /** Behavior on unique-key conflict for bulk-create. */
 export type BulkConflictMode = "error" | "skip" | "upsert";
 
-/**
- * How much of the issuing user's role the key may exercise. Omitted or `full` means no narrowing;
- * `read_only` is every read permission; an array of permission wire-names is an explicit
- * least-privilege set (SYN-939).
- */
-export type ApiKeyScope =
-  | "full"
-  | "read_only"
-  | (
-      | "workflow:read"
-      | "workflow:create"
-      | "workflow:update"
-      | "workflow:delete"
-      | "workflow:execute"
-      | "workflow:folder_rename"
-      | "invocation_history:read"
-      | "database:read"
-      | "database:create"
-      | "database:update"
-      | "database:delete"
-      | "trigger:read"
-      | "trigger:create"
-      | "trigger:update"
-      | "trigger:delete"
-      | "connection:read"
-      | "connection:create"
-      | "connection:update"
-      | "connection:delete"
-      | "analytics:read"
-      | "user_management:access"
-    )[];
-
 /** Aggregate function. JSON encoding is SCREAMING_SNAKE_CASE. */
 export type AggregateFn =
   | "COUNT"
@@ -369,7 +326,7 @@ export type AggregateFn =
  * (`Components`); kept as an enum so the surfaces and telemetry stay stable
  * if a future backend is added.
  */
-export type ActiveEngine = "components";
+export type ActiveEngine = "components" | "executor";
 
 /** API-compatible agent info */
 export interface AgentInfo {
@@ -749,32 +706,81 @@ export interface ApiKey {
   scope?: string | null;
 }
 
+/** How much of the issuing user's role the key may exercise. Omitted or `full` means no narrowing; `read_only` is every read permission; an array of permission wire-names (e.g. ["workflow:read","workflow:execute"]) is an explicit least-privilege set. */
+export type ApiKeyScope =
+  | "full"
+  | "read_only"
+  | (
+      | "workflow:read"
+      | "workflow:create"
+      | "workflow:update"
+      | "workflow:delete"
+      | "workflow:execute"
+      | "workflow:folder_rename"
+      | "invocation_history:read"
+      | "database:read"
+      | "database:create"
+      | "database:update"
+      | "database:delete"
+      | "trigger:read"
+      | "trigger:create"
+      | "trigger:update"
+      | "trigger:delete"
+      | "connection:read"
+      | "connection:create"
+      | "connection:update"
+      | "connection:delete"
+      | "analytics:read"
+      | "user_management:access"
+    )[];
+
 /** Generic API response wrapper */
-export interface ApiResponseDeliveryPage {
+export interface ApiResponseConversationList {
+  /** A page of a workflow's conversations, most recently active first. */
   data: {
-    deliveries: DeliveryStatus[];
-    /** Zero ends the scan. Pages may overlap while deliveries change. */
-    nextCursor: string;
+    conversations: ConversationSummary[];
+    /**
+     * Ask again with this as `cursor` for the next page. Absent on the
+     * last.
+     */
+    next?: string | null;
   };
   message: string;
   success: boolean;
 }
 
 /** Generic API response wrapper */
-export interface ApiResponseDeliveryStatus {
+export interface ApiResponseConversationState {
+  /** A conversation, as it stands. */
   data: {
-    /**
-     * @format int64
-     * @min 0
-     */
-    enqueuedAtMs: number;
+    /** @format date-time */
+    createdAt: string;
+    /** @format uuid */
+    id: string;
+    /** The run that carries it now. */
     instanceId?: string | null;
-    messageId: string;
-    operationId: string;
-    reason?: null | DeliveryReason;
-    receiptId?: string | null;
-    requestId?: string | null;
-    state: DeliveryState;
+    key: string;
+    /**
+     * The last event's number: read on from it.
+     * @format int64
+     */
+    lastSeq: number;
+    /** What the client keeps about it. */
+    metadata?: any;
+    /**
+     * Messages waiting their turn.
+     * @format int64
+     */
+    queued: number;
+    /** The kinds of event the reply workflow is started for. */
+    replyEvents: string[];
+    replyWorkflowId?: string | null;
+    title?: string | null;
+    /** @format date-time */
+    updatedAt: string;
+    /** What that run waits to be told. */
+    waitingFor?: any;
+    workflowId: string;
   };
   message: string;
   success: boolean;
@@ -833,6 +839,19 @@ export interface ApiResponseInvocationTrigger {
      * @example "workflow-456"
      */
     workflow_id: string;
+  };
+  message: string;
+  success: boolean;
+}
+
+/** Generic API response wrapper */
+export interface ApiResponseIssuedToken {
+  /** A token as it is handed over: once, and never again. */
+  data: {
+    /** @format date-time */
+    expiresAt: string;
+    /** Present it as `Authorization: Bearer <token>`. */
+    token: string;
   };
   message: string;
   success: boolean;
@@ -933,6 +952,62 @@ export interface ApiResponseSavedOperationView {
     /** @format date-time */
     updatedAt: string;
   };
+  message: string;
+  success: boolean;
+}
+
+/** Generic API response wrapper */
+export interface ApiResponseSent {
+  /** The answer to sending a message. */
+  data: {
+    /** Why it failed. */
+    detail?: string | null;
+    /** Whether this id had been sent before: nothing was done again. */
+    duplicate: boolean;
+    /** The run it started or answered. */
+    instanceId?: string | null;
+    messageId: string;
+    /** What became of a message. */
+    state: MessageState;
+    /** What came of it, where the sender asked to wait for that. */
+    turn?: null | TurnSoFar;
+  };
+  message: string;
+  success: boolean;
+}
+
+/** Generic API response wrapper */
+export interface ApiResponseStopped {
+  /** What stopping a conversation did. */
+  data: {
+    /**
+     * The messages that were waiting their turn and now never have it.
+     * @format int64
+     */
+    cleared: number;
+    /** The run that was asked to stop, if one carried the conversation. */
+    instanceId?: string | null;
+  };
+  message: string;
+  success: boolean;
+}
+
+/** Generic API response wrapper */
+export interface ApiResponseVecConversationEvent {
+  data: (ConversationEventKind & {
+    /** @format date-time */
+    createdAt: string;
+    /**
+     * Its place in the log, and the stream's event id.
+     * @format int64
+     */
+    seq: number;
+    /**
+     * The id of the message this event is for: the one that started the
+     * run, or the one that answered what it waited for.
+     */
+    turn?: string | null;
+  })[];
   message: string;
   success: boolean;
 }
@@ -1185,6 +1260,13 @@ export interface ApiResponseWorkflowRuntimeActionPage {
   success: boolean;
 }
 
+/** Something sent with a message or a reply: where to fetch it, not it. */
+export interface Attachment {
+  contentType?: string | null;
+  name: string;
+  url: string;
+}
+
 /**
  * Bulk create request supporting two input shapes.
  *
@@ -1354,34 +1436,6 @@ export interface CapabilityInfo {
    * child run of its own, not composed into its own Store.
    */
   workflowRun?: null | WorkflowRunTarget;
-}
-
-/** Request body for starting a chat session with an initial message */
-export interface ChatRequest {
-  /** Input data for the workflow (merged with message) */
-  data?: any;
-  /** User message to send to the AI agent */
-  message: string;
-  /** Variables for the workflow */
-  variables?: any;
-  /**
-   * Workflow version to execute (defaults to current)
-   * @format int32
-   */
-  version?: number | null;
-}
-
-/** Request body for starting a chat session without an initial message */
-export interface ChatStartRequest {
-  /** Input data for the workflow */
-  data?: any;
-  /** Variables for the workflow */
-  variables?: any;
-  /**
-   * Workflow version to execute (defaults to current)
-   * @format int32
-   */
-  version?: number | null;
 }
 
 /** One row of a checkpoint page. */
@@ -1835,8 +1889,18 @@ export interface ConnectionTypeDto {
   fieldBehaviors: Partial<Record<string, ConnectionFieldBehavior>>;
   /** Canonical schema-driven form generated from the connection descriptor. */
   formDefinition: FormDefinition;
+  /**
+   * Icon for a connection type an agent declared: an https URL (a CDN)
+   * to load as an image. Absent for built-in types.
+   */
+  iconUrl?: string | null;
   /** Unique identifier for this connection type */
   integrationId: string;
+  /**
+   * OAuth apps the platform registered for this type that the calling
+   * tenant may connect with, in place of its own client credentials.
+   */
+  managedApps?: OAuthAppSummary[];
   /** OAuth2 configuration (only for auth_type = oauth2_authorization_code) */
   oauthConfig?: null | OAuthConfigDto;
 }
@@ -1846,6 +1910,147 @@ export interface ConnectionTypeResponse {
   /** A connection type with its parameter schema */
   connectionType: ConnectionTypeDto;
   success: boolean;
+}
+
+/**
+ * Something a conversation has for its user: one entry of its log.
+ *
+ * Every event has the same envelope. `kind` says which it is and `body`
+ * what it carries; the two are one type, [`ConversationEventKind`].
+ */
+export type ConversationEvent = ConversationEventKind & {
+  /** @format date-time */
+  createdAt: string;
+  /**
+   * Its place in the log, and the stream's event id.
+   * @format int64
+   */
+  seq: number;
+  /**
+   * The id of the message this event is for: the one that started the
+   * run, or the one that answered what it waited for.
+   */
+  turn?: string | null;
+};
+
+/** What an event says: its `kind`, and the `body` that kind carries. */
+export type ConversationEventKind =
+  | {
+      /** Someone said this to the workflow. */
+      body: Message;
+      kind: "message";
+    }
+  | {
+      /** A run began to carry the conversation. */
+      body: RunStarted;
+      kind: "run_started";
+    }
+  | {
+      /** What a workflow told its user. */
+      body: Reply;
+      kind: "reply";
+    }
+  | {
+      /** The run waits to be told something. */
+      body: WaitingForInput;
+      kind: "waiting_for_input";
+    }
+  | {
+      /** A message answered what the run waited for. */
+      body: MessageDelivered;
+      kind: "message_delivered";
+    }
+  | {
+      /** No run would take a message. */
+      body: MessageFailed;
+      kind: "message_failed";
+    }
+  | {
+      /** The run that carried the conversation ended. */
+      body: RunEnded;
+      kind: "run_ended";
+    }
+  | {
+      /** The reply workflow could not be started for an event, and never can be. */
+      body: ReplyRouteFailed;
+      kind: "reply_route_failed";
+    }
+  | {
+      /** A piece of a reply as it is written; not kept, with `seq` 0. */
+      body: ReplyDelta;
+      kind: "reply_delta";
+    }
+  | {
+      /**
+       * What a run is doing: a model call, a tool call, a step. Its own
+       * `type` says which.
+       */
+      body: any;
+      kind: "activity";
+    };
+
+/** A page of a workflow's conversations, most recently active first. */
+export interface ConversationList {
+  conversations: ConversationSummary[];
+  /**
+   * Ask again with this as `cursor` for the next page. Absent on the
+   * last.
+   */
+  next?: string | null;
+}
+
+/** A conversation, as it stands. */
+export interface ConversationState {
+  /** @format date-time */
+  createdAt: string;
+  /** @format uuid */
+  id: string;
+  /** The run that carries it now. */
+  instanceId?: string | null;
+  key: string;
+  /**
+   * The last event's number: read on from it.
+   * @format int64
+   */
+  lastSeq: number;
+  /** What the client keeps about it. */
+  metadata?: any;
+  /**
+   * Messages waiting their turn.
+   * @format int64
+   */
+  queued: number;
+  /** The kinds of event the reply workflow is started for. */
+  replyEvents: string[];
+  replyWorkflowId?: string | null;
+  title?: string | null;
+  /** @format date-time */
+  updatedAt: string;
+  /** What that run waits to be told. */
+  waitingFor?: any;
+  workflowId: string;
+}
+
+/** One of a workflow's conversations, as a list shows it. */
+export interface ConversationSummary {
+  /** Whether a run carries it now. */
+  active: boolean;
+  /** @format date-time */
+  createdAt: string;
+  /** @format uuid */
+  id: string;
+  key: string;
+  /** The last thing said in it, by either side, shortened. */
+  lastSaid?: null | LastSaid;
+  metadata?: any;
+  title?: string | null;
+  /**
+   * When it was last active.
+   * @format date-time
+   */
+  updatedAt: string;
+  /** Whether that run waits to be told something. */
+  waiting: boolean;
 }
 
 /** CPU information for the runtime system */
@@ -2102,27 +2307,6 @@ export interface DelayStep {
 export interface DeleteConnectionResponse {
   message: string;
   success: boolean;
-}
-
-export interface DeliveryPage {
-  deliveries: DeliveryStatus[];
-  /** Zero ends the scan. Pages may overlap while deliveries change. */
-  nextCursor: string;
-}
-
-export interface DeliveryStatus {
-  /**
-   * @format int64
-   * @min 0
-   */
-  enqueuedAtMs: number;
-  instanceId?: string | null;
-  messageId: string;
-  operationId: string;
-  reason?: null | DeliveryReason;
-  receiptId?: string | null;
-  requestId?: string | null;
-  state: DeliveryState;
 }
 
 /** Disk space information for the data directory */
@@ -3028,6 +3212,29 @@ export interface InvocationTrigger {
   workflow_id: string;
 }
 
+/** What is asked when a token is made. */
+export interface IssueToken {
+  /**
+   * Who every message sent with it is from. A page that holds it cannot
+   * say otherwise.
+   */
+  sender?: null | Sender;
+  /**
+   * How long it lasts, in seconds: 3600 unless given, 60 to 86400.
+   * @format int64
+   * @min 0
+   */
+  ttlSeconds?: number | null;
+}
+
+/** A token as it is handed over: once, and never again. */
+export interface IssuedToken {
+  /** @format date-time */
+  expiresAt: string;
+  /** Present it as `Authorization: Bearer <token>`. */
+  token: string;
+}
+
 /** API-compatible known error info */
 export interface KnownErrorInfo {
   /** Context attributes included with this error */
@@ -3038,6 +3245,15 @@ export interface KnownErrorInfo {
   description: string;
   /** Error kind: "transient" or "permanent" */
   kind: string;
+}
+
+/** The last thing said in a conversation. */
+export interface LastSaid {
+  /** @format date-time */
+  at: string;
+  /** `message` or `reply`. */
+  kind: string;
+  text?: string | null;
 }
 
 /** Response for listing all agents */
@@ -3209,6 +3425,41 @@ export interface MemoryInfo {
   totalBytes: number;
 }
 
+/** A message into a conversation. */
+export interface Message {
+  attachments?: Attachment[];
+  /** The sender's own id for it. The same id again is the same message. */
+  id: string;
+  /**
+   * The request this message answers: the `requestId` of a
+   * `waiting_for_input`. With it, the message answers that request or
+   * fails as stale; without it, it answers what the run waits for when
+   * its turn comes, or starts the next run.
+   */
+  inReplyTo?: string | null;
+  /** A structured message, for a run that waits for one. Used as it is. */
+  payload?: any;
+  sender?: null | Sender;
+  text?: string | null;
+}
+
+/** A message answered what the run waited for. */
+export interface MessageDelivered {
+  instanceId: string;
+  messageId: string;
+  requestId: string;
+  /** As [`RunStarted::sender`]. */
+  sender?: null | Sender;
+  /** As [`RunStarted::text`]. */
+  text?: string | null;
+}
+
+/** No run would take a message. */
+export interface MessageFailed {
+  messageId: string;
+  reason: string;
+}
+
 /**
  * A single time bucket of aggregated metrics.
  *
@@ -3362,8 +3613,22 @@ export interface NoteMetadata {
   width?: number | null;
 }
 
+/** A platform app as a tenant's connection form shows it. No secrets. */
+export interface OAuthAppSummary {
+  displayName: string;
+  id: string;
+  integrationId: string;
+  requiredScopes: string;
+  scopes: string;
+}
+
 export interface OAuthAuthorizeResponse {
   authorizationUrl: string;
+  /**
+   * The redirect URI the provider will send the user to: the one to
+   * register with the provider for this connection.
+   */
+  redirectUri: string;
   success: boolean;
 }
 
@@ -3375,6 +3640,53 @@ export interface OAuthConfigDto {
   defaultScopes: string;
   /** Provider's token endpoint */
   tokenUrl: string;
+}
+
+export interface OAuthLinkResponse {
+  /** The link to hand the person who is to authorize at the provider. */
+  authorizationUrl: string;
+  /** After this the link no longer works. */
+  expiresAt: string;
+  redirectUri: string;
+  success: boolean;
+}
+
+/**
+ * Which pending authorization a confirmation or rejection is for: the `id`
+ * `GET .../oauth/pending` showed.
+ */
+export interface OAuthPendingDecision {
+  pendingId: string;
+}
+
+export interface OAuthPendingResponse {
+  /** The authorization waiting for confirmation, if any. */
+  pending?: null | PendingConfirmation;
+  success: boolean;
+}
+
+/** What is asked when a conversation is opened. */
+export interface OpenConversation {
+  /**
+   * What the client keeps about it: an object of its own, up to 4 KB.
+   * Left out, it is kept; given, it replaces what was there. It is handed
+   * to each run and to the reply workflow, as `conversation.metadata`.
+   */
+  metadata?: any;
+  /**
+   * The kinds of event the reply workflow is started for: `reply` and
+   * `waiting_for_input` unless set. `run_ended` and `message_failed`
+   * may be added, for a client that says when something went wrong.
+   * Left out, kept.
+   */
+  replyEvents?: string[] | null;
+  /**
+   * The workflow to start with each reply and each "waiting for input".
+   * Left out, the route is kept as it is; `null` removes it.
+   */
+  replyWorkflowId?: string | null;
+  /** What a person calls it. Left out, it is kept; `null` removes it. */
+  title?: string | null;
 }
 
 export interface OperationDisplayFormat {
@@ -3543,6 +3855,23 @@ export interface PageWorkflowInstanceHistoryDto {
   totalElements: number;
   /** @format int32 */
   totalPages: number;
+}
+
+/** What a pending connection shows whoever is to confirm it. No secrets. */
+export interface PendingConfirmation {
+  /** The provider account connected, when the provider says which. */
+  account?: any;
+  /** When the provider sent the user back. */
+  authorizedAt?: string | null;
+  /**
+   * Names this authorization: confirming or rejecting it names it, so a
+   * later flow that replaced it is never confirmed unseen.
+   */
+  id: string;
+  /** After this, the connection can no longer be confirmed. */
+  pendingUntil: string;
+  /** Who started the flow (`channel:id`). */
+  startedBy: string;
 }
 
 export interface PendingInputPage {
@@ -3910,15 +4239,81 @@ export interface RenameFolderResponse {
   workflowsUpdated: number;
 }
 
-export type ResolveDeliveryRequest =
-  | {
-      action: "fail";
-    }
-  | {
-      action: "select";
-      instanceId: string;
-      requestId: string;
-    };
+/** What a workflow told its user. */
+export interface Reply {
+  attachments?: Attachment[];
+  /** Structured data beside the text, for a client that acts on it. */
+  data?: any;
+  /** What `text` is written in. */
+  format?: TextFormat;
+  /** The run that said it. */
+  instanceId?: string | null;
+  /**
+   * The workflow's own id for it: a reply with an id is said once for
+   * its run, however often the step that says it is run.
+   */
+  replyId?: string | null;
+  text?: string | null;
+}
+
+/**
+ * A piece of a reply as it is written. Not kept: it is sent to whoever is
+ * reading the conversation then, and the `reply` with the same `replyId`
+ * carries the whole of it.
+ */
+export interface ReplyDelta {
+  instanceId: string;
+  /**
+   * This piece's place among the conversation's pieces: read on from it
+   * (`deltasAfter`).
+   * @format int64
+   * @min 0
+   */
+  n: number;
+  /**
+   * Where `text` begins in the reply, in characters. A reader that has
+   * less of the reply than this joined in the middle: it shows the reply
+   * when its `reply` comes.
+   * @format int64
+   * @min 0
+   */
+  offset: number;
+  replyId: string;
+  text: string;
+}
+
+/** The reply workflow could not be started for an event, and never can be. */
+export interface ReplyRouteFailed {
+  reason: string;
+  replyWorkflowId: string;
+  /**
+   * The event it was to be started for.
+   * @format int64
+   */
+  seq: number;
+}
+
+/** The run that carried the conversation ended. */
+export interface RunEnded {
+  error?: string | null;
+  instanceId: string;
+  /** `completed`, `failed` or `stopped`. */
+  status: string;
+}
+
+/** A run began to carry the conversation. */
+export interface RunStarted {
+  instanceId: string;
+  /** The message that started it. */
+  messageId: string;
+  /** The message's sender. As `text`. */
+  sender?: null | Sender;
+  /**
+   * The message's text. Read the `message` event for it: this is kept
+   * for clients written before that event, and will go.
+   */
+  text?: string | null;
+}
 
 export interface SaveOperationView {
   /** Generic presentation choices. No domain-specific types or transformations. */
@@ -4065,6 +4460,27 @@ export interface ScoreExpression {
    * arguments: [...]}`.
    */
   expression: any;
+}
+
+/** Who is speaking, as the client says. The core makes nothing of it. */
+export interface Sender {
+  id: string;
+  name?: string | null;
+}
+
+/** The answer to sending a message. */
+export interface Sent {
+  /** Why it failed. */
+  detail?: string | null;
+  /** Whether this id had been sent before: nothing was done again. */
+  duplicate: boolean;
+  /** The run it started or answered. */
+  instanceId?: string | null;
+  messageId: string;
+  /** What became of a message. */
+  state: MessageState;
+  /** What came of it, where the sender asked to wait for that. */
+  turn?: null | TurnSoFar;
 }
 
 /**
@@ -4595,19 +5011,23 @@ export interface StepTypeInfo {
   name: string;
 }
 
-/** Request body for submitting an event to a session. */
-export interface SubmitEventRequest {
-  /** Simple text message (wrapped as `{"message": value}`) */
-  message?: string | null;
-  messageId: string;
-  operationId: string;
-  /** Structured payload (used directly) */
-  payload?: any;
+export interface StopConversation {
   /**
-   * The open input request this message answers. Optional only when exactly
-   * one request is open; the binding is fixed when the message is accepted.
+   * Fail the messages waiting their turn too. Left out, they keep it, and
+   * the next one starts the next run.
    */
-  requestId?: string | null;
+  clearQueue?: boolean;
+}
+
+/** What stopping a conversation did. */
+export interface Stopped {
+  /**
+   * The messages that were waiting their turn and now never have it.
+   * @format int64
+   */
+  cleared: number;
+  /** The run that was asked to stop, if one carried the conversation. */
+  instanceId?: string | null;
 }
 
 export interface SubmitWorkflowActionRequest {
@@ -4780,6 +5200,22 @@ export interface TestAgentResponse {
   maxMemoryMb?: number | null;
   output?: any;
   success: boolean;
+}
+
+/** A message's turn, as far as it had gone when its sender stopped waiting. */
+export interface TurnSoFar {
+  /** The events of the turn, in order: the replies, and what ended it. */
+  events: ConversationEvent[];
+  /**
+   * The last event read: read on from it.
+   * @format int64
+   */
+  lastSeq: number;
+  /**
+   * Whether the turn is over: the run waits to be told something, or
+   * ended, or the message failed. `false` when the time ran out first.
+   */
+  settled: boolean;
 }
 
 /** Versioned public connection update; mutable fields other than `version` are optional. */
@@ -5182,6 +5618,20 @@ export interface WaitForSignalStep {
    * If the signal is not received within this duration, the step fails.
    */
   timeoutMs?: null | MappingValue;
+}
+
+/** The run waits to be told something. */
+export interface WaitingForInput {
+  instanceId: string;
+  message: string;
+  /** Name it as a message's `inReplyTo` to answer this and no other. */
+  requestId: string;
+  /**
+   * The JSON Schema of the answer, where the run asks for a structured
+   * one: send it as the message's `payload`.
+   */
+  responseSchema?: any;
+  toolName?: string | null;
 }
 
 /** Configuration for a While step. */
@@ -5919,11 +6369,39 @@ export class Api<
 > extends HttpClient<SecurityDataType> {
   api = {
     /**
+     * @description This is a PUBLIC endpoint (no JWT required) — called by the OAuth provider redirecting the user's browser after consent. The tenant comes from the flow the state names. A tenant this process does not serve is sent on to its own callback URL, which the edge routes to the process that serves it.
+     *
+     * @tags oauth-callback
+     * @name TenantlessCallbackHandler
+     * @summary Handle the OAuth2 provider callback, for a connection whose redirect URI names no tenant.
+     * @request GET:/api/oauth/callback
+     */
+    tenantlessCallbackHandler: (
+      query?: {
+        /** Authorization code returned by the provider */
+        code?: string;
+        /** Opaque state value naming the flow */
+        state?: string;
+        /** Error code if the provider reports a failure */
+        error?: string;
+        /** Human-readable error description from the provider */
+        error_description?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<void, void>({
+        path: `/api/oauth/callback`,
+        method: "GET",
+        query: query,
+        ...params,
+      }),
+
+    /**
      * @description This is a PUBLIC endpoint (no JWT required) — called by the OAuth provider redirecting the user's browser after consent. The consent popup is then sent on to the console's landing page, which tells the console from the console's own origin.
      *
      * @tags oauth-callback
      * @name CallbackHandler
-     * @summary Handle the OAuth2 provider callback.
+     * @summary Handle the OAuth2 provider callback, for a connection registered with its tenant's own redirect URI.
      * @request GET:/api/oauth/{tenant_id}/callback
      */
     callbackHandler: (
@@ -5931,7 +6409,7 @@ export class Api<
       query?: {
         /** Authorization code returned by the provider */
         code?: string;
-        /** Opaque state value used for CSRF protection and connection lookup */
+        /** Opaque state value naming the flow */
         state?: string;
         /** Error code if the provider reports a failure */
         error?: string;
@@ -6100,10 +6578,11 @@ export class Api<
       }),
 
     /**
-     * No description
+     * @description Unlike [`revoke_api_key`] (a caller revoking their *own* key, gated by ownership), this deactivates another user's keys, so it is gated on the caller's role. It is the durable counterpart to the live membership gate: the membership gate denies a removed user's key while the `member:{sub}` entry is absent; this flips `is_revoked` and writes the Valkey denylist so the keys stay dead regardless of membership-policy mode, and show as revoked in listings. smo-management (which observes removals) is the intended caller on a member-remove event; an Owner/Admin can also invoke it directly to off-board someone immediately. Inferring removal inside runtara (auto-revoking on a `NOT_A_MEMBER` lookup) is deliberately avoided — a transient Valkey miss during a membership rewrite would permanently kill a valid key — so revocation is only ever driven by this explicit, authorized action.
      *
      * @tags api-keys-controller
      * @name RevokeUserKeys
+     * @summary Revoke **every** API key issued by a given user in this tenant — the authoritative action for deactivating a departing member's keys (SYN-939, §6.2). Owner/Admin only.
      * @request POST:/api/runtime/api-keys/users/{user_id}/revoke
      * @secure
      */
@@ -6144,7 +6623,7 @@ export class Api<
       query?: {
         /** Filter by integration ID (connection type identifier) */
         integrationId?: string;
-        /** Filter by status (UNKNOWN, ACTIVE, REQUIRES_RECONNECTION, INVALID_CREDENTIALS) */
+        /** Filter by status (UNKNOWN, ACTIVE, REQUIRES_RECONNECTION, INVALID_CREDENTIALS, PENDING_CONFIRMATION) */
         status?: string;
         /** Include rate limit statistics for each connection */
         includeRateLimitStats?: boolean;
@@ -6225,7 +6704,7 @@ export class Api<
     getConnectionsByOperatorHandler: (
       operatorName: string,
       query?: {
-        /** Filter by status (UNKNOWN, ACTIVE, REQUIRES_RECONNECTION, INVALID_CREDENTIALS) */
+        /** Filter by status (UNKNOWN, ACTIVE, REQUIRES_RECONNECTION, INVALID_CREDENTIALS, PENDING_CONFIRMATION) */
         status?: string;
       },
       params: RequestParams = {},
@@ -6344,7 +6823,7 @@ export class Api<
       }),
 
     /**
-     * @description The frontend should open this URL in a popup window. After user consent, the provider redirects to /api/oauth/{tenant_id}/callback.
+     * @description The frontend should open this URL in a popup window, in the same browser: the response sets a cookie, for this flow alone, that the callback needs. After user consent, the provider redirects to the connection's redirect URI.
      *
      * @tags connections-controller
      * @name AuthorizeHandler
@@ -6356,6 +6835,80 @@ export class Api<
         path: `/api/runtime/connections/${id}/oauth/authorize`,
         method: "GET",
         format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags connections-controller
+     * @name ConfirmHandler
+     * @summary Confirm the authorization a flow started without a browser obtained: the connection becomes usable. Only a member signed in to the console.
+     * @request POST:/api/runtime/connections/{id}/oauth/confirm
+     */
+    confirmHandler: (
+      id: string,
+      data: OAuthPendingDecision,
+      params: RequestParams = {},
+    ) =>
+      this.request<void, ErrorResponse>({
+        path: `/api/runtime/connections/${id}/oauth/confirm`,
+        method: "POST",
+        body: data,
+        type: "application/json",
+        ...params,
+      }),
+
+    /**
+     * @description Whoever opens the link authorizes at the provider; the connection then waits as `PENDING_CONFIRMATION`, unusable, until a member confirms it in the console within 15 minutes.
+     *
+     * @tags connections-controller
+     * @name LinkHandler
+     * @summary Start an OAuth2 flow without a browser, for an API client or an MCP tool to hand someone a link.
+     * @request POST:/api/runtime/connections/{id}/oauth/link
+     */
+    linkHandler: (id: string, params: RequestParams = {}) =>
+      this.request<OAuthLinkResponse, ErrorResponse>({
+        path: `/api/runtime/connections/${id}/oauth/link`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags connections-controller
+     * @name PendingHandler
+     * @summary What a connection's authorization waiting for confirmation connected, and who started it. No secrets.
+     * @request GET:/api/runtime/connections/{id}/oauth/pending
+     */
+    pendingHandler: (id: string, params: RequestParams = {}) =>
+      this.request<OAuthPendingResponse, ErrorResponse>({
+        path: `/api/runtime/connections/${id}/oauth/pending`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags connections-controller
+     * @name RejectHandler
+     * @summary Reject the authorization a flow started without a browser obtained: its tokens are dropped and revoked at the provider. Only a member signed in to the console.
+     * @request POST:/api/runtime/connections/{id}/oauth/reject
+     */
+    rejectHandler: (
+      id: string,
+      data: OAuthPendingDecision,
+      params: RequestParams = {},
+    ) =>
+      this.request<void, ErrorResponse>({
+        path: `/api/runtime/connections/${id}/oauth/reject`,
+        method: "POST",
+        body: data,
+        type: "application/json",
         ...params,
       }),
 
@@ -7565,115 +8118,6 @@ export class Api<
     /**
      * No description
      *
-     * @tags sessions
-     * @name ListSessionDeliveries
-     * @request GET:/api/runtime/sessions/{sessionId}/deliveries
-     */
-    listSessionDeliveries: (
-      sessionId: string,
-      query?: {
-        cursor?: string;
-        /**
-         * @format int32
-         * @min 0
-         */
-        limit?: number;
-      },
-      params: RequestParams = {},
-    ) =>
-      this.request<ApiResponseDeliveryPage, void>({
-        path: `/api/runtime/sessions/${sessionId}/deliveries`,
-        method: "GET",
-        query: query,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags sessions
-     * @name GetSessionDelivery
-     * @request GET:/api/runtime/sessions/{sessionId}/deliveries/{messageId}
-     */
-    getSessionDelivery: (
-      sessionId: string,
-      messageId: string,
-      params: RequestParams = {},
-    ) =>
-      this.request<ApiResponseDeliveryStatus, void>({
-        path: `/api/runtime/sessions/${sessionId}/deliveries/${messageId}`,
-        method: "GET",
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags sessions
-     * @name ResolveSessionDelivery
-     * @request POST:/api/runtime/sessions/{sessionId}/deliveries/{messageId}/resolve
-     */
-    resolveSessionDelivery: (
-      sessionId: string,
-      messageId: string,
-      data: ResolveDeliveryRequest,
-      params: RequestParams = {},
-    ) =>
-      this.request<ApiResponseDeliveryStatus, void>({
-        path: `/api/runtime/sessions/${sessionId}/deliveries/${messageId}/resolve`,
-        method: "POST",
-        body: data,
-        type: "application/json",
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags sessions
-     * @name SubmitEvent
-     * @summary Durable queue acceptance is distinct from acceptance by a workflow wait. The message is bound to its request here; a retry replays that original binding.
-     * @request POST:/api/runtime/sessions/{sessionId}/events
-     */
-    submitEvent: (
-      sessionId: string,
-      data: SubmitEventRequest,
-      params: RequestParams = {},
-    ) =>
-      this.request<ApiResponseDeliveryStatus, void>({
-        path: `/api/runtime/sessions/${sessionId}/events`,
-        method: "POST",
-        body: data,
-        type: "application/json",
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description GET /api/runtime/sessions/{sessionId}/pending-input
-     *
-     * @tags sessions
-     * @name SessionPendingInput
-     * @summary Get pending input for a session.
-     * @request GET:/api/runtime/sessions/{sessionId}/pending-input
-     */
-    sessionPendingInput: (sessionId: string, params: RequestParams = {}) =>
-      this.request<
-        ApiResponsePendingInputPage,
-        void | InputSubmissionErrorResponse
-      >({
-        path: `/api/runtime/sessions/${sessionId}/pending-input`,
-        method: "GET",
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
      * @tags signals
      * @name SubmitSignal
      * @summary Accept a response for an authorized managed request, or replay its receipt.
@@ -8148,44 +8592,6 @@ export class Api<
       }),
 
     /**
-     * @description The workflow executes asynchronously while this endpoint streams execution events (tool calls, LLM responses, memory operations, pending input requests) as Server-Sent Events. For workflows with WaitForSignal steps (human-in-the-loop), a historical `waiting_for_input` event is presentation only. Discover current requests with `GET /api/runtime/workflows/{workflowId}/instances/{instanceId}/actions`, then submit the chosen request and a stable operation identity through its submit endpoint. Acceptance rechecks current state and does not implicitly resume an explicitly paused execution.
-     *
-     * @tags Chat
-     * @name ChatHandler
-     * @summary Start a chat session with an initial message and stream events via SSE.
-     * @request POST:/api/runtime/workflows/{id}/chat
-     */
-    chatHandler: (id: string, data: ChatRequest, params: RequestParams = {}) =>
-      this.request<void, void>({
-        path: `/api/runtime/workflows/${id}/chat`,
-        method: "POST",
-        body: data,
-        type: "application/json",
-        ...params,
-      }),
-
-    /**
-     * @description Use this when the workflow doesn't require an initial user message to begin (e.g., the AI agent starts the conversation proactively).
-     *
-     * @tags Chat
-     * @name ChatStartHandler
-     * @summary Start a chat session without an initial message and stream events via SSE.
-     * @request POST:/api/runtime/workflows/{id}/chat/start
-     */
-    chatStartHandler: (
-      id: string,
-      data: ChatStartRequest,
-      params: RequestParams = {},
-    ) =>
-      this.request<void, void>({
-        path: `/api/runtime/workflows/${id}/chat/start`,
-        method: "POST",
-        body: data,
-        type: "application/json",
-        ...params,
-      }),
-
-    /**
      * No description
      *
      * @tags workflow-controller
@@ -8200,6 +8606,219 @@ export class Api<
     ) =>
       this.request<any, any>({
         path: `/api/runtime/workflows/${id}/clone`,
+        method: "POST",
+        body: data,
+        type: "application/json",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description Each with its title, what its client keeps about it, whether a run carries it, and the last thing said in it, shortened. A page says where the next begins (`next`): ask again with it as `cursor`.
+     *
+     * @tags Conversations
+     * @name ListConversations
+     * @summary A workflow's conversations, most recently active first.
+     * @request GET:/api/runtime/workflows/{id}/conversations
+     */
+    listConversations: (
+      id: string,
+      query?: {
+        /** Only keys that begin with this */
+        prefix?: string;
+        /** A page's `next` */
+        cursor?: string;
+        /**
+         * At most this many, up to 200 (50 unless given)
+         * @format int32
+         * @min 0
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ApiResponseConversationList, void>({
+        path: `/api/runtime/workflows/${id}/conversations`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Conversations
+     * @name GetConversation
+     * @summary A conversation as it stands: its active run, what that run waits for, and how many messages wait their turn.
+     * @request GET:/api/runtime/workflows/{id}/conversations/{key}
+     */
+    getConversation: (id: string, key: string, params: RequestParams = {}) =>
+      this.request<ApiResponseConversationState, void>({
+        path: `/api/runtime/workflows/${id}/conversations/${key}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description The key is the client's: the same key always reaches the same conversation. `replyWorkflowId` sets the workflow started with each reply and each "waiting for input"; `null` removes it; left out, it is kept.
+     *
+     * @tags Conversations
+     * @name OpenConversation
+     * @summary Open the conversation a key names with a workflow, or find it.
+     * @request PUT:/api/runtime/workflows/{id}/conversations/{key}
+     */
+    openConversation: (
+      id: string,
+      key: string,
+      data: OpenConversation,
+      params: RequestParams = {},
+    ) =>
+      this.request<ApiResponseConversationState, void>({
+        path: `/api/runtime/workflows/${id}/conversations/${key}`,
+        method: "PUT",
+        body: data,
+        type: "application/json",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Conversations
+     * @name DeleteConversation
+     * @summary Delete a conversation and what was said in it.
+     * @request DELETE:/api/runtime/workflows/{id}/conversations/{key}
+     */
+    deleteConversation: (id: string, key: string, params: RequestParams = {}) =>
+      this.request<void, void>({
+        path: `/api/runtime/workflows/${id}/conversations/${key}`,
+        method: "DELETE",
+        ...params,
+      }),
+
+    /**
+     * @description Events are numbered (`seq`) and kept: read on with `after`. **As a stream.** With `Accept: text/event-stream` this is server-sent events, each `id: <seq>`, `event: <kind>`, `data: <the event>`. It sends what is kept after `after` (or `Last-Event-ID`), then `caught_up`, then each event as it is said: nothing is polled for. `caught_up` is not kept and has no id. The stream tells the client when to connect again (`retry`), sends a comment while nothing is said so that no proxy closes it, and ends after ten minutes: connect again with `Last-Event-ID` and nothing is missed. A browser's `EventSource` cannot send an `Authorization` header; read it with `fetch`. A tenant holds a bounded number of streams open (`429 CONVERSATION_STREAMS_FULL` past it). **Replies as they are written.** A stream that asks for every kind, or names `reply_delta`, is sent the pieces of a reply as the run writes them (`reply_delta`: `replyId`, `offset`, `text`). They are not kept and have no id; the `reply` with the same `replyId` carries the whole of it. **Reading back.** `order=desc` reads from the newest, and `before=<seq>` reads on from there, newest first: how a UI shows the last screen and loads more as its user scrolls up. `kinds` names the kinds wanted, separated by commas (`message,reply` for what was said and none of a run's working); it holds for a stream too. **As one request.** Without that header, `wait` holds the request that many seconds (25 at most) for an event when there is none: answered at once if there is something, when there is, or empty when the time is up. For a client that makes one request at a time.
+     *
+     * @tags Conversations
+     * @name ConversationEvents
+     * @summary What a conversation has for its user: replies, that it waits for input, what its run is doing, and when a run starts and ends.
+     * @request GET:/api/runtime/workflows/{id}/conversations/{key}/events
+     */
+    conversationEvents: (
+      id: string,
+      key: string,
+      query?: {
+        /**
+         * Read on from this event
+         * @format int64
+         */
+        after?: number;
+        /**
+         * At most this many, up to 500
+         * @format int32
+         * @min 0
+         */
+        limit?: number;
+        /**
+         * Without a stream: wait this many seconds for an event, up to 25
+         * @format int32
+         * @min 0
+         */
+        wait?: number;
+        /**
+         * Read back: the events before this one, newest first
+         * @format int64
+         */
+        before?: number;
+        /** `desc` for newest first */
+        order?: string;
+        /** Only these kinds, separated by commas */
+        kinds?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ApiResponseVecConversationEvent, void>({
+        path: `/api/runtime/workflows/${id}/conversations/${key}/events`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description With no active run the message starts one. If the run waits for input the message answers it. If the run is busy the message waits its turn; a conversation holds a bounded number of them and refuses one past it with `429 CONVERSATION_QUEUE_FULL`. The same `id` again is the same message: nothing is done twice, and `duplicate` says so. With `wait`, the answer waits that many seconds for the message's turn to be over (the run waits to be told something, or ended, or the message failed) and carries the turn's events in `turn`, with `settled` false if the time ran out first. One request is then a whole exchange.
+     *
+     * @tags Conversations
+     * @name SendMessage
+     * @summary Send a message into a conversation, at any time.
+     * @request POST:/api/runtime/workflows/{id}/conversations/{key}/messages
+     */
+    sendMessage: (
+      id: string,
+      key: string,
+      data: Message,
+      query?: {
+        /**
+         * Wait this many seconds for the message's turn, up to 120
+         * @format int32
+         * @min 0
+         */
+        wait?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ApiResponseSent, void>({
+        path: `/api/runtime/workflows/${id}/conversations/${key}/messages`,
+        method: "POST",
+        query: query,
+        body: data,
+        type: "application/json",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description As stopping a run does: it ends when it has, and the conversation says so then (`run_ended`, with `status: stopped`). With no run, nothing is stopped and that is not an error.
+     *
+     * @tags Conversations
+     * @name StopConversation
+     * @summary Stop the run that carries a conversation.
+     * @request POST:/api/runtime/workflows/{id}/conversations/{key}/stop
+     */
+    stopConversation: (
+      id: string,
+      key: string,
+      data: StopConversation,
+      params: RequestParams = {},
+    ) =>
+      this.request<ApiResponseStopped, void>({
+        path: `/api/runtime/workflows/${id}/conversations/${key}/stop`,
+        method: "POST",
+        body: data,
+        type: "application/json",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description The token acts as the caller who makes it, held to reading and sending in this conversation and nothing else, until it expires (`ttlSeconds`, an hour unless given, a day at most). Every message sent with it is from `sender`, which the page cannot change. It is handed over once; present it as `Authorization: Bearer <token>` to this conversation's state, messages, events (a stream too) and stop. A token makes no tokens.
+     *
+     * @tags Conversations
+     * @name IssueConversationToken
+     * @summary Make a credential for one conversation, for a page that talks to the workflow for its end user.
+     * @request POST:/api/runtime/workflows/{id}/conversations/{key}/token
+     */
+    issueConversationToken: (
+      id: string,
+      key: string,
+      data: IssueToken,
+      params: RequestParams = {},
+    ) =>
+      this.request<ApiResponseIssuedToken, void>({
+        path: `/api/runtime/workflows/${id}/conversations/${key}/token`,
         method: "POST",
         body: data,
         type: "application/json",
