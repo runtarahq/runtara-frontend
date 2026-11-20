@@ -52,8 +52,33 @@ interface Unconfirmed {
 /** The answer to a request that the server no longer waits on. */
 const REQUEST_CLOSED = 'That request is no longer open';
 
+/** What a chat may do beside its conversation's own routes. */
+interface ChatOptions {
+  /**
+   * The chat holds a conversation token, not a session: it may read the
+   * conversation's state and events, send messages and stop, and nothing
+   * else. It does not name the conversation or read a run's pending inputs,
+   * and a refused token ends it.
+   */
+  restricted?: boolean;
+}
+
+const NO_ACCESS = 'This link has expired or is not valid';
+
+/** The signed-in console's chat with a workflow. */
 export function useChatStream(workflowId: string) {
-  const token = useToken();
+  return useConversationChat(workflowId, useToken());
+}
+
+/**
+ * A chat with a workflow through its conversation, as whoever `token` says:
+ * a signed-in user, or the holder of a conversation token.
+ */
+export function useConversationChat(
+  workflowId: string,
+  token: string,
+  { restricted = false }: ChatOptions = {}
+) {
   const {
     refreshPendingInput,
     submitInput: submitRunInput,
@@ -106,7 +131,8 @@ export function useChatStream(workflowId: string) {
   const listOtherWaits = useCallback(
     async (key: string) => {
       const { instanceId, waitingForInput } = useChatStore.getState();
-      if (!instanceId || !waitingForInput) return;
+      // A conversation token does not read a run.
+      if (restricted || !instanceId || !waitingForInput) return;
       try {
         const pending = await getPendingInput(token, workflowId, instanceId);
         const current = useChatStore.getState();
@@ -123,7 +149,7 @@ export function useChatStream(workflowId: string) {
         // The one the conversation announced can still be answered.
       }
     },
-    [token, workflowId]
+    [token, workflowId, restricted]
   );
 
   /**
@@ -209,6 +235,15 @@ export function useChatStream(workflowId: string) {
           if (err instanceof DOMException && err.name === 'AbortError') return;
           if (!isCurrent()) return;
           const code = err instanceof ConversationError ? err.code : undefined;
+          const status =
+            err instanceof ConversationError ? err.status : undefined;
+          if (restricted && (status === 401 || status === 403)) {
+            // The token is no longer taken: asking again cannot help.
+            store.setLoading(false);
+            store.setError(NO_ACCESS);
+            store.setStatus('error');
+            return;
+          }
           if (code === 'CONVERSATION_NOT_FOUND') {
             // Nothing to read on from: the chat is over.
             store.setLoading(false);
@@ -237,7 +272,7 @@ export function useChatStream(workflowId: string) {
           await new Promise((resolve) => setTimeout(resolve, retryIn));
       }
     },
-    [token, workflowId, listOtherWaits, readState]
+    [token, workflowId, listOtherWaits, readState, restricted]
   );
 
   /** Makes this the page's one stream, replacing any before it. */
@@ -422,7 +457,7 @@ export function useChatStream(workflowId: string) {
         current.showSentMessage(message.id, label, answers);
         // A conversation no one has named is called by the first thing said
         // in it. A title a person gave is never replaced.
-        if (current.title === null && message.text) {
+        if (!restricted && current.title === null && message.text) {
           const title = titleFrom(message.text);
           current.setTitle(title);
           void openConversation(token, workflowId, conversationKey, {
@@ -503,7 +538,14 @@ export function useChatStream(workflowId: string) {
         enqueueing.current = false;
       }
     },
-    [token, workflowId, settleUnconfirmed, listOtherWaits, readState]
+    [
+      token,
+      workflowId,
+      settleUnconfirmed,
+      listOtherWaits,
+      readState,
+      restricted,
+    ]
   );
 
   /**

@@ -44,6 +44,8 @@ interface ChatStoreState {
   loadingEarlier: boolean;
   /** The conversation's title: `null` for none, `undefined` until read. */
   title: string | null | undefined;
+  /** The sender this page's own messages are from, where it has one. */
+  self: string | null;
   waitingForInput: WaitingForInputData | null;
   pendingInputs: WaitingForInputData[];
   pendingInputError: string | null;
@@ -91,6 +93,7 @@ interface ChatStoreState {
   applyConversationState: (state: ConversationState) => void;
   setLoading: (loading: boolean) => void;
   setTitle: (title: string | null) => void;
+  setSelf: (sender: string | null) => void;
   setStatus: (status: ChatStatus) => void;
   setConversationKey: (key: string | null) => void;
   setPendingInputs: (data: WaitingForInputData[]) => void;
@@ -129,6 +132,7 @@ export const useChatStore = create<ChatStoreState>()(
       hasEarlier: false,
       loadingEarlier: false,
       title: undefined,
+      self: null,
       waitingForInput: null,
       pendingInputs: [],
       pendingInputError: null,
@@ -259,6 +263,12 @@ export const useChatStore = create<ChatStoreState>()(
       applyConversationState: (conversation) => {
         set((state) => {
           applyState(state, conversation);
+        });
+      },
+
+      setSelf: (sender) => {
+        set((state) => {
+          state.self = sender;
         });
       },
 
