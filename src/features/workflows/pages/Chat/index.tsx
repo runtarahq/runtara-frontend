@@ -1,6 +1,7 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import {
+  Activity,
   ArrowLeft,
   ChevronDown,
   MessageSquareOff,
@@ -191,6 +192,18 @@ export function ChatPage() {
     [] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // What the runs did (started, called a model or a tool, loaded memory) is
+  // beside the conversation, not part of it: shown when asked for.
+  const [activityShown, setActivityShown] = useState(false);
+  const shownMessages = useMemo(
+    () => (activityShown ? messages : messages.filter((m) => !m.activity)),
+    [messages, activityShown]
+  );
+
+  // A run is busy and has written nothing of a reply yet.
+  const working =
+    status === 'streaming' && !messages.some((m) => m.isStreaming);
+
   const handleBack = useCallback(() => {
     navigate(`/workflows/${workflowId}`);
   }, [navigate, workflowId]);
@@ -278,6 +291,22 @@ export function ChatPage() {
               </p>
             )}
           </div>
+          {conversationKey && (
+            <Button
+              variant="secondary"
+              size="icon"
+              className="size-8"
+              aria-label={
+                activityShown
+                  ? 'Hide what the runs did'
+                  : 'Show what the runs did'
+              }
+              aria-pressed={activityShown}
+              onClick={() => setActivityShown((shown) => !shown)}
+            >
+              <Activity className="size-4" />
+            </Button>
+          )}
           {conversationKey && (
             <Button
               variant="secondary"
@@ -377,10 +406,11 @@ export function ChatPage() {
               </div>
             ) : (
               <ChatMessageList
-                messages={messages}
+                messages={shownMessages}
                 hasEarlier={hasEarlier}
                 loadingEarlier={loadingEarlier}
                 onLoadEarlier={() => void loadEarlier()}
+                working={working}
               />
             )}
             {uncertainResponses?.map((response) => (
@@ -428,6 +458,7 @@ export function ChatPage() {
             <ChatInput
               onSend={sendMessage}
               onSignalResponse={sendMessage}
+              onStop={conversationKey ? () => void stop() : undefined}
               status={status}
               waitingForInput={waitingForInput}
               pendingInputs={pendingInputs}

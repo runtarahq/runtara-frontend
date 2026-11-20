@@ -10,6 +10,7 @@ import { ChatPage } from './index';
 const mocks = vi.hoisted(() => ({
   getWorkflow: vi.fn(),
   getWorkflowInstance: vi.fn(),
+  getConversation: vi.fn(),
   listConversations: vi.fn(),
   openConversation: vi.fn(),
   readBack: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock(
     ...(await importOriginal<
       typeof import('@/features/workflows/queries/conversations')
     >()),
+    getConversation: mocks.getConversation,
     listConversations: mocks.listConversations,
     openConversation: mocks.openConversation,
     readBack: mocks.readBack,
@@ -106,6 +108,7 @@ beforeEach(() => {
   useChatStore.getState().resetChat();
   mocks.openConversation.mockResolvedValue({ key: 'opened', lastSeq: 0 });
   mocks.readBack.mockResolvedValue([]);
+  mocks.getConversation.mockResolvedValue({ key: 'k', lastSeq: 0, queued: 0 });
   mocks.listConversations.mockResolvedValue({ conversations: [] });
   mocks.sendConversationMessage.mockResolvedValue({
     messageId: 'opening',
@@ -302,5 +305,53 @@ describe('ChatPage and the conversation it shows', () => {
       )
     );
     expect(useChatStore.getState().conversationKey).toBe('slack:C1');
+  });
+
+  it('shows what is said, and what the runs did only when asked', async () => {
+    mocks.getWorkflow.mockResolvedValue({ data: buildWorkflow(true) });
+    const at = '2026-11-20T06:00:00Z';
+    // Newest first, as the log is read back.
+    mocks.readBack.mockResolvedValue([
+      { seq: 3, kind: 'reply', body: { text: 'Found it.' }, createdAt: at },
+      {
+        seq: 2,
+        kind: 'activity',
+        body: { type: 'tool_call', tool_name: 'lookup' },
+        createdAt: at,
+      },
+      {
+        seq: 1,
+        kind: 'run_started',
+        body: { instanceId: 'run-1', messageId: 'm' },
+        createdAt: at,
+      },
+    ]);
+    mocks.streamConversationEvents.mockResolvedValue(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: caught_up\ndata: {"kind":"caught_up","body":{"lastSeq":3}}\n\n'
+            )
+          );
+        },
+      })
+    );
+    mocks.getConversation.mockResolvedValue({
+      key: 'k',
+      lastSeq: 3,
+      queued: 0,
+    });
+
+    renderChat(undefined, 'console%3Aabc');
+
+    expect(await screen.findByText('Found it.')).toBeInTheDocument();
+    expect(screen.queryByText('Calling tool: lookup')).not.toBeInTheDocument();
+    expect(screen.queryByText('Execution started')).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show what the runs did' })
+    );
+    expect(screen.getByText('Calling tool: lookup')).toBeInTheDocument();
+    expect(screen.getByText('Execution started')).toBeInTheDocument();
   });
 });

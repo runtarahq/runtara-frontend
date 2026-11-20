@@ -170,38 +170,39 @@ function note(
  * tool calls and memory, each a line in the transcript.
  */
 function applyActivity(log: ConversationLog, event: ConversationEvent) {
+  const did = (text: string) => {
+    note(log, event, text);
+    const said = log.messages.find((m) => m.id === `seq:${String(event.seq)}`);
+    if (said) said.activity = true;
+  };
   const body = (event.body ?? {}) as Record<string, unknown>;
   switch (body.type) {
     case 'memory_loaded': {
       const outputs = body.outputs as Record<string, unknown> | undefined;
       const count = body.message_count ?? outputs?.message_count ?? 0;
-      note(log, event, `Loaded ${String(count)} messages from memory`);
+      did(`Loaded ${String(count)} messages from memory`);
       break;
     }
     case 'llm_start': {
       const model = body.model as string | undefined;
-      note(log, event, model ? `${model} thinking...` : 'Thinking...');
+      did(model ? `${model} thinking...` : 'Thinking...');
       break;
     }
     case 'llm_end':
-      note(log, event, 'Done thinking');
+      did('Done thinking');
       break;
     case 'tool_call':
-      note(log, event, `Calling tool: ${(body.tool_name as string) ?? 'tool'}`);
+      did(`Calling tool: ${(body.tool_name as string) ?? 'tool'}`);
       break;
     case 'tool_result': {
       const toolName = (body.tool_name as string) ?? 'tool';
       const durationMs = body.duration_ms as number | undefined;
       const duration = durationMs != null ? ` (${String(durationMs)}ms)` : '';
-      note(log, event, `${toolName} completed${duration}`);
+      did(`${toolName} completed${duration}`);
       break;
     }
     case 'memory_saved':
-      note(
-        log,
-        event,
-        `Saved ${String(body.message_count ?? 0)} messages to memory`
-      );
+      did(`Saved ${String(body.message_count ?? 0)} messages to memory`);
       break;
     // `message`, an AI Agent step's answer, is not shown from here: the
     // step says its answer as a reply of its own, and this relays the same
@@ -274,7 +275,15 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
     case 'run_started':
       setInstance(log, event.body.instanceId);
       taken(log, event.body.messageId);
-      note(log, event, 'Execution started');
+      put(log, {
+        ...line(
+          event,
+          `seq:${String(event.seq)}`,
+          'system',
+          'Execution started'
+        ),
+        activity: true,
+      });
       log.status = 'streaming';
       break;
 
