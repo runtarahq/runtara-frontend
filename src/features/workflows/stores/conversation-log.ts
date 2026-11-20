@@ -3,6 +3,7 @@ import type {
   ConversationState,
   Message,
   Reply,
+  ReplyDelta,
   WaitingForInput,
 } from '@/generated/RuntaraRuntimeApi';
 import type { ChatMessage, ChatStatus } from '../types/chat';
@@ -37,8 +38,12 @@ export function messageLineId(messageId: string): string {
  * id is the author's and is said once in its run, not in its conversation. */
 function replyLineId(seq: number, reply: Reply): string {
   return reply.replyId
-    ? `reply:${reply.instanceId ?? ''}:${reply.replyId}`
+    ? writtenLineId(reply.instanceId ?? '', reply.replyId)
     : `seq:${String(seq)}`;
+}
+
+function writtenLineId(instanceId: string, replyId: string): string {
+  return `reply:${instanceId}:${replyId}`;
 }
 
 /** What a message says, as text: its own, or what it carries. An answer to
@@ -268,6 +273,9 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
           text ?? ''
         ),
         format: format === 'plain' ? 'plain' : 'markdown',
+        // Said whole: whatever was written of it in pieces is replaced.
+        isStreaming: false,
+        joinedLate: false,
         ...(hasData ? { data } : {}),
         ...(attachments.length ? { attachments } : {}),
       });
@@ -320,6 +328,16 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
           `Error: ${event.body.error ?? 'Execution failed'}`,
           'error'
         );
+      // A reply it was writing and never said whole stays as far as it got.
+      for (const written of log.messages) {
+        if (
+          written.isStreaming &&
+          written.id.startsWith(writtenLineId(event.body.instanceId, ''))
+        ) {
+          written.isStreaming = false;
+          written.incomplete = true;
+        }
+      }
       // Whatever it waited for is no longer waited for.
       log.pendingInputs = [];
       log.waitingForInput = null;
@@ -346,4 +364,40 @@ export function applyState(log: ConversationLog, state: ConversationState) {
   log.waitingForInput = null;
   if (state.instanceId) log.status = 'streaming';
   else if (log.status !== 'error') log.status = 'idle';
+}
+
+/**
+ * Applies the pieces of replies as they are written (`reply_delta`). They
+ * are not kept and not numbered, so they are placed by where each begins in
+ * its reply (`offset`), not by when it arrived: a stream that is opened
+ * again is sent a reply's pieces from its first.
+ */
+export function applyPieces(log: ConversationLog, pieces: ReplyDelta[]) {
+  for (const piece of pieces) {
+    const id = writtenLineId(piece.instanceId, piece.replyId);
+    const written = log.messages.find((m) => m.id === id);
+    if (!written) {
+      log.messages.push({
+        id,
+        role: 'assistant',
+        // A reply joined in the middle is shown when it is said whole.
+        content: piece.offset === 0 ? piece.text : '',
+        timestamp: new Date().toISOString(),
+        events: [],
+        isStreaming: true,
+        ...(piece.offset === 0 ? {} : { joinedLate: true }),
+      });
+      continue;
+    }
+    // Said whole already, or not to be put together: nothing to add.
+    if (!written.isStreaming || written.joinedLate) continue;
+    const has = written.content.length;
+    if (piece.offset > has) {
+      written.joinedLate = true;
+      written.content = '';
+    } else if (piece.offset + piece.text.length > has) {
+      // The next piece, or one that repeats some of what is there.
+      written.content = written.content.slice(0, piece.offset) + piece.text;
+    }
+  }
 }

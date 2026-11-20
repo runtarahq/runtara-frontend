@@ -4,9 +4,11 @@ import { immer } from 'zustand/middleware/immer';
 import type {
   ConversationEvent,
   ConversationState,
+  ReplyDelta,
 } from '@/generated/RuntaraRuntimeApi';
 import {
   applyEvent,
+  applyPieces,
   applyState,
   closeRequest,
   messageLineId,
@@ -58,6 +60,8 @@ interface ChatStoreState {
   setMessageFailure: (messageId: string, failure: string) => void;
   /** Applies one kept event of the conversation's log. */
   applyConversationEvent: (event: ConversationEvent) => void;
+  /** Applies pieces of replies as they are written, several at once. */
+  applyReplyPieces: (pieces: ReplyDelta[]) => void;
   /** Applies the conversation as it stands, read once it has caught up. */
   applyConversationState: (state: ConversationState) => void;
   setLoading: (loading: boolean) => void;
@@ -183,6 +187,12 @@ export const useChatStore = create<ChatStoreState>()(
       applyConversationEvent: (event) => {
         set((state) => {
           applyEvent(state, event);
+        });
+      },
+
+      applyReplyPieces: (pieces) => {
+        set((state) => {
+          applyPieces(state, pieces);
         });
       },
 

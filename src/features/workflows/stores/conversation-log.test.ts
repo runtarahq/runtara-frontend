@@ -6,6 +6,7 @@ import type {
 } from '@/generated/RuntaraRuntimeApi';
 import {
   applyEvent,
+  applyPieces,
   applyState,
   type ConversationLog,
 } from './conversation-log';
@@ -236,5 +237,83 @@ describe('the conversation log', () => {
     // Read before the run ended, answered after.
     applyState(log, state({ instanceId: 'run-1', lastSeq: 1 }));
     expect(log.status).toBe('idle');
+  });
+
+  describe('a reply as it is written', () => {
+    const piece = (offset: number, text: string) => ({
+      replyId: 'story',
+      instanceId: 'run-1',
+      offset,
+      text,
+      n: offset + 1,
+    });
+    const whole = {
+      kind: 'reply' as const,
+      body: {
+        replyId: 'story',
+        instanceId: 'run-1',
+        text: 'Once upon a time.',
+      },
+    };
+    const story = (log: ConversationLog) =>
+      log.messages.map((m) => [m.content, !!m.isStreaming]);
+
+    it('grows as one line, then is the reply said whole', () => {
+      const log = empty();
+      applyPieces(log, [piece(0, 'Once')]);
+      expect(story(log)).toEqual([['Once', true]]);
+      applyPieces(log, [piece(4, ' upon'), piece(9, ' a time')]);
+      expect(story(log)).toEqual([['Once upon a time', true]]);
+      read([whole], log);
+      expect(story(log)).toEqual([['Once upon a time.', false]]);
+      // A piece that arrives after the whole changes nothing.
+      applyPieces(log, [piece(9, ' a time')]);
+      expect(story(log)).toEqual([['Once upon a time.', false]]);
+    });
+
+    it('shows nothing of a reply joined in the middle until it is said whole', () => {
+      const log = empty();
+      applyPieces(log, [piece(4, ' upon'), piece(9, ' a time')]);
+      expect(story(log)).toEqual([['', true]]);
+      read([whole], log);
+      expect(story(log)).toEqual([['Once upon a time.', false]]);
+    });
+
+    it('does not double what a reopened stream sends again', () => {
+      const log = empty();
+      applyPieces(log, [piece(0, 'Once'), piece(4, ' upon')]);
+      // Opened again mid-reply: the pieces so far, from the first.
+      applyPieces(log, [piece(0, 'Once'), piece(4, ' upon'), piece(9, ' a')]);
+      expect(story(log)).toEqual([['Once upon a', true]]);
+    });
+
+    it('keeps what was written of a reply its run never said whole', () => {
+      const log = empty();
+      applyPieces(log, [piece(0, 'Once'), piece(4, ' upon')]);
+      read(
+        [
+          {
+            kind: 'run_ended',
+            body: { instanceId: 'run-1', status: 'failed', error: 'boom' },
+          },
+        ],
+        log
+      );
+      expect(log.messages[0]).toMatchObject({
+        content: 'Once upon',
+        isStreaming: false,
+        incomplete: true,
+      });
+    });
+
+    it('takes the same reply id in another run for another reply', () => {
+      const log = empty();
+      applyPieces(log, [piece(0, 'Once')]);
+      applyPieces(log, [{ ...piece(0, 'Twice'), instanceId: 'run-2' }]);
+      expect(story(log)).toEqual([
+        ['Once', true],
+        ['Twice', true],
+      ]);
+    });
   });
 });

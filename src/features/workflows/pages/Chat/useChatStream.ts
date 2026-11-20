@@ -4,7 +4,7 @@ import { getPendingInput } from '@/features/workflows/queries';
 import { messageText } from '@/features/workflows/stores/conversation-log';
 import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
-import type { Message } from '@/generated/RuntaraRuntimeApi';
+import type { Message, ReplyDelta } from '@/generated/RuntaraRuntimeApi';
 import {
   ConversationError,
   getConversation,
@@ -104,6 +104,19 @@ export function useChatStream(workflowId: string) {
         !abortController.signal.aborted && abortRef.current === abortController;
       let after = from;
       let failures = 0;
+      // The pieces of replies arrive many times a second. They are applied
+      // together, once a frame, so a long answer does not render the
+      // transcript once a piece.
+      let pieces: ReplyDelta[] = [];
+      let frame: number | null = null;
+      const applyPieces = () => {
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        if (!pieces.length) return;
+        const batch = pieces;
+        pieces = [];
+        if (isCurrent()) useChatStore.getState().applyReplyPieces(batch);
+      };
       let retryIn = STREAM_RETRY_MS;
 
       while (isCurrent()) {
@@ -142,8 +155,16 @@ export function useChatStream(workflowId: string) {
                 });
               continue;
             }
-            // The pieces of a reply are not kept, and so not numbered.
+            if (event.kind === 'reply_delta') {
+              // Not kept, and so not numbered (`seq` 0): read before the
+              // check below, which they must neither pass nor move.
+              pieces.push(event.body);
+              frame ??= requestAnimationFrame(applyPieces);
+              continue;
+            }
             if (event.seq <= after) continue;
+            // In the order they were said: a reply follows its pieces.
+            applyPieces();
             after = event.seq;
             failures = 0;
             useChatStore.getState().applyConversationEvent(event);
@@ -154,6 +175,7 @@ export function useChatStream(workflowId: string) {
               void listOtherWaits(key);
           }
         } catch (err: unknown) {
+          applyPieces();
           if (err instanceof DOMException && err.name === 'AbortError') return;
           if (!isCurrent()) return;
           const code = err instanceof ConversationError ? err.code : undefined;

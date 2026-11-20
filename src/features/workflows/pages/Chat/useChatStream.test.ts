@@ -65,6 +65,18 @@ function stream() {
         )
       );
     },
+    /** A piece of a reply as it is written: not kept, not numbered. */
+    piece(offset: number, text: string) {
+      const event = {
+        seq: 0,
+        kind: 'reply_delta',
+        body: { replyId: 'story', instanceId: 'run-1', offset, text, n: 1 },
+        createdAt: 'now',
+      };
+      controller.enqueue(
+        encoder.encode(`event: reply_delta\ndata: ${JSON.stringify(event)}\n\n`)
+      );
+    },
     /** What the stream sends once it has sent what was kept. */
     caughtUp() {
       controller.enqueue(
@@ -658,4 +670,50 @@ it('answers a run that no conversation started on the run itself', async () => {
   );
   expect(sendConversationMessage).not.toHaveBeenCalled();
   expect(transcript()).toEqual([['user', 'Yes']]);
+});
+
+it('shows a reply as it is written, a frame at a time, then once as it is said', async () => {
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal('requestAnimationFrame', (run: FrameRequestCallback) =>
+    frames.push(run)
+  );
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+  try {
+    const { result } = renderHook(() => useChatStream('workflow'));
+    await act(async () => {
+      void result.current.reconnect('conversation');
+      await settle();
+      events.push('run_started', { instanceId: 'run-1', messageId: 'm' }, 5);
+      events.piece(0, 'Once');
+      events.piece(4, ' upon');
+      await settle();
+    });
+    // Read, though not numbered; held until the frame.
+    expect(transcript()).toEqual([]);
+    expect(frames).toHaveLength(1);
+    act(() => frames[0](0));
+    expect(transcript()).toEqual([['assistant', 'Once upon']]);
+    expect(useChatStore.getState().messages.at(-1)?.isStreaming).toBe(true);
+    await act(async () => {
+      events.piece(9, ' a time');
+      // The reply follows its pieces, with no frame between.
+      events.push(
+        'reply',
+        { replyId: 'story', instanceId: 'run-1', text: 'Once upon a time.' },
+        6
+      );
+      // Not moved back by a piece's `seq` of 0: this is still read once.
+      events.push('reply', { text: 'The end.' }, 7);
+      await settle();
+    });
+    expect(transcript()).toEqual([
+      ['assistant', 'Once upon a time.'],
+      ['assistant', 'The end.'],
+    ]);
+    expect(useChatStore.getState().messages.at(-2)?.isStreaming).toBe(false);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

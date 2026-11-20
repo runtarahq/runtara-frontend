@@ -48,6 +48,12 @@ export interface ChatMessage {
   failure?: string;
   /** The request a message answers (`inReplyTo`). */
   answers?: string;
+  /** A reply whose run ended before it was said whole: what was written of
+   * it is all there is. */
+  incomplete?: boolean;
+  /** A reply joined in the middle of its writing: its pieces cannot be put
+   * together, so it is shown when it is said whole. */
+  joinedLate?: boolean;
 }
 
 export interface ChatAttachment {
