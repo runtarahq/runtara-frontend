@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, MessageSquareOff } from 'lucide-react';
 import { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
 import { Button } from '@/shared/components/ui/button.tsx';
+import { Skeleton } from '@/shared/components/ui/skeleton';
 import { usePageTitle } from '@/shared/hooks/usePageTitle';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
@@ -51,6 +52,7 @@ export function ChatPage() {
   // Chat store state
   const messages = useChatStore((s) => s.messages);
   const status = useChatStore((s) => s.status);
+  const loading = useChatStore((s) => s.loading);
   const waitingForInput = useChatStore((s) => s.waitingForInput);
   const pendingInputs = useChatStore((s) => s.pendingInputs);
   const pendingInputError = useChatStore((s) => s.pendingInputError);
@@ -180,7 +182,19 @@ export function ChatPage() {
       ) : (
         <>
           {/* Message list */}
-          <ChatMessageList messages={messages} />
+          {loading ? (
+            <div
+              className="flex flex-1 flex-col gap-3 px-4 py-4"
+              role="status"
+              aria-label="Loading the conversation"
+            >
+              <Skeleton className="h-10 w-2/5 self-end" />
+              <Skeleton className="h-16 w-3/5" />
+              <Skeleton className="h-10 w-1/3 self-end" />
+            </div>
+          ) : (
+            <ChatMessageList messages={messages} />
+          )}
           {uncertainResponses?.map((response) => (
             <div
               key={response.operationId}

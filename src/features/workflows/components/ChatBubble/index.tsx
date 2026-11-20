@@ -214,7 +214,7 @@ function Attachments({ attachments }: { attachments: ChatAttachment[] }) {
 
 export function ChatBubble({ message }: ChatBubbleProps) {
   const { role, content, events, isStreaming, sender } = message;
-  const { format, data, attachments } = message;
+  const { format, data, attachments, tone, failure } = message;
   const hasData = data !== undefined && data !== null;
 
   if (role === 'user') {
@@ -234,6 +234,12 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         >
           <p className="whitespace-pre-wrap">{content}</p>
         </div>
+        {failure && (
+          <span className="flex items-center gap-1 px-1 text-xs text-destructive">
+            <AlertCircle className="size-3" />
+            Not delivered: {failure}
+          </span>
+        )}
       </div>
     );
   }
@@ -241,9 +247,18 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   if (role === 'system') {
     return (
       <div className="flex justify-center">
-        <div className="flex items-center gap-1.5 rounded-full bg-muted/50 px-3 py-1 text-xs text-muted-foreground">
-          {events.some((e) => e.type === 'waiting_for_input') && (
-            <AlertCircle className="size-3 text-warning" />
+        <div
+          className={cn(
+            'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs',
+            tone === 'error'
+              ? 'bg-destructive/10 text-destructive'
+              : tone === 'warning'
+                ? 'bg-warning/10 text-warning'
+                : 'bg-muted/50 text-muted-foreground'
+          )}
+        >
+          {(tone || events.some((e) => e.type === 'waiting_for_input')) && (
+            <AlertCircle className={cn('size-3', !tone && 'text-warning')} />
           )}
           <span>{content}</span>
         </div>

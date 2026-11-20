@@ -1,5 +1,6 @@
 import type {
   ConversationEvent,
+  ConversationState,
   Message,
   Reply,
 } from '@/generated/RuntaraRuntimeApi';
@@ -16,7 +17,11 @@ export interface ConversationLog {
   messages: ChatMessage[];
   instanceId: string | null;
   status: ChatStatus;
-  error: string | null;
+  /** Whether what was kept is still being read: until the stream says it
+   * has caught up, the transcript is not whole. */
+  loading: boolean;
+  /** The last kept event applied. */
+  lastSeq: number;
   waitingForInput: WaitingForInputData | null;
   pendingInputs: WaitingForInputData[];
   pendingInputError: string | null;
@@ -86,8 +91,16 @@ function line(
   };
 }
 
-function note(log: ConversationLog, event: ConversationEvent, text: string) {
-  put(log, line(event, `seq:${String(event.seq)}`, 'system', text));
+function note(
+  log: ConversationLog,
+  event: ConversationEvent,
+  text: string,
+  tone?: ChatMessage['tone']
+) {
+  put(log, {
+    ...line(event, `seq:${String(event.seq)}`, 'system', text),
+    ...(tone ? { tone } : {}),
+  });
 }
 
 /** The line an AI Agent step's answer is shown as until the run says it. */
@@ -160,6 +173,7 @@ function setInstance(log: ConversationLog, instanceId: string) {
 /** Applies one kept event of the conversation to what the chat shows. A
  * kind this console does not know changes nothing. */
 export function applyEvent(log: ConversationLog, event: ConversationEvent) {
+  if (event.seq > log.lastSeq) log.lastSeq = event.seq;
   switch (event.kind) {
     case 'message': {
       const text = messageText(event.body);
@@ -224,19 +238,44 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       break;
     }
 
-    case 'message_failed':
-      log.error = event.body.reason || 'The message could not be delivered';
+    case 'message_failed': {
+      // Said of the message where it is shown. One that is not (the opening
+      // message) is said of on its own.
+      const reason = event.body.reason || 'The message could not be delivered';
+      const failed = log.messages.find(
+        (m) => m.id === messageLineId(event.body.messageId)
+      );
+      if (failed) failed.failure = reason;
+      else note(log, event, reason, 'error');
       break;
+    }
 
     case 'run_ended':
       // One run of the conversation is over; the next message starts the
-      // next one.
-      if (event.body.status === 'completed') {
-        log.status = log.pendingInputs.length ? 'waiting_for_input' : 'idle';
-      } else {
-        log.error = event.body.error ?? 'Execution failed';
-        log.status = 'error';
-      }
+      // next one. A failure is a line where it happened, not a state of the
+      // chat: the conversation goes on.
+      if (event.body.status !== 'completed')
+        note(
+          log,
+          event,
+          `Error: ${event.body.error ?? 'Execution failed'}`,
+          'error'
+        );
+      log.status = log.pendingInputs.length ? 'waiting_for_input' : 'idle';
       break;
   }
+}
+
+/**
+ * Sets what the chat is doing from the conversation as it stands, once what
+ * was kept has been read: whether a run carries it and whether that run
+ * waits. A state older than the events already applied is left alone, since
+ * those events have said more.
+ */
+export function applyState(log: ConversationLog, state: ConversationState) {
+  if (state.lastSeq < log.lastSeq) return;
+  if (state.instanceId) setInstance(log, state.instanceId);
+  if (state.waitingFor) log.status = 'waiting_for_input';
+  else if (state.instanceId) log.status = 'streaming';
+  else if (log.status !== 'error') log.status = 'idle';
 }

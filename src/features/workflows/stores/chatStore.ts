@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import type { ConversationEvent } from '@/generated/RuntaraRuntimeApi';
-import { applyEvent, messageLineId } from './conversation-log';
+import type {
+  ConversationEvent,
+  ConversationState,
+} from '@/generated/RuntaraRuntimeApi';
+import { applyEvent, applyState, messageLineId } from './conversation-log';
 import {
   ChatMessage,
   ChatSSEEvent,
@@ -19,6 +22,10 @@ interface ChatStoreState {
   conversationKey: string | null;
   messages: ChatMessage[];
   status: ChatStatus;
+  /** Whether a conversation's kept events are still being read. */
+  loading: boolean;
+  /** The last kept event of the conversation applied. */
+  lastSeq: number;
   waitingForInput: WaitingForInputData | null;
   pendingInputs: WaitingForInputData[];
   pendingInputError: string | null;
@@ -40,6 +47,9 @@ interface ChatStoreState {
   showSentMessage: (messageId: string, content: string) => void;
   /** Applies one kept event of the conversation's log. */
   applyConversationEvent: (event: ConversationEvent) => void;
+  /** Applies the conversation as it stands, read once it has caught up. */
+  applyConversationState: (state: ConversationState) => void;
+  setLoading: (loading: boolean) => void;
   addSystemMessage: (content: string) => void;
   startAssistantMessage: () => void;
   appendToAssistantMessage: (content: string) => void;
@@ -73,6 +83,8 @@ export const useChatStore = create<ChatStoreState>()(
       conversationKey: null,
       messages: [],
       status: 'idle' as ChatStatus,
+      loading: false,
+      lastSeq: 0,
       waitingForInput: null,
       pendingInputs: [],
       pendingInputError: null,
@@ -88,6 +100,8 @@ export const useChatStore = create<ChatStoreState>()(
           state.conversationKey = null;
           state.messages = [];
           state.status = 'idle';
+          state.loading = false;
+          state.lastSeq = 0;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;
@@ -104,6 +118,8 @@ export const useChatStore = create<ChatStoreState>()(
           state.conversationKey = null;
           state.messages = [];
           state.status = 'idle';
+          state.loading = false;
+          state.lastSeq = 0;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;
@@ -142,6 +158,18 @@ export const useChatStore = create<ChatStoreState>()(
       applyConversationEvent: (event) => {
         set((state) => {
           applyEvent(state, event);
+        });
+      },
+
+      applyConversationState: (conversation) => {
+        set((state) => {
+          applyState(state, conversation);
+        });
+      },
+
+      setLoading: (loading) => {
+        set((state) => {
+          state.loading = loading;
         });
       },
 
@@ -224,6 +252,7 @@ export const useChatStore = create<ChatStoreState>()(
       setConversationKey: (key) => {
         set((state) => {
           if (state.conversationKey !== key) {
+            state.lastSeq = 0;
             state.pendingInputs = [];
             state.waitingForInput = null;
             state.pendingInputError = null;
@@ -296,6 +325,8 @@ export const useChatStore = create<ChatStoreState>()(
           state.conversationKey = null;
           state.messages = [];
           state.status = 'idle';
+          state.loading = false;
+          state.lastSeq = 0;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;
