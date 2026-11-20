@@ -3,6 +3,7 @@ import type {
   ConversationState,
   Message,
   Reply,
+  WaitingForInput,
 } from '@/generated/RuntaraRuntimeApi';
 import type { ChatMessage, ChatStatus } from '../types/chat';
 import type { WaitingForInputData } from '../types/chat';
@@ -40,18 +41,63 @@ function replyLineId(seq: number, reply: Reply): string {
     : `seq:${String(seq)}`;
 }
 
-/** What a message says, as text: its own, or what it carries. */
+/** What a message says, as text: its own, or what it carries. An answer to
+ * a form is its fields, one to a line. */
 export function messageText(
   message: Pick<Message, 'text' | 'payload'>
 ): string {
   if (message.text) return message.text;
   const payload: unknown = message.payload;
   if (!payload || typeof payload !== 'object') return '';
-  const fields = Object.entries(payload as Record<string, unknown>);
+  const fields = Object.entries(payload as Record<string, unknown>).filter(
+    ([, value]) => value !== undefined && value !== null
+  );
   if (fields.length === 0) return '';
   if (fields.length === 1 && typeof fields[0][1] === 'string')
     return fields[0][1];
-  return JSON.stringify(payload);
+  return fields
+    .map(
+      ([name, value]) =>
+        `${name}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`
+    )
+    .join('\n');
+}
+
+/** The request a run waits on, as the conversation announces it. */
+function requestFrom(waiting: WaitingForInput): WaitingForInputData {
+  return {
+    requestId: waiting.requestId,
+    instanceId: waiting.instanceId,
+    message: waiting.message,
+    responseSchema: (waiting.responseSchema ?? null) as Record<
+      string,
+      unknown
+    > | null,
+    toolName: waiting.toolName ?? null,
+  };
+}
+
+/** The run waits on this request: it is the one to answer, in place of any
+ * announced before it. */
+function awaitInput(log: ConversationLog, request: WaitingForInputData) {
+  const known = log.pendingInputs.find(
+    (r) => r.requestId === request.requestId
+  );
+  // Kept as it was where it is known, so a form being filled is not reset.
+  log.pendingInputs = [known ?? request];
+  log.waitingForInput = log.pendingInputs[0];
+  log.pendingInputError = null;
+  log.status = 'waiting_for_input';
+}
+
+/** A request is answered or gone: it is no longer offered. */
+export function closeRequest(log: ConversationLog, requestId: string) {
+  log.pendingInputs = log.pendingInputs.filter(
+    (r) => r.requestId !== requestId
+  );
+  if (log.waitingForInput?.requestId === requestId)
+    log.waitingForInput =
+      log.pendingInputs.length === 1 ? log.pendingInputs[0] : null;
 }
 
 /**
@@ -184,6 +230,7 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       put(log, {
         ...line(event, messageLineId(event.body.id), 'user', text),
         ...(sender ? { sender: sender.name || sender.id } : {}),
+        ...(event.body.inReplyTo ? { answers: event.body.inReplyTo } : {}),
       });
       break;
     }
@@ -195,7 +242,9 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       break;
 
     case 'message_delivered':
-      log.status = 'streaming';
+      // The message answered this request: the run goes on with it.
+      closeRequest(log, event.body.requestId);
+      log.status = log.pendingInputs.length ? 'waiting_for_input' : 'streaming';
       break;
 
     case 'activity':
@@ -226,8 +275,9 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
     }
 
     case 'waiting_for_input': {
-      // Only a structured request is announced; a plain "message" one is the
-      // chat's own input box. Managed discovery controls actionable forms.
+      awaitInput(log, requestFrom(event.body));
+      // Only a structured request is announced in the transcript; a plain
+      // "message" one is the chat's own input box.
       const schema: unknown = event.body.responseSchema;
       const keys =
         schema && typeof schema === 'object' ? Object.keys(schema) : [];
@@ -270,7 +320,10 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
           `Error: ${event.body.error ?? 'Execution failed'}`,
           'error'
         );
-      log.status = log.pendingInputs.length ? 'waiting_for_input' : 'idle';
+      // Whatever it waited for is no longer waited for.
+      log.pendingInputs = [];
+      log.waitingForInput = null;
+      log.status = 'idle';
       break;
   }
 }
@@ -284,7 +337,13 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
 export function applyState(log: ConversationLog, state: ConversationState) {
   if (state.lastSeq < log.lastSeq) return;
   if (state.instanceId) setInstance(log, state.instanceId);
-  if (state.waitingFor) log.status = 'waiting_for_input';
-  else if (state.instanceId) log.status = 'streaming';
+  const waiting = state.waitingFor as WaitingForInput | null | undefined;
+  if (waiting?.requestId) {
+    awaitInput(log, requestFrom(waiting));
+    return;
+  }
+  log.pendingInputs = [];
+  log.waitingForInput = null;
+  if (state.instanceId) log.status = 'streaming';
   else if (log.status !== 'error') log.status = 'idle';
 }

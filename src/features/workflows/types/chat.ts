@@ -46,6 +46,8 @@ export interface ChatMessage {
   tone?: 'error' | 'warning';
   /** Why a message this line shows was not taken. */
   failure?: string;
+  /** The request a message answers (`inReplyTo`). */
+  answers?: string;
 }
 
 export interface ChatAttachment {
@@ -61,7 +63,9 @@ export interface WaitingForInputData {
   /** Original target, retained when the conversation moves to its next run after a lost acknowledgement. */
   instanceId?: string;
   requestId: string;
-  signalId: string;
+  /** Present when the request was read from the run, not announced by the
+   * conversation. */
+  signalId?: string;
   message?: string;
   responseSchema?: Record<string, unknown> | null;
   toolName?: string | null;

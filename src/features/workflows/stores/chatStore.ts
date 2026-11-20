@@ -5,7 +5,12 @@ import type {
   ConversationEvent,
   ConversationState,
 } from '@/generated/RuntaraRuntimeApi';
-import { applyEvent, applyState, messageLineId } from './conversation-log';
+import {
+  applyEvent,
+  applyState,
+  closeRequest,
+  messageLineId,
+} from './conversation-log';
 import {
   ChatMessage,
   ChatSSEEvent,
@@ -44,7 +49,13 @@ interface ChatStoreState {
   addUserMessage: (content: string) => void;
   /** Shows a message this page sent. The conversation's `message` event
    * for the same id is the same line, whichever comes first. */
-  showSentMessage: (messageId: string, content: string) => void;
+  showSentMessage: (
+    messageId: string,
+    content: string,
+    answers?: string
+  ) => void;
+  /** Says of a message this page sent why it was not taken. */
+  setMessageFailure: (messageId: string, failure: string) => void;
   /** Applies one kept event of the conversation's log. */
   applyConversationEvent: (event: ConversationEvent) => void;
   /** Applies the conversation as it stands, read once it has caught up. */
@@ -59,6 +70,10 @@ interface ChatStoreState {
   setInstanceId: (instanceId: string) => void;
   setConversationKey: (key: string | null) => void;
   setPendingInputs: (data: WaitingForInputData[]) => void;
+  /** Adds requests the run also waits on, beside the one announced. */
+  addPendingInputs: (data: WaitingForInputData[]) => void;
+  /** A request was answered, or is gone: it is no longer offered. */
+  closePendingInput: (requestId: string) => void;
   setPendingInputError: (error: string | null) => void;
   setWaitingForInput: (data: WaitingForInputData | null) => void;
   setError: (error: string | null) => void;
@@ -140,10 +155,10 @@ export const useChatStore = create<ChatStoreState>()(
         });
       },
 
-      showSentMessage: (messageId, content) => {
+      showSentMessage: (messageId, content, answers) => {
         set((state) => {
           const id = messageLineId(messageId);
-          if (state.messages.some((m) => m.id === id)) return;
+          if (!content || state.messages.some((m) => m.id === id)) return;
           state.messages.push({
             id,
             role: 'user',
@@ -151,7 +166,17 @@ export const useChatStore = create<ChatStoreState>()(
             timestamp: new Date().toISOString(),
             events: [],
             turn: messageId,
+            ...(answers ? { answers } : {}),
           });
+        });
+      },
+
+      setMessageFailure: (messageId, failure) => {
+        set((state) => {
+          const line = state.messages.find(
+            (m) => m.id === messageLineId(messageId)
+          );
+          if (line) line.failure = failure;
         });
       },
 
@@ -282,6 +307,29 @@ export const useChatStore = create<ChatStoreState>()(
           state.pendingInputError = null;
           if (data.length > 0) state.status = 'waiting_for_input';
           else if (state.status === 'waiting_for_input') state.status = 'idle';
+        });
+      },
+
+      addPendingInputs: (data) => {
+        set((state) => {
+          for (const request of data) {
+            if (
+              !state.pendingInputs.some(
+                (existing) => existing.requestId === request.requestId
+              )
+            )
+              state.pendingInputs.push(request);
+          }
+        });
+      },
+
+      closePendingInput: (requestId) => {
+        set((state) => {
+          closeRequest(state, requestId);
+          if (state.status === 'waiting_for_input')
+            state.status = state.pendingInputs.length
+              ? 'waiting_for_input'
+              : 'streaming';
         });
       },
 

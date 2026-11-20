@@ -19,7 +19,9 @@ interface ChatFormInputProps {
   onSubmit: (
     requestId: string,
     payload: Record<string, unknown>,
-    instanceId?: string
+    instanceId?: string,
+    /** What was answered, in the form's own labels. */
+    summary?: string
   ) => Promise<boolean>;
 }
 
@@ -76,34 +78,29 @@ export function ChatFormInput({
       }
     }
 
+    // What was answered, for a chat that has no log to read it from.
+    const summary = Object.entries(payload)
+      .map(([key, val]) => {
+        const field = definition.fields[key];
+        const label = field?.label || humanizeKey(key);
+        const displayVal =
+          typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val ?? '');
+        return `${label}: ${displayVal}`;
+      })
+      .join(' | ');
+
     setIsSubmitting(true);
-    const store = useChatStore.getState();
-
     try {
-      if (
-        !(await onSubmit(
-          waitingForInput.requestId,
-          payload,
-          waitingForInput.instanceId
-        ))
-      )
-        return;
-
-      // Add a user message summarizing the submitted form
-      const summary = Object.entries(payload)
-        .map(([key, val]) => {
-          const field = definition.fields[key];
-          const label = field?.label || humanizeKey(key);
-          const displayVal =
-            typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val ?? '');
-          return `${label}: ${displayVal}`;
-        })
-        .join(' | ');
-      store.addUserMessage(summary);
+      await onSubmit(
+        waitingForInput.requestId,
+        payload,
+        waitingForInput.instanceId,
+        summary
+      );
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Failed to submit form';
-      store.setError(message);
+      useChatStore.getState().setError(message);
     } finally {
       setIsSubmitting(false);
     }
