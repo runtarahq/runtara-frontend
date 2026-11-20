@@ -1,3 +1,4 @@
+import { CONVERSATION_ID_REFERENCE } from '@/features/workflows/utils/given-inputs';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import {
@@ -1063,9 +1064,30 @@ export function AiAgentStepField({ name }: AiAgentStepFieldProps) {
                   }
                   fieldType="string"
                   fieldName="memoryConversationId"
-                  placeholder="data.sessionId"
+                  placeholder={CONVERSATION_ID_REFERENCE}
                 />
               </FormControl>
+              {/* Offered before anything else: one history per conversation
+                  is what a chat wants. Chosen, not imposed: a mapping the
+                  author made stays until they change it. */}
+              {getValue('memoryConversationId') !==
+                CONVERSATION_ID_REFERENCE && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() =>
+                    updateField(
+                      'memoryConversationId',
+                      CONVERSATION_ID_REFERENCE,
+                      'reference'
+                    )
+                  }
+                >
+                  Remember by conversation ({CONVERSATION_ID_REFERENCE})
+                </Button>
+              )}
             </FormItem>
 
             {/* Compaction (Advanced) */}

@@ -1,3 +1,7 @@
+import {
+  CONVERSATION_ID_REFERENCE,
+  stepsCanChat,
+} from '@/features/workflows/utils/given-inputs';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Handle, Node, NodeProps, Position } from '@xyflow/react';
 import { Plus, CheckCircle2, XCircle, Pause } from 'lucide-react';
@@ -397,7 +401,17 @@ function AiAgentNodeComponent({
 
       setOrAdd('memoryEnabled', true, 'boolean');
       setOrAdd('memoryProviderStepId', newNodeId, 'string');
-      setOrAdd('memoryConversationId', '', 'string', 'reference');
+      // A workflow that can chat remembers by conversation unless its author
+      // maps the memory elsewhere. A mapping that is there is kept.
+      const mapped = currentMapping.find(
+        (item: any) => item.type === 'memoryConversationId'
+      )?.value;
+      setOrAdd(
+        'memoryConversationId',
+        mapped || (stepsCanChat(storeNodes) ? CONVERSATION_ID_REFERENCE : ''),
+        'string',
+        'reference'
+      );
       setOrAdd('memoryMaxMessages', 50, 'integer');
       // No memoryStrategy here: leave compaction strategy unset so the DSL
       // default (SlidingWindow, see CompactionConfig in runtara-dsl) applies.

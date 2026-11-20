@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { SchemaField } from '@/features/workflows/components/WorkflowEditor/EditorSidebar/SchemaFieldsEditor';
 import { composeVariableSuggestions } from '@/features/workflows/components/WorkflowEditor/NodeForm/InputMappingValueField/VariableSuggestions';
 import { resolveReferenceType } from '@/features/workflows/components/WorkflowEditor/NodeForm/reference-type';
-import { givenInputFields } from './given-inputs';
+import {
+  CONVERSATION_ID_REFERENCE,
+  givenInputFields,
+  stepsCanChat,
+} from './given-inputs';
 
 const declared = (name: string, type: string): SchemaField => ({
   name,
@@ -57,5 +61,31 @@ describe('what the server gives a run beside its input', () => {
     expect(
       resolveReferenceType('data.headers', { insideSplitScope: true })
     ).toBeUndefined();
+  });
+
+  it('offers the conversation of a run a conversation started, and its id as a string', () => {
+    const all = offered();
+    expect(all['workflow.inputs.data.conversation']).toMatchObject({
+      type: 'object',
+    });
+    expect(all['workflow.inputs.data.conversation.id']).toMatchObject({
+      label: 'conversation.id',
+      type: 'string',
+    });
+    expect(resolveReferenceType(CONVERSATION_ID_REFERENCE, {})).toBe('string');
+    expect(resolveReferenceType('data.conversation.metadata', {})).toBe(
+      'object'
+    );
+  });
+
+  it('takes a workflow with a step that waits to be told something for one that can chat', () => {
+    expect(stepsCanChat([{ data: { stepType: 'AiAgent' } }])).toBe(false);
+    expect(
+      stepsCanChat([
+        { data: { stepType: 'AiAgent' } },
+        { data: { stepType: 'WaitForSignal' } },
+      ])
+    ).toBe(true);
+    expect(stepsCanChat(undefined)).toBe(false);
   });
 });
