@@ -4,7 +4,8 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query';
-import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Plus, Settings, Trash2 } from 'lucide-react';
+import { ConversationSettingsDialog } from '@/features/workflows/components/ConversationSettingsDialog';
 import { toast } from 'sonner';
 import type { ConversationSummary } from '@/generated/RuntaraRuntimeApi';
 import { cn, formatRelativeTime } from '@/lib/utils';
@@ -85,6 +86,7 @@ export function ConversationList({
   const [consoleOnly, setConsoleOnly] = useState(false);
   const [renaming, setRenaming] = useState<ConversationSummary | null>(null);
   const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
+  const [configuring, setConfiguring] = useState<string | null>(null);
   const listKey = queryKeys.workflows.conversations(workflowId);
 
   const list = useInfiniteQuery({
@@ -225,6 +227,12 @@ export function ConversationList({
                       Rename
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      onSelect={() => setConfiguring(conversation.key)}
+                    >
+                      <Settings className="size-3.5" />
+                      Settings
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       className="text-destructive"
                       onSelect={() => setDeleting(conversation)}
                     >
@@ -258,6 +266,14 @@ export function ConversationList({
           saving={rename.isPending}
           onClose={() => setRenaming(null)}
           onSave={(title) => rename.mutate({ key: renaming.key, title })}
+        />
+      )}
+
+      {configuring && (
+        <ConversationSettingsDialog
+          workflowId={workflowId}
+          conversationKey={configuring}
+          onClose={() => setConfiguring(null)}
         />
       )}
 

@@ -5,8 +5,10 @@ import {
   ChevronDown,
   MessageSquareOff,
   PanelLeft,
+  Settings,
   Square,
 } from 'lucide-react';
+import { ConversationSettingsDialog } from '@/features/workflows/components/ConversationSettingsDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConversationList } from '@/features/workflows/components/ConversationList';
 import {
@@ -193,6 +195,7 @@ export function ChatPage() {
 
   // The workflow's conversations, beside the one shown.
   const [listShown, setListShown] = useState(true);
+  const [settingsShown, setSettingsShown] = useState(false);
   const queryClient = useQueryClient();
   // The list has no stream of its own. What this page changes in it (a new
   // conversation, a title) is read again at once.
@@ -271,6 +274,17 @@ export function ChatPage() {
               </p>
             )}
           </div>
+          {conversationKey && (
+            <Button
+              variant="secondary"
+              size="icon"
+              className="size-8"
+              aria-label="Conversation settings"
+              onClick={() => setSettingsShown(true)}
+            >
+              <Settings className="size-4" />
+            </Button>
+          )}
           {queued > 1 && (
             <span className="text-xs text-muted-foreground">
               {queued} messages waiting
@@ -411,6 +425,13 @@ export function ChatPage() {
           </>
         )}
       </div>
+      {settingsShown && workflowId && conversationKey && (
+        <ConversationSettingsDialog
+          workflowId={workflowId}
+          conversationKey={conversationKey}
+          onClose={() => setSettingsShown(false)}
+        />
+      )}
     </div>
   );
 }

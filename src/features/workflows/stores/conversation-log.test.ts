@@ -219,6 +219,7 @@ describe('the conversation log', () => {
         role: 'system',
         tone: 'warning',
         content: 'The reply workflow could not be started: it was deleted',
+        link: { to: '/workflows/wf' },
       },
     ]);
   });
