@@ -7,6 +7,7 @@ import {
   ConversationError,
   getConversation,
   openConversation,
+  readBack,
   sendMessage as sendConversationMessage,
   stopConversation,
   streamEvents,
@@ -22,6 +23,7 @@ vi.mock('../../queries/conversations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../queries/conversations')>()),
   getConversation: vi.fn(),
   openConversation: vi.fn(),
+  readBack: vi.fn(),
   sendMessage: vi.fn(),
   stopConversation: vi.fn(),
   streamEvents: vi.fn(),
@@ -30,6 +32,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(getPendingInput).mockResolvedValue([]);
   vi.mocked(openConversation).mockResolvedValue({} as never);
+  vi.mocked(readBack).mockResolvedValue([]);
   useChatStore.getState().resetChat();
   useChatStore.getState().resumeChat('workflow', 'Workflow', 'instance');
   useChatStore.getState().setConversationKey('conversation');
@@ -851,4 +854,91 @@ it('shortens a long first message into a title', () => {
   expect(title.length).toBeLessThanOrEqual(60);
   expect(title.endsWith('…')).toBe(true);
   expect(titleFrom('  Short   one \n more')).toBe('Short one');
+});
+
+const kept = (seq: number, text: string) => ({
+  seq,
+  turn: `m${String(seq)}`,
+  kind: 'message' as const,
+  body: { id: `m${String(seq)}`, text },
+  createdAt: 'then',
+});
+
+it('opens a conversation with its last events and reads on from them, with no gap or overlap', async () => {
+  // Newest first, as the log is read back.
+  vi.mocked(readBack).mockResolvedValue([
+    kept(42, 'latest'),
+    kept(41, 'before'),
+  ]);
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void result.current.reconnect('conversation');
+    await settle();
+  });
+  expect(vi.mocked(readBack).mock.calls[0][3]).toEqual({ limit: 200 });
+  // Not replayed from the first: read on from the last event read back.
+  expect(vi.mocked(streamEvents).mock.calls[0][3]?.after).toBe(42);
+  expect(transcript()).toEqual([
+    ['user', 'before'],
+    ['user', 'latest'],
+  ]);
+  await act(async () => {
+    // Sent again by a stream that began a little earlier: not shown twice.
+    events.push('message', { id: 'm42', text: 'latest' }, 42);
+    events.push('message', { id: 'm43', text: 'new' }, 43);
+    events.caughtUp();
+    await settle();
+  });
+  expect(transcript()).toEqual([
+    ['user', 'before'],
+    ['user', 'latest'],
+    ['user', 'new'],
+  ]);
+  expect(useChatStore.getState().loading).toBe(false);
+  act(() => result.current.cancelStream());
+});
+
+it('reads earlier events when asked, until the first', async () => {
+  const page = Array.from({ length: 200 }, (_, at) =>
+    kept(400 - at, `said ${String(400 - at)}`)
+  );
+  vi.mocked(readBack).mockResolvedValueOnce(page);
+  vi.mocked(streamEvents).mockResolvedValue(stream().body);
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void result.current.reconnect('conversation');
+    await settle();
+  });
+  expect(useChatStore.getState()).toMatchObject({
+    firstSeq: 201,
+    hasEarlier: true,
+  });
+  vi.mocked(readBack).mockResolvedValueOnce([kept(200, 'said 200')]);
+  await act(() => result.current.loadEarlier());
+  expect(vi.mocked(readBack).mock.calls[1][3]).toEqual({
+    before: 201,
+    limit: 200,
+  });
+  expect(transcript()[0]).toEqual(['user', 'said 200']);
+  expect(transcript()).toHaveLength(201);
+  // A short page is the last one: nothing more is asked for.
+  expect(useChatStore.getState().hasEarlier).toBe(false);
+  await act(() => result.current.loadEarlier());
+  expect(readBack).toHaveBeenCalledTimes(2);
+  act(() => result.current.cancelStream());
+});
+
+it('ends the chat when the conversation to reopen is gone', async () => {
+  vi.mocked(readBack).mockRejectedValue(
+    new ConversationError('no such conversation', 'CONVERSATION_NOT_FOUND', 404)
+  );
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(() => result.current.reconnect('conversation'));
+  expect(streamEvents).not.toHaveBeenCalled();
+  expect(useChatStore.getState()).toMatchObject({
+    error: 'This conversation was deleted',
+    loading: false,
+  });
 });

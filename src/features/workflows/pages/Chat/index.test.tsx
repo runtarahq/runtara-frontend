@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getWorkflow: vi.fn(),
   getWorkflowInstance: vi.fn(),
   openConversation: vi.fn(),
+  readBack: vi.fn(),
   sendConversationMessage: vi.fn(),
   streamConversationEvents: vi.fn(),
   fetchChatHistory: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock(
       typeof import('@/features/workflows/queries/conversations')
     >()),
     openConversation: mocks.openConversation,
+    readBack: mocks.readBack,
     sendMessage: mocks.sendConversationMessage,
     streamEvents: mocks.streamConversationEvents,
   })
@@ -101,6 +103,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useChatStore.getState().resetChat();
   mocks.openConversation.mockResolvedValue({ key: 'opened', lastSeq: 0 });
+  mocks.readBack.mockResolvedValue([]);
   mocks.sendConversationMessage.mockResolvedValue({
     messageId: 'opening',
     state: 'started',

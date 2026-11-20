@@ -7,7 +7,9 @@ import type {
   ReplyDelta,
 } from '@/generated/RuntaraRuntimeApi';
 import {
+  applyEarlier,
   applyEvent,
+  applyOpening,
   applyPieces,
   applyState,
   closeRequest,
@@ -35,6 +37,12 @@ interface ChatStoreState {
   lastSeq: number;
   /** How many messages wait their turn in the conversation. */
   queued: number;
+  /** The earliest kept event of the conversation read. */
+  firstSeq: number;
+  /** Whether the conversation has kept events before `firstSeq`. */
+  hasEarlier: boolean;
+  /** Whether earlier events are being read. */
+  loadingEarlier: boolean;
   /** The conversation's title: `null` for none, `undefined` until read. */
   title: string | null | undefined;
   waitingForInput: WaitingForInputData | null;
@@ -66,6 +74,18 @@ interface ChatStoreState {
   setMessageFailure: (messageId: string, failure: string) => void;
   /** Applies one kept event of the conversation's log. */
   applyConversationEvent: (event: ConversationEvent) => void;
+  /** Opens the transcript with the conversation's last events, oldest
+   * first. */
+  openConversationEvents: (
+    events: ConversationEvent[],
+    hasEarlier: boolean
+  ) => void;
+  /** Puts a page of earlier events, oldest first, before the transcript. */
+  prependConversationEvents: (
+    events: ConversationEvent[],
+    hasEarlier: boolean
+  ) => void;
+  setLoadingEarlier: (loading: boolean) => void;
   /** Applies pieces of replies as they are written, several at once. */
   applyReplyPieces: (pieces: ReplyDelta[]) => void;
   /** Applies the conversation as it stands, read once it has caught up. */
@@ -112,6 +132,9 @@ export const useChatStore = create<ChatStoreState>()(
       loading: false,
       lastSeq: 0,
       queued: 0,
+      firstSeq: 0,
+      hasEarlier: false,
+      loadingEarlier: false,
       title: undefined,
       waitingForInput: null,
       pendingInputs: [],
@@ -131,6 +154,9 @@ export const useChatStore = create<ChatStoreState>()(
           state.loading = false;
           state.lastSeq = 0;
           state.queued = 0;
+          state.firstSeq = 0;
+          state.hasEarlier = false;
+          state.loadingEarlier = false;
           state.title = undefined;
           state.waitingForInput = null;
           state.pendingInputs = [];
@@ -151,6 +177,9 @@ export const useChatStore = create<ChatStoreState>()(
           state.loading = false;
           state.lastSeq = 0;
           state.queued = 0;
+          state.firstSeq = 0;
+          state.hasEarlier = false;
+          state.loadingEarlier = false;
           state.title = undefined;
           state.waitingForInput = null;
           state.pendingInputs = [];
@@ -209,6 +238,24 @@ export const useChatStore = create<ChatStoreState>()(
       applyConversationEvent: (event) => {
         set((state) => {
           applyEvent(state, event);
+        });
+      },
+
+      openConversationEvents: (events, hasEarlier) => {
+        set((state) => {
+          applyOpening(state, events, hasEarlier);
+        });
+      },
+
+      prependConversationEvents: (events, hasEarlier) => {
+        set((state) => {
+          applyEarlier(state, events, hasEarlier);
+        });
+      },
+
+      setLoadingEarlier: (loading) => {
+        set((state) => {
+          state.loadingEarlier = loading;
         });
       },
 
@@ -317,6 +364,9 @@ export const useChatStore = create<ChatStoreState>()(
           if (state.conversationKey !== key) {
             state.lastSeq = 0;
             state.queued = 0;
+            state.firstSeq = 0;
+            state.hasEarlier = false;
+            state.loadingEarlier = false;
             state.title = undefined;
             state.pendingInputs = [];
             state.waitingForInput = null;
@@ -416,6 +466,9 @@ export const useChatStore = create<ChatStoreState>()(
           state.loading = false;
           state.lastSeq = 0;
           state.queued = 0;
+          state.firstSeq = 0;
+          state.hasEarlier = false;
+          state.loadingEarlier = false;
           state.title = undefined;
           state.waitingForInput = null;
           state.pendingInputs = [];
