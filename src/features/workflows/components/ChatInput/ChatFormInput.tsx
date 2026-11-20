@@ -114,7 +114,7 @@ export function ChatFormInput({
   useEffect(() => {
     setFormValues(initialWorkflowFormValues(definition));
     setAnalysis(null);
-  }, [definition]);
+  }, [definition, setFormValues]);
 
   const card = useRef<HTMLElement>(null);
   const ask = askOf(definition);
