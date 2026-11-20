@@ -26,6 +26,9 @@ export interface ConversationLog {
   lastSeq: number;
   /** How many messages wait their turn, as the conversation last said. */
   queued: number;
+  /** What a person calls the conversation: `null` when it has no title,
+   * `undefined` until the conversation has been read. */
+  title: string | null | undefined;
   waitingForInput: WaitingForInputData | null;
   pendingInputs: WaitingForInputData[];
   pendingInputError: string | null;
@@ -366,6 +369,9 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
  * those events have said more.
  */
 export function applyState(log: ConversationLog, state: ConversationState) {
+  // A title this page has just given may not be in a state read alongside
+  // it: a state with none does not take it away.
+  log.title = state.title ?? log.title ?? null;
   if (state.lastSeq < log.lastSeq) return;
   log.queued = state.queued;
   if (state.instanceId) setInstance(log, state.instanceId);

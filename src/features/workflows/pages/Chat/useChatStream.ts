@@ -8,6 +8,7 @@ import type { Message, ReplyDelta } from '@/generated/RuntaraRuntimeApi';
 import {
   ConversationError,
   getConversation,
+  openConversation,
   readStream,
   sendMessage as sendConversationMessage,
   stopConversation,
@@ -24,6 +25,18 @@ const STREAMS_FULL_RETRY_MS = 15000;
 const STREAMS_FULL = 'Too many open chats in this workspace';
 const DELETED = 'This conversation was deleted';
 const QUEUE_FULL = 'Too many messages waiting; wait for a reply';
+/** What the console keeps about a conversation it opened. It is handed to
+ * every run, so it is kept small. */
+const CONSOLE_METADATA = { source: 'console' };
+const TITLE_LENGTH = 60;
+
+/** A title for a conversation, from the first thing said in it. */
+export function titleFrom(text: string): string {
+  const line = text.trim().split(/\s*\n/)[0].replace(/\s+/g, ' ');
+  return line.length > TITLE_LENGTH
+    ? `${line.slice(0, TITLE_LENGTH - 1).trimEnd()}…`
+    : line;
+}
 
 interface Unconfirmed {
   conversationKey: string;
@@ -235,44 +248,71 @@ export function useChatStream(workflowId: string) {
   }, []);
 
   /**
-   * Start a new conversation under a key of this page's own, with a first
-   * message that says nothing: the workflow begins, and speaks first if it
-   * has something to say.
+   * Start a new conversation under a key of this page's own. It is opened
+   * as the console's, and `onOpened` is told its key once it exists. Then a
+   * first message that says nothing is sent: the workflow begins, and
+   * speaks first if it has something to say.
    */
-  const startSession = useCallback(async () => {
-    const store = useChatStore.getState();
-    const abortController = begin();
-    const key = `console:${crypto.randomUUID()}`;
-    store.setConversationKey(key);
-    store.setStatus('streaming');
-
-    const opening: Message = {
-      id: crypto.randomUUID(),
-      payload: {},
-    };
-    try {
-      const started = await sendConversationMessage(
-        token,
-        workflowId,
-        key,
-        opening,
-        { signal: abortController.signal }
-      );
-      if (started.state === 'failed') {
-        store.setError(started.detail ?? 'The workflow could not be started');
+  const startSession = useCallback(
+    async (onOpened?: (key: string) => void) => {
+      const store = useChatStore.getState();
+      const abortController = begin();
+      const key = `console:${crypto.randomUUID()}`;
+      store.setConversationKey(key);
+      store.setStatus('streaming');
+      try {
+        const opened = await openConversation(
+          token,
+          workflowId,
+          key,
+          { metadata: CONSOLE_METADATA },
+          abortController.signal
+        );
+        if (abortRef.current !== abortController) return;
+        store.setTitle(opened.title ?? null);
+        onOpened?.(key);
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        store.setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to start the conversation'
+        );
         store.setStatus('error');
         return;
       }
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      store.setError(
-        err instanceof Error ? err.message : 'Failed to start the conversation'
-      );
-      store.setStatus('error');
-      return;
-    }
-    await follow(key, 0, abortController);
-  }, [token, workflowId, begin, follow]);
+
+      const opening: Message = {
+        id: crypto.randomUUID(),
+        payload: {},
+      };
+      try {
+        const started = await sendConversationMessage(
+          token,
+          workflowId,
+          key,
+          opening,
+          { signal: abortController.signal }
+        );
+        if (started.state === 'failed') {
+          store.setError(started.detail ?? 'The workflow could not be started');
+          store.setStatus('error');
+          return;
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        store.setError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to start the conversation'
+        );
+        store.setStatus('error');
+        return;
+      }
+      await follow(key, 0, abortController);
+    },
+    [token, workflowId, begin, follow]
+  );
 
   /**
    * Open a conversation that exists (e.g. after a page refresh): its events
@@ -316,6 +356,19 @@ export function useChatStream(workflowId: string) {
         // The conversation may have reported it already: it is one line
         // either way.
         current.showSentMessage(message.id, label, answers);
+        // A conversation no one has named is called by the first thing said
+        // in it. A title a person gave is never replaced.
+        if (current.title === null && message.text) {
+          const title = titleFrom(message.text);
+          current.setTitle(title);
+          void openConversation(token, workflowId, conversationKey, {
+            title,
+          }).catch(() => {
+            const now = useChatStore.getState();
+            if (now.conversationKey === conversationKey && now.title === title)
+              now.setTitle(null);
+          });
+        }
         if (outcome.state === 'failed') {
           current.setMessageFailure(
             message.id,
