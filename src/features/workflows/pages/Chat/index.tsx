@@ -23,6 +23,10 @@ import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { getWorkflow, getWorkflowInstance } from '@/features/workflows/queries';
 import { fetchChatHistory } from '@/features/workflows/queries/chat';
+import {
+  conversationKeyOfRun,
+  conversationPath,
+} from '@/features/workflows/utils/run-conversation';
 import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
 import { useChatStream } from './useChatStream';
@@ -129,8 +133,7 @@ export function ChatPage() {
 
     const store = useChatStore.getState();
     const isShown = () => shown.current === target;
-    const chatUrl = (key: string) =>
-      `/workflows/${workflowId}/chat/c/${encodeURIComponent(key)}`;
+    const chatUrl = (key: string) => conversationPath(workflowId, key);
 
     if (routeKey) {
       // A conversation that exists: its events are its transcript, and the
@@ -146,8 +149,7 @@ export function ChatPage() {
       getWorkflowInstance(token, workflowId, instanceId)
         .then(async (instanceData) => {
           if (!isShown()) return;
-          const key = instanceData?.inputs?.data?.conversation?.key as
-            string | undefined;
+          const key = conversationKeyOfRun(instanceData);
           if (key) {
             navigate(chatUrl(key), { replace: true });
             return;
@@ -203,8 +205,8 @@ export function ChatPage() {
   const openChat = useCallback(
     (key?: string) =>
       navigate(
-        key
-          ? `/workflows/${workflowId}/chat/c/${encodeURIComponent(key)}`
+        key && workflowId
+          ? conversationPath(workflowId, key)
           : `/workflows/${workflowId}/chat`
       ),
     [navigate, workflowId]

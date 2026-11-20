@@ -7,13 +7,17 @@ import {
   ManagedInputScope,
   InputRetryPanel,
 } from '@/features/workflows/components/ManagedInputSubmissions';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
+import {
+  conversationKeyOfRun,
+  conversationPath,
+} from '@/features/workflows/utils/run-conversation';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { Loader } from '@/shared/components/loader.tsx';
 import { Button } from '@/shared/components/ui/button';
 import { historyView } from './history-view';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
 import {
   getWorkflowInstance,
   getPendingInput,
@@ -113,6 +117,7 @@ function WorkflowHistoryContent() {
     );
   // Pending-input polling stops once the run ends, so its last result can be
   // stale: a finished run has no actionable inputs, whatever was fetched last.
+  const conversationKey = conversationKeyOfRun(data);
   const pendingInputs = isFinishedStatus(data?.status)
     ? []
     : (pendingInputData ?? []).filter(
@@ -272,6 +277,16 @@ function WorkflowHistoryContent() {
               </p>
             )}
           </div>
+          {/* A run a conversation started is one turn of it: the whole of
+              what was said is there. */}
+          {workflowId && conversationKey && (
+            <Button asChild variant="secondary">
+              <Link to={conversationPath(workflowId, conversationKey)}>
+                <MessageSquare className="size-4" />
+                Open conversation
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
