@@ -49,14 +49,6 @@ export function messageText(
   return JSON.stringify(payload);
 }
 
-/** What a reply carries, as text: its own, then its attachments. */
-function replyText(reply: Reply): string {
-  const links = (reply.attachments ?? []).map(
-    (a) => `[${a.name || a.url}](${a.url})`
-  );
-  return [reply.text ?? '', ...links].filter(Boolean).join('\n');
-}
-
 /** Puts a line in the transcript, in place of the one with its id if there
  * is one. */
 function put(log: ConversationLog, line: ChatMessage) {
@@ -184,16 +176,25 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       break;
 
     case 'reply': {
-      const text = replyText(event.body);
-      if (!text.trim()) break;
+      const { text, data, format } = event.body;
+      const attachments = event.body.attachments ?? [];
+      const hasData = data !== undefined && data !== null;
+      if (!text?.trim() && !attachments.length && !hasData) break;
       if (event.turn)
         log.messages = log.messages.filter(
           (m) => !(m.id.startsWith(AGENT_LINE) && m.turn === event.turn)
         );
-      put(
-        log,
-        line(event, replyLineId(event.seq, event.body), 'assistant', text)
-      );
+      put(log, {
+        ...line(
+          event,
+          replyLineId(event.seq, event.body),
+          'assistant',
+          text ?? ''
+        ),
+        format: format === 'plain' ? 'plain' : 'markdown',
+        ...(hasData ? { data } : {}),
+        ...(attachments.length ? { attachments } : {}),
+      });
       break;
     }
 

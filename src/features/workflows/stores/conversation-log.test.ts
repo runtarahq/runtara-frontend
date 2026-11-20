@@ -75,4 +75,33 @@ describe('the conversation log', () => {
       ['user', '{"city":"Lviv","nights":2}'],
     ]);
   });
+
+  it("keeps a reply's format, data and attachments as they are", () => {
+    const log = read([
+      {
+        kind: 'reply',
+        body: {
+          text: 'Working on it.',
+          format: 'plain',
+          data: { stage: 1 },
+          attachments: [{ name: 'a.pdf', url: 'https://files/a.pdf' }],
+        },
+      },
+      { kind: 'reply', body: { text: 'In *Markdown*.' } },
+      { kind: 'reply', body: { data: { only: 'data' } } },
+      { kind: 'reply', body: { text: ' ' } },
+    ]);
+    expect(
+      log.messages.map((m) => [m.content, m.format, m.data, m.attachments])
+    ).toEqual([
+      [
+        'Working on it.',
+        'plain',
+        { stage: 1 },
+        [{ name: 'a.pdf', url: 'https://files/a.pdf' }],
+      ],
+      ['In *Markdown*.', 'markdown', undefined, undefined],
+      ['', 'markdown', { only: 'data' }, undefined],
+    ]);
+  });
 });
