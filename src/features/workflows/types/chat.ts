@@ -1,24 +1,5 @@
 // Chat feature type definitions
 
-export type ChatSSEEventType =
-  | 'started'
-  | 'memory_loaded'
-  | 'llm_start'
-  | 'llm_end'
-  | 'tool_call'
-  | 'tool_result'
-  | 'waiting_for_input'
-  | 'message'
-  | 'memory_saved'
-  | 'done'
-  | 'error';
-
-export interface ChatSSEEvent {
-  type: ChatSSEEventType;
-  data: Record<string, unknown>;
-  timestamp: string;
-}
-
 export type ChatMessageRole = 'user' | 'assistant' | 'system';
 
 export interface ChatMessage {
@@ -26,9 +7,7 @@ export interface ChatMessage {
   role: ChatMessageRole;
   content: string;
   timestamp: string;
-  /** SSE events associated with this message (tool calls, memory ops, etc.) */
-  events: ChatSSEEvent[];
-  /** Whether the message is still being streamed */
+  /** Whether the message is still being written, piece by piece */
   isStreaming?: boolean;
   /** The id of the message this line belongs to: the one that started the
    * run, or the one that answered what it waited for. */
@@ -64,8 +43,9 @@ export interface ChatAttachment {
   contentType?: string | null;
 }
 
-export type ChatStatus =
-  'idle' | 'streaming' | 'waiting_for_input' | 'done' | 'error';
+/** What the chat is doing: nothing, a run is busy, a run waits to be told
+ * something, or the conversation cannot be read. */
+export type ChatStatus = 'idle' | 'streaming' | 'waiting_for_input' | 'error';
 
 export interface WaitingForInputData {
   /** Original target, retained when the conversation moves to its next run after a lost acknowledgement. */

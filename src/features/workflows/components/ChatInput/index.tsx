@@ -47,7 +47,6 @@ export function ChatInput({
   // its turn in the conversation.
   const isDisabled = isSending;
   const isBusy = status === 'streaming' && !waitingForInput;
-  const isDone = status === 'done';
   const isWaiting = status === 'waiting_for_input';
   const canSend = value.trim().length > 0 && !isDisabled;
 
@@ -179,18 +178,14 @@ export function ChatInput({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={
-            isDone
-              ? 'Chat completed'
-              : schemaFieldDescription || 'Type a message...'
-          }
-          disabled={isDisabled || isDone}
+          placeholder={schemaFieldDescription || 'Type a message...'}
+          disabled={isDisabled}
           className="max-h-[120px] min-h-[40px] resize-none"
           rows={1}
         />
         <Button
           onClick={handleSend}
-          disabled={!canSend || isDone}
+          disabled={!canSend}
           size="icon"
           className="size-10 shrink-0"
         >

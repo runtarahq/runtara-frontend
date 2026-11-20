@@ -17,7 +17,6 @@ import {
 } from './conversation-log';
 import {
   ChatMessage,
-  ChatSSEEvent,
   ChatStatus,
   WaitingForInputData,
 } from '@/features/workflows/types/chat';
@@ -92,13 +91,7 @@ interface ChatStoreState {
   applyConversationState: (state: ConversationState) => void;
   setLoading: (loading: boolean) => void;
   setTitle: (title: string | null) => void;
-  addSystemMessage: (content: string) => void;
-  startAssistantMessage: () => void;
-  appendToAssistantMessage: (content: string) => void;
-  addEventToAssistantMessage: (event: ChatSSEEvent) => void;
-  finalizeAssistantMessage: () => void;
   setStatus: (status: ChatStatus) => void;
-  setInstanceId: (instanceId: string) => void;
   setConversationKey: (key: string | null) => void;
   setPendingInputs: (data: WaitingForInputData[]) => void;
   /** Adds requests the run also waits on, beside the one announced. */
@@ -196,7 +189,6 @@ export const useChatStore = create<ChatStoreState>()(
             role: 'user',
             content,
             timestamp: new Date().toISOString(),
-            events: [],
           });
         });
       },
@@ -210,7 +202,6 @@ export const useChatStore = create<ChatStoreState>()(
             role: 'user',
             content,
             timestamp: new Date().toISOString(),
-            events: [],
             turn: messageId,
             ...(answers ? { answers } : {}),
           });
@@ -283,79 +274,9 @@ export const useChatStore = create<ChatStoreState>()(
         });
       },
 
-      addSystemMessage: (content) => {
-        set((state) => {
-          state.messages.push({
-            id: generateId(),
-            role: 'system',
-            content,
-            timestamp: new Date().toISOString(),
-            events: [],
-          });
-        });
-      },
-
-      startAssistantMessage: () => {
-        set((state) => {
-          state.messages.push({
-            id: generateId(),
-            role: 'assistant',
-            content: '',
-            timestamp: new Date().toISOString(),
-            events: [],
-            isStreaming: true,
-          });
-        });
-      },
-
-      appendToAssistantMessage: (content) => {
-        set((state) => {
-          // Search backwards — system messages (memory_loaded etc.) may appear after the assistant placeholder
-          for (let i = state.messages.length - 1; i >= 0; i--) {
-            if (state.messages[i].role === 'assistant') {
-              state.messages[i].content += content;
-              break;
-            }
-          }
-        });
-      },
-
-      addEventToAssistantMessage: (event) => {
-        set((state) => {
-          for (let i = state.messages.length - 1; i >= 0; i--) {
-            if (state.messages[i].role === 'assistant') {
-              state.messages[i].events.push(event);
-              break;
-            }
-          }
-        });
-      },
-
-      finalizeAssistantMessage: () => {
-        set((state) => {
-          for (let i = state.messages.length - 1; i >= 0; i--) {
-            if (state.messages[i].role === 'assistant') {
-              state.messages[i].isStreaming = false;
-              break;
-            }
-          }
-        });
-      },
-
       setStatus: (status) => {
         set((state) => {
           state.status = status;
-        });
-      },
-
-      setInstanceId: (instanceId) => {
-        set((state) => {
-          if (state.instanceId !== instanceId) {
-            state.pendingInputs = [];
-            state.waitingForInput = null;
-            state.pendingInputError = null;
-          }
-          state.instanceId = instanceId;
         });
       },
 

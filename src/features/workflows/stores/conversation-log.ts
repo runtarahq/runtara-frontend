@@ -146,7 +146,6 @@ function line(
     role,
     content,
     timestamp: event.createdAt,
-    events: [],
     ...(event.turn ? { turn: event.turn } : {}),
   };
 }
@@ -407,7 +406,6 @@ export function applyPieces(log: ConversationLog, pieces: ReplyDelta[]) {
         // A reply joined in the middle is shown when it is said whole.
         content: piece.offset === 0 ? piece.text : '',
         timestamp: new Date().toISOString(),
-        events: [],
         isStreaming: true,
         ...(piece.offset === 0 ? {} : { joinedLate: true }),
       });
@@ -460,7 +458,6 @@ function applyPage(
     role: 'system',
     content: 'What the runs did before this is no longer kept.',
     timestamp: events[Math.max(gapBefore - 1, 0)]?.createdAt ?? '',
-    events: [],
   };
   events.forEach((event, at) => {
     if (at === gapBefore) log.messages.push(gap);

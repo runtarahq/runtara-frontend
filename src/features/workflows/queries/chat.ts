@@ -1,9 +1,11 @@
-import { ChatMessage, ChatSSEEvent } from '@/features/workflows/types/chat';
+import { ChatMessage } from '@/features/workflows/types/chat';
 import { getRuntimeBaseUrl } from '@/shared/queries/utils';
 
 /**
- * Reconstruct chat history from instance step events.
- * Parses SSE-like events from the step events API and builds ChatMessage[].
+ * The transcript of a run that no conversation started (one waiting for
+ * input, opened from Invocation History), rebuilt from the run's step
+ * events. A run a conversation started is read from the conversation's log
+ * instead, and never from here.
  */
 export async function fetchChatHistory(
   token: string,
@@ -127,14 +129,14 @@ function reconstructMessagesFromEvents(
   const addSystem = (
     content: string,
     timestamp: string,
-    sseEvents: ChatSSEEvent[] = []
+    tone?: ChatMessage['tone']
   ) => {
     messages.push({
       id: makeId(),
       role: 'system',
       content,
       timestamp,
-      events: sseEvents,
+      ...(tone ? { tone } : {}),
     });
   };
 
@@ -171,7 +173,6 @@ function reconstructMessagesFromEvents(
           role: 'assistant',
           content: completionText,
           timestamp: createdAt,
-          events: [],
         });
       } else {
         addSystem('Completed', createdAt);
@@ -196,18 +197,8 @@ function reconstructMessagesFromEvents(
 
       // External input requested (WaitForSignal)
       if (subtype === 'external_input_requested') {
-        const waitEvent: ChatSSEEvent = {
-          type: 'waiting_for_input',
-          data: {
-            signal_id: payload.signal_id,
-            message: payload.message,
-            response_schema: payload.response_schema,
-            tool_name: payload.tool_name,
-          },
-          timestamp: createdAt,
-        };
         const promptMsg = (payload.message as string) ?? 'Waiting for input...';
-        addSystem(promptMsg, createdAt, [waitEvent]);
+        addSystem(promptMsg, createdAt, 'warning');
         continue;
       }
 
@@ -275,7 +266,6 @@ function reconstructMessagesFromEvents(
               ? responseData
               : JSON.stringify(responseData ?? 'Response sent'),
           timestamp: createdAt,
-          events: [],
         });
         continue;
       }
@@ -290,7 +280,6 @@ function reconstructMessagesFromEvents(
         role: 'assistant',
         content: (content as string) ?? '',
         timestamp: createdAt,
-        events: [],
       });
       continue;
     }

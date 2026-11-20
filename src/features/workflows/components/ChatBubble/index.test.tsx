@@ -9,7 +9,6 @@ function message(fields: Partial<ChatMessage>): ChatMessage {
     role: 'assistant',
     content: '',
     timestamp: 'now',
-    events: [],
     ...fields,
   };
 }
