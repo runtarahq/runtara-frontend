@@ -1,3 +1,4 @@
+import { declareGivenInputs } from '@/features/workflows/utils/given-inputs';
 import type { SchemaField as EditorSchemaField } from '@/features/workflows/components/WorkflowEditor/EditorSidebar/SchemaFieldsEditor';
 import {
   useWorkflowSettings,
@@ -770,9 +771,14 @@ export function Workflow() {
     }
 
     // Build input/output schemas for execution graph
-    // Use staged changes if available, otherwise use original data
-    const inputSchemaFieldsToUse =
-      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [];
+    // Use staged changes if available, otherwise use original data. What
+    // the server gives a run (the conversation, a webhook's headers) is
+    // declared where a step refers to it: the server refuses a reference to
+    // an input the schema does not declare.
+    const inputSchemaFieldsToUse = declareGivenInputs(
+      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [],
+      finalState.nodes.map((node) => node.data)
+    );
     const outputSchemaFieldsToUse =
       stagedWorkflowChanges.outputSchemaFields ?? data.outputSchemaFields ?? [];
     const stateSchemaFieldsToUse =
@@ -1197,8 +1203,10 @@ export function Workflow() {
     }
 
     // Build schemas for export
-    const inputSchemaFieldsToUse =
-      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [];
+    const inputSchemaFieldsToUse = declareGivenInputs(
+      stagedWorkflowChanges.inputSchemaFields ?? data.inputSchemaFields ?? [],
+      nodes.map((node) => node.data)
+    );
     const outputSchemaFieldsToUse =
       stagedWorkflowChanges.outputSchemaFields ?? data.outputSchemaFields ?? [];
     const inputSchema =

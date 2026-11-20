@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { SchemaField } from '@/features/workflows/components/WorkflowEditor/EditorSidebar/SchemaFieldsEditor';
 import { composeVariableSuggestions } from '@/features/workflows/components/WorkflowEditor/NodeForm/InputMappingValueField/VariableSuggestions';
 import { resolveReferenceType } from '@/features/workflows/components/WorkflowEditor/NodeForm/reference-type';
+import { buildSchemaFromFields } from './schema';
 import {
   CONVERSATION_ID_REFERENCE,
+  declareGivenInputs,
   givenInputFields,
   stepsCanChat,
 } from './given-inputs';
@@ -87,5 +89,84 @@ describe('what the server gives a run beside its input', () => {
       ])
     ).toBe(true);
     expect(stepsCanChat(undefined)).toBe(false);
+  });
+
+  describe('declared where a step refers to it', () => {
+    const agent = (reference: string) => [
+      {
+        stepType: 'AiAgent',
+        inputMapping: [
+          {
+            type: 'memoryConversationId',
+            value: reference,
+            valueType: 'reference',
+          },
+        ],
+      },
+    ];
+    const names = (fields: SchemaField[]) => fields.map((f) => f.name);
+
+    it('declares the conversation for a workflow that reads its id', () => {
+      const fields = declareGivenInputs([], agent(CONVERSATION_ID_REFERENCE));
+      expect(names(fields)).toEqual(['conversation']);
+      // Optional, and with the id the reference reads, so the server finds
+      // the whole path and no run is refused for lacking it.
+      expect(fields[0]).toMatchObject({ type: 'object', required: false });
+      expect(names(fields[0].properties ?? [])).toContain('id');
+    });
+
+    it('is saved as a schema the server finds the reference in', () => {
+      const schema = buildSchemaFromFields(
+        declareGivenInputs([], agent(CONVERSATION_ID_REFERENCE))
+      );
+      // The shape a local 11.0.0 server accepted with no warning.
+      expect(schema.conversation).toMatchObject({
+        type: 'object',
+        required: false,
+        properties: { id: { type: 'string', required: false } },
+      });
+    });
+
+    it('takes either spelling of the workflow input', () => {
+      expect(
+        names(
+          declareGivenInputs([], agent('workflow.inputs.data.conversation.id'))
+        )
+      ).toEqual(['conversation']);
+      expect(
+        names(declareGivenInputs([], [{ value: 'data.headers.x-signature' }]))
+      ).toEqual(['headers']);
+    });
+
+    it("keeps the workflow's own fields, before what is added", () => {
+      const own = [declared('message', 'string')];
+      expect(
+        names(declareGivenInputs(own, agent(CONVERSATION_ID_REFERENCE)))
+      ).toEqual(['message', 'conversation']);
+    });
+
+    it('declares nothing that no step refers to', () => {
+      const own = [declared('message', 'string')];
+      expect(declareGivenInputs(own, agent('data.message'))).toBe(own);
+      expect(declareGivenInputs(undefined, [])).toEqual([]);
+      // Another field whose name only begins the same, and another root.
+      expect(
+        declareGivenInputs(
+          [],
+          [
+            { value: 'data.conversationId' },
+            { value: 'steps.a.outputs.data.headers' },
+            { value: 'metadata.conversation' },
+          ]
+        )
+      ).toEqual([]);
+    });
+
+    it('leaves a field the workflow declares under that name as it is', () => {
+      const own = [declared('conversation', 'string')];
+      expect(declareGivenInputs(own, agent(CONVERSATION_ID_REFERENCE))).toBe(
+        own
+      );
+    });
   });
 });
