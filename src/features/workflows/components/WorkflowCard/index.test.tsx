@@ -63,6 +63,21 @@ describe('WorkflowCard chat action', () => {
     expect(screen.queryByTitle('Chat')).not.toBeInTheDocument();
   });
 
+  it('offers Chat on a workflow that reads the conversation each run is given', () => {
+    // No step waits: each message starts a run of its own.
+    renderCard(
+      buildWorkflow({
+        supportsChat: false,
+        inputSchema: {
+          message: { type: 'string' },
+          conversation: { type: 'object' },
+        },
+      })
+    );
+
+    expect(screen.getByTitle('Chat')).toBeInTheDocument();
+  });
+
   it('withholds Chat when the server did not report the capability', () => {
     // A response predating `supportsChat` must not be read as "yes".
     renderCard(buildWorkflow());

@@ -308,10 +308,14 @@ export function useConversationChat(
    * Start a new conversation under a key of this page's own. It is opened
    * as the console's, and `onOpened` is told its key once it exists. Then a
    * first message that says nothing is sent: the workflow begins, and
-   * speaks first if it has something to say.
+   * speaks first if it has something to say. Without `speaksFirst` nothing
+   * is sent: the first run is started by the first thing said.
    */
   const startSession = useCallback(
-    async (onOpened?: (key: string) => void) => {
+    async (
+      onOpened?: (key: string) => void,
+      { speaksFirst = true }: { speaksFirst?: boolean } = {}
+    ) => {
       const store = useChatStore.getState();
       const abortController = begin();
       const key = `console:${crypto.randomUUID()}`;
@@ -339,6 +343,13 @@ export function useConversationChat(
         return;
       }
 
+      // A workflow that runs once per message has nothing to begin: its
+      // first run is started by the first thing said.
+      if (!speaksFirst) {
+        store.setStatus('idle');
+        await follow(key, 0, abortController);
+        return;
+      }
       const opening: Message = {
         id: crypto.randomUUID(),
         payload: {},

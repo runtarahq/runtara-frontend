@@ -51,7 +51,10 @@ vi.mock(
 const WORKFLOW_ID = 'wf-chat';
 const INSTANCE_ID = 'inst-chat';
 
-function buildWorkflow(supportsChat: boolean): WorkflowDto {
+function buildWorkflow(
+  supportsChat: boolean,
+  inputSchema: Record<string, unknown> = {}
+): WorkflowDto {
   return {
     id: WORKFLOW_ID,
     name: 'Probe workflow',
@@ -61,7 +64,7 @@ function buildWorkflow(supportsChat: boolean): WorkflowDto {
     currentVersionNumber: 1,
     lastVersionNumber: 1,
     executionGraph: {},
-    inputSchema: {},
+    inputSchema,
     outputSchema: {},
     path: '/',
     supportsChat,
@@ -199,6 +202,37 @@ describe('ChatPage on a chat-capable workflow', () => {
         expect.anything()
       );
     });
+    expect(
+      screen.queryByText('This workflow does not support chat')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Type a message...')
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ChatPage on a workflow that runs once per message', () => {
+  it('opens a conversation and waits for the first message', async () => {
+    mocks.getWorkflow.mockResolvedValue({
+      data: buildWorkflow(false, { conversation: { type: 'object' } }),
+    });
+
+    renderChat();
+
+    await waitFor(() =>
+      expect(mocks.openConversation).toHaveBeenCalledWith(
+        'test-token',
+        WORKFLOW_ID,
+        expect.stringMatching(/^console:/),
+        expect.anything(),
+        expect.anything()
+      )
+    );
+    await waitFor(() =>
+      expect(mocks.streamConversationEvents).toHaveBeenCalledTimes(1)
+    );
+    // Nothing is said for the user: no run starts on an empty message.
+    expect(mocks.sendConversationMessage).not.toHaveBeenCalled();
     expect(
       screen.queryByText('This workflow does not support chat')
     ).not.toBeInTheDocument();
