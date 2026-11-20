@@ -79,12 +79,14 @@ interface ChatStoreState {
    * first. */
   openConversationEvents: (
     events: ConversationEvent[],
-    hasEarlier: boolean
+    hasEarlier: boolean,
+    whole?: boolean
   ) => void;
   /** Puts a page of earlier events, oldest first, before the transcript. */
   prependConversationEvents: (
     events: ConversationEvent[],
-    hasEarlier: boolean
+    hasEarlier: boolean,
+    whole?: boolean
   ) => void;
   setLoadingEarlier: (loading: boolean) => void;
   /** Applies pieces of replies as they are written, several at once. */
@@ -236,15 +238,15 @@ export const useChatStore = create<ChatStoreState>()(
         });
       },
 
-      openConversationEvents: (events, hasEarlier) => {
+      openConversationEvents: (events, hasEarlier, whole) => {
         set((state) => {
-          applyOpening(state, events, hasEarlier);
+          applyOpening(state, events, hasEarlier, whole);
         });
       },
 
-      prependConversationEvents: (events, hasEarlier) => {
+      prependConversationEvents: (events, hasEarlier, whole) => {
         set((state) => {
-          applyEarlier(state, events, hasEarlier);
+          applyEarlier(state, events, hasEarlier, whole);
         });
       },
 

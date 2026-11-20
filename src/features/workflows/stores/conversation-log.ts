@@ -487,9 +487,12 @@ function applyPage(
 export function applyOpening(
   log: ConversationLog,
   events: ConversationEvent[],
-  hasEarlier: boolean
+  hasEarlier: boolean,
+  /** Whether every kind of event was read: only then does a break in the
+   * numbering mean events that are no longer kept. */
+  whole = true
 ) {
-  applyPage(log, events, null, true);
+  applyPage(log, events, null, whole);
   log.firstSeq = events[0]?.seq ?? 0;
   log.hasEarlier = hasEarlier && log.firstSeq > 1;
 }
@@ -501,7 +504,8 @@ export function applyOpening(
 export function applyEarlier(
   log: ConversationLog,
   events: ConversationEvent[],
-  hasEarlier: boolean
+  hasEarlier: boolean,
+  whole = true
 ) {
   if (!events.length) {
     log.hasEarlier = false;
@@ -522,7 +526,12 @@ export function applyEarlier(
     pendingInputs: [],
     pendingInputError: null,
   };
-  applyPage(page, events, log.firstSeq || null, !known.has(ACTIVITY_GAP));
+  applyPage(
+    page,
+    events,
+    log.firstSeq || null,
+    whole && !known.has(ACTIVITY_GAP)
+  );
   log.messages = [
     ...page.messages.filter((m) => !known.has(m.id)),
     ...log.messages,

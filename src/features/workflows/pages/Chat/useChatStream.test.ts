@@ -877,7 +877,11 @@ it('opens a conversation with its last events and reads on from them, with no ga
     void result.current.reconnect('conversation');
     await settle();
   });
-  expect(vi.mocked(readBack).mock.calls[0][3]).toEqual({ limit: 200 });
+  // Every kind, the runs' activity among them: the console is shown it.
+  expect(vi.mocked(readBack).mock.calls[0][3]).toEqual({
+    limit: 200,
+    kinds: undefined,
+  });
   // Not replayed from the first: read on from the last event read back.
   expect(vi.mocked(streamEvents).mock.calls[0][3]?.after).toBe(42);
   expect(transcript()).toEqual([
@@ -920,6 +924,7 @@ it('reads earlier events when asked, until the first', async () => {
   expect(vi.mocked(readBack).mock.calls[1][3]).toEqual({
     before: 201,
     limit: 200,
+    kinds: undefined,
   });
   expect(transcript()[0]).toEqual(['user', 'said 200']);
   expect(transcript()).toHaveLength(201);
@@ -977,6 +982,34 @@ describe('a chat that holds a conversation token', () => {
     });
     expect(openConversation).not.toHaveBeenCalled();
     expect(getPendingInput).not.toHaveBeenCalled();
+    act(() => result.current.cancelStream());
+  });
+
+  it('asks only for what is said, not for what the runs did', async () => {
+    // 7 and 8 are not sent: the runs' activity, left out by asking.
+    vi.mocked(readBack).mockResolvedValue([kept(9, 'nine'), kept(6, 'six')]);
+    vi.mocked(streamEvents).mockResolvedValue(stream().body);
+    const { result } = guest();
+    await act(async () => {
+      void result.current.reconnect('conversation');
+      await settle();
+    });
+    const asked = vi.mocked(readBack).mock.calls[0][3]?.kinds;
+    expect(asked).toContain('reply');
+    expect(asked).toContain('reply_delta');
+    expect(asked).not.toContain('activity');
+    expect(vi.mocked(streamEvents).mock.calls[0][3]?.kinds).toEqual(asked);
+    // A break in the numbering is then what was not asked for, and is not
+    // said to be something no longer kept.
+    expect(transcript()).toEqual([
+      ['user', 'six'],
+      ['user', 'nine'],
+    ]);
+    expect(
+      useChatStore
+        .getState()
+        .messages.some((m) => m.content.includes('no longer kept'))
+    ).toBe(false);
     act(() => result.current.cancelStream());
   });
 
