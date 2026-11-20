@@ -214,7 +214,7 @@ function Attachments({ attachments }: { attachments: ChatAttachment[] }) {
 
 export function ChatBubble({ message }: ChatBubbleProps) {
   const { role, content, events, isStreaming, sender } = message;
-  const { format, data, attachments, tone, failure } = message;
+  const { format, data, attachments, tone, failure, incomplete } = message;
   const hasData = data !== undefined && data !== null;
 
   if (role === 'user') {
@@ -303,6 +303,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
           <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-foreground/60" />
         )}
 
+        {incomplete && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Incomplete: the run ended before it finished this reply.
+          </p>
+        )}
         {!!attachments?.length && <Attachments attachments={attachments} />}
         {hasData && <ReplyData data={data} />}
         <EventDetails events={events} />
