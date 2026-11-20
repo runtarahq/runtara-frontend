@@ -645,7 +645,6 @@ export function useChatStream(workflowId: string) {
     abortRef.current = null;
 
     const store = useChatStore.getState();
-    store.finalizeAssistantMessage();
     store.setAbortController(null);
 
     // Only change status if we were actively streaming

@@ -309,9 +309,6 @@ export function ChatPage() {
                 </DropdownMenu>
               </div>
             )}
-          {status === 'done' && (
-            <span className="text-xs text-muted-foreground">Completed</span>
-          )}
         </div>
 
         {/* Error banner */}

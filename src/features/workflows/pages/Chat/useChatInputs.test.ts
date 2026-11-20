@@ -107,7 +107,9 @@ describe('authoritative chat input discovery and acceptance', () => {
     vi.mocked(getPendingInput).mockReturnValueOnce(old.promise);
     renderHook(() => useChatInputs('workflow', 'token'));
     vi.mocked(getPendingInput).mockResolvedValue([]);
-    act(() => useChatStore.getState().setInstanceId('replacement'));
+    act(() =>
+      useChatStore.getState().resumeChat('workflow', 'Workflow', 'replacement')
+    );
     await act(async () => {
       old.resolve([request]);
     });

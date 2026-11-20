@@ -1,15 +1,17 @@
-import {
-  ChatSSEEvent,
-  ChatSSEEventType,
-} from '@/features/workflows/types/chat';
+/** One server-sent event: its `event` field and its `data`, parsed. */
+export interface SSEBlock {
+  type: string;
+  data: Record<string, unknown>;
+  timestamp: string;
+}
 
 /**
- * Parse a single SSE text block into a ChatSSEEvent.
+ * Parse a single SSE text block.
  * A block looks like:
  *   event: started\n
  *   data: {"type":"started","instance_id":"uuid"}\n
  */
-export function parseSingleSSEBlock(block: string): ChatSSEEvent | null {
+export function parseSingleSSEBlock(block: string): SSEBlock | null {
   const lines = block.split('\n');
   let eventType: string | undefined;
   const dataLines: string[] = [];
@@ -37,7 +39,7 @@ export function parseSingleSSEBlock(block: string): ChatSSEEvent | null {
   }
 
   // Use event field if present, otherwise fall back to data.type, then 'message'
-  const type = (eventType || data.type || 'message') as ChatSSEEventType;
+  const type = String(eventType || data.type || 'message');
 
   return {
     type,
@@ -53,7 +55,7 @@ export function parseSingleSSEBlock(block: string): ChatSSEEvent | null {
 export async function* parseSSEStream(
   stream: ReadableStream<Uint8Array>,
   signal?: AbortSignal
-): AsyncGenerator<ChatSSEEvent> {
+): AsyncGenerator<SSEBlock> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

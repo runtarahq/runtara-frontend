@@ -8,7 +8,6 @@ const line = (id: string): ChatMessage => ({
   role: 'user',
   content: id,
   timestamp: 'now',
-  events: [],
 });
 
 afterEach(cleanup);
