@@ -23,6 +23,8 @@ export interface ChatMessage {
   attachments?: ChatAttachment[];
   /** A line that reports a failure, or something to look into. */
   tone?: 'error' | 'warning';
+  /** Where a line that reports something leads, to look into it. */
+  link?: { to: string; label: string };
   /** Why a message this line shows was not taken. */
   failure?: string;
   /** A message that waits its turn: the run is busy with another. */

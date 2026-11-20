@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -78,7 +79,7 @@ function Attachments({ attachments }: { attachments: ChatAttachment[] }) {
 export function ChatBubble({ message }: ChatBubbleProps) {
   const { role, content, isStreaming, sender } = message;
   const { format, data, attachments, tone, failure, incomplete } = message;
-  const { queued } = message;
+  const { queued, link } = message;
   const hasData = data !== undefined && data !== null;
 
   if (role === 'user') {
@@ -129,6 +130,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         >
           {tone && <AlertCircle className="size-3" />}
           <span>{content}</span>
+          {link && (
+            <Link to={link.to} className="underline">
+              {link.label}
+            </Link>
+          )}
         </div>
       </div>
     );

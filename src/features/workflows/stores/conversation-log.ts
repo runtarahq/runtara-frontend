@@ -327,12 +327,19 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
     }
 
     case 'reply_route_failed':
-      note(
-        log,
-        event,
-        `The reply workflow could not be started: ${event.body.reason}`,
-        'warning'
-      );
+      put(log, {
+        ...line(
+          event,
+          `seq:${String(event.seq)}`,
+          'system',
+          `The reply workflow could not be started: ${event.body.reason}`
+        ),
+        tone: 'warning',
+        link: {
+          to: `/workflows/${event.body.replyWorkflowId}`,
+          label: 'Open the reply workflow',
+        },
+      });
       break;
 
     case 'run_ended':

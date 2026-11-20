@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChatMessage } from '@/features/workflows/types/chat';
 import { ChatBubble } from './index';
@@ -81,5 +82,23 @@ describe('ChatBubble', () => {
       />
     );
     expect(screen.getByText(/Not delivered: too late/)).toBeInTheDocument();
+  });
+
+  it('links a line that reports something to where it is looked into', () => {
+    render(
+      <MemoryRouter>
+        <ChatBubble
+          message={message({
+            role: 'system',
+            content: 'The reply workflow could not be started: it was deleted',
+            tone: 'warning',
+            link: { to: '/workflows/wf', label: 'Open the reply workflow' },
+          })}
+        />
+      </MemoryRouter>
+    );
+    expect(
+      screen.getByRole('link', { name: 'Open the reply workflow' })
+    ).toHaveAttribute('href', '/workflows/wf');
   });
 });
