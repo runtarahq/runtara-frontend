@@ -15,155 +15,6 @@ import {
 const MAX_STREAM_FAILURES = 5;
 const STREAM_RETRY_MS = 1000;
 
-/**
- * What a run is doing, as the conversation relays it (`activity`): model and
- * tool calls and memory, each a line in the transcript.
- */
-function handleActivity(body: Record<string, unknown>) {
-  const store = useChatStore.getState();
-
-  switch (body.type) {
-    case 'memory_loaded': {
-      const outputs = body.outputs as Record<string, unknown> | undefined;
-      const count = body.message_count ?? outputs?.message_count ?? 0;
-      store.addSystemMessage(`Loaded ${String(count)} messages from memory`);
-      break;
-    }
-
-    case 'llm_start': {
-      const model = body.model as string | undefined;
-      store.addSystemMessage(model ? `${model} thinking...` : 'Thinking...');
-      break;
-    }
-
-    case 'llm_end':
-      store.addSystemMessage('Done thinking');
-      break;
-
-    case 'tool_call': {
-      const toolName = (body.tool_name as string) ?? 'tool';
-      store.addSystemMessage(`Calling tool: ${toolName}`);
-      break;
-    }
-
-    case 'tool_result': {
-      const toolName = (body.tool_name as string) ?? 'tool';
-      const durationMs = body.duration_ms as number | undefined;
-      const durationStr =
-        durationMs != null ? ` (${String(durationMs)}ms)` : '';
-      store.addSystemMessage(`${toolName} completed${durationStr}`);
-      break;
-    }
-
-    case 'memory_saved': {
-      const savedCount = body.message_count ?? 0;
-      store.addSystemMessage(`Saved ${String(savedCount)} messages to memory`);
-      break;
-    }
-
-    case 'message':
-      // An AI Agent step's answer, before the run says or returns it.
-      if (typeof body.content === 'string') say(body.content);
-      break;
-  }
-}
-
-/** Adds what the workflow said, unless it is what it just said: a run's
- * answer can arrive as its agent's message and again as its reply. */
-function say(text: string) {
-  if (!text.trim()) return;
-  const store = useChatStore.getState();
-  const last = [...store.messages].reverse().find((m) => m.role !== 'system');
-  if (last?.role === 'assistant' && last.content === text) return;
-  store.startAssistantMessage();
-  store.appendToAssistantMessage(text);
-  store.finalizeAssistantMessage();
-}
-
-/** What a reply carries, as text: its own, then its attachments. */
-function replyText(body: Record<string, unknown>): string {
-  const text = typeof body.text === 'string' ? body.text : '';
-  const attachments = Array.isArray(body.attachments)
-    ? (body.attachments as Record<string, unknown>[])
-    : [];
-  const links = attachments
-    .filter((a) => typeof a.url === 'string')
-    .map((a) => `[${String(a.name ?? a.url)}](${String(a.url)})`);
-  return [text, ...links].filter(Boolean).join('\n');
-}
-
-/**
- * Applies one event of the conversation to the chat store. `sent` holds the
- * ids of the messages this page sent, which it has shown already.
- */
-function handleConversationEvent(
-  event: { kind: string; body?: unknown },
-  sent: Set<string>
-) {
-  const store = useChatStore.getState();
-  const body = (event.body ?? {}) as Record<string, unknown>;
-  const shown = typeof body.messageId === 'string' && sent.has(body.messageId);
-
-  switch (event.kind) {
-    case 'run_started':
-      if (typeof body.instanceId === 'string')
-        store.setInstanceId(body.instanceId);
-      if (!shown && typeof body.text === 'string' && body.text)
-        store.addUserMessage(body.text);
-      store.addSystemMessage('Execution started');
-      store.setStatus('streaming');
-      break;
-
-    case 'message_delivered':
-      if (!shown && typeof body.text === 'string' && body.text)
-        store.addUserMessage(body.text);
-      store.setStatus('streaming');
-      break;
-
-    case 'activity':
-      handleActivity(body);
-      break;
-
-    case 'reply':
-      say(replyText(body));
-      break;
-
-    case 'waiting_for_input': {
-      // Only a structured request is announced; a plain "message" one is the
-      // chat's own input box. Managed discovery controls actionable forms.
-      const schema = body.responseSchema as Record<string, unknown> | null;
-      const keys =
-        schema && typeof schema === 'object' ? Object.keys(schema) : [];
-      const isSimple =
-        keys.length === 0 || (keys.length === 1 && keys[0] === 'message');
-      if (!isSimple)
-        store.addSystemMessage(
-          (body.message as string) ?? 'Waiting for input...'
-        );
-      break;
-    }
-
-    case 'message_failed':
-      store.setError(
-        (body.reason as string) ?? 'The message could not be delivered'
-      );
-      break;
-
-    case 'run_ended':
-      // One run of the conversation is over; the next message starts the
-      // next one.
-      if (body.status === 'completed') {
-        store.setStatus(
-          store.pendingInputs.length ? 'waiting_for_input' : 'idle'
-        );
-      } else {
-        store.setError((body.error as string) ?? 'Execution failed');
-        store.setStatus('error');
-      }
-      break;
-  }
-}
-
 interface Unconfirmed {
   conversationKey: string;
   message: Message & { text: string };
@@ -174,9 +25,6 @@ export function useChatStream(workflowId: string) {
   const { refreshPendingInput, submitInput, uncertainResponses } =
     useChatInputs(workflowId, token);
   const abortRef = useRef<AbortController | null>(null);
-  // The ids of the messages this page sent, which it shows as it sends them
-  // and so does not show again when the conversation reports them.
-  const sent = useRef(new Set<string>());
   // Every message whose receipt is unconfirmed, each with the id a retry
   // reuses so the conversation takes it once.
   const unconfirmed = useRef<Unconfirmed[]>([]);
@@ -227,7 +75,7 @@ export function useChatStream(workflowId: string) {
             if (!('seq' in event) || event.seq <= after) continue;
             after = event.seq;
             failures = 0;
-            handleConversationEvent(event, sent.current);
+            useChatStore.getState().applyConversationEvent(event);
             if (
               event.kind === 'waiting_for_input' ||
               event.kind === 'run_started'
@@ -282,7 +130,6 @@ export function useChatStream(workflowId: string) {
       id: crypto.randomUUID(),
       payload: {},
     };
-    sent.current.add(opening.id);
     try {
       const started = await sendConversationMessage(
         token,
@@ -370,9 +217,6 @@ export function useChatStream(workflowId: string) {
       };
       enqueueing.current = true;
       store.setError(null);
-      // Before it is sent: the conversation may report it before the send
-      // returns.
-      sent.current.add(intent.message.id);
       try {
         const outcome = await sendConversationMessage(
           token,
@@ -383,7 +227,9 @@ export function useChatStream(workflowId: string) {
         settleUnconfirmed((all) => all.filter((i) => i !== intent));
         const current = useChatStore.getState();
         if (current.conversationKey !== conversationKey) return false;
-        store.addUserMessage(content);
+        // The conversation may have reported it already: it is one line
+        // either way.
+        store.showSentMessage(intent.message.id, content);
         if (outcome.state === 'failed') {
           store.setError(
             outcome.detail ?? 'The message could not be delivered'
@@ -405,7 +251,6 @@ export function useChatStream(workflowId: string) {
           // Definitive: the conversation kept nothing (its queue is full, or
           // the message is not one). Sending the same message again as it is
           // cannot help; a new one may.
-          sent.current.delete(intent.message.id);
           settleUnconfirmed((all) => all.filter((i) => i !== intent));
         } else {
           settleUnconfirmed((all) =>

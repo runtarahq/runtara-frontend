@@ -30,6 +30,9 @@ export interface ChatMessage {
   events: ChatSSEEvent[];
   /** Whether the message is still being streamed */
   isStreaming?: boolean;
+  /** The id of the message this line belongs to: the one that started the
+   * run, or the one that answered what it waited for. */
+  turn?: string;
 }
 
 export type ChatStatus =

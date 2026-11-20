@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import type { ConversationEvent } from '@/generated/RuntaraRuntimeApi';
+import { applyEvent, messageLineId } from './conversation-log';
 import {
   ChatMessage,
   ChatSSEEvent,
@@ -33,6 +35,11 @@ interface ChatStoreState {
     instanceId: string
   ) => void;
   addUserMessage: (content: string) => void;
+  /** Shows a message this page sent. The conversation's `message` event
+   * for the same id is the same line, whichever comes first. */
+  showSentMessage: (messageId: string, content: string) => void;
+  /** Applies one kept event of the conversation's log. */
+  applyConversationEvent: (event: ConversationEvent) => void;
   addSystemMessage: (content: string) => void;
   startAssistantMessage: () => void;
   appendToAssistantMessage: (content: string) => void;
@@ -114,6 +121,27 @@ export const useChatStore = create<ChatStoreState>()(
             timestamp: new Date().toISOString(),
             events: [],
           });
+        });
+      },
+
+      showSentMessage: (messageId, content) => {
+        set((state) => {
+          const id = messageLineId(messageId);
+          if (state.messages.some((m) => m.id === id)) return;
+          state.messages.push({
+            id,
+            role: 'user',
+            content,
+            timestamp: new Date().toISOString(),
+            events: [],
+            turn: messageId,
+          });
+        });
+      },
+
+      applyConversationEvent: (event) => {
+        set((state) => {
+          applyEvent(state, event);
         });
       },
 
