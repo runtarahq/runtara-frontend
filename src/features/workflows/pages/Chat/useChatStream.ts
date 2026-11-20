@@ -2,14 +2,13 @@ import { useCallback, useRef, useState } from 'react';
 import { useChatInputs } from './useChatInputs';
 import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
+import type { Message } from '@/generated/RuntaraRuntimeApi';
 import {
-  sendConversationMessage,
-  streamConversationEvents,
-  type ConversationEvent,
-  type ConversationMessage,
-} from '@/features/workflows/queries/chat';
-import { parseSSEStream } from '@/features/workflows/utils/sse';
-import { InputSubmissionError } from '@/features/workflows/utils/input-submission';
+  ConversationError,
+  readStream,
+  sendMessage as sendConversationMessage,
+  streamEvents,
+} from '@/features/workflows/queries/conversations';
 
 /** How often a stream that keeps failing is asked for again before the chat
  * says so. */
@@ -97,9 +96,12 @@ function replyText(body: Record<string, unknown>): string {
  * Applies one event of the conversation to the chat store. `sent` holds the
  * ids of the messages this page sent, which it has shown already.
  */
-function handleConversationEvent(event: ConversationEvent, sent: Set<string>) {
+function handleConversationEvent(
+  event: { kind: string; body?: unknown },
+  sent: Set<string>
+) {
   const store = useChatStore.getState();
-  const body = event.body ?? {};
+  const body = (event.body ?? {}) as Record<string, unknown>;
   const shown = typeof body.messageId === 'string' && sent.has(body.messageId);
 
   switch (event.kind) {
@@ -164,7 +166,7 @@ function handleConversationEvent(event: ConversationEvent, sent: Set<string>) {
 
 interface Unconfirmed {
   conversationKey: string;
-  message: ConversationMessage & { text: string };
+  message: Message & { text: string };
 }
 
 export function useChatStream(workflowId: string) {
@@ -211,23 +213,18 @@ export function useChatStream(workflowId: string) {
 
       while (isCurrent()) {
         try {
-          const response = await streamConversationEvents(
-            token,
-            workflowId,
-            key,
+          const events = await streamEvents(token, workflowId, key, {
             after,
-            abortController.signal
-          );
-          if (!response.body) {
-            throw new Error('Response body is null — SSE stream unavailable');
-          }
-          for await (const parsed of parseSSEStream(
-            response.body,
+            signal: abortController.signal,
+          });
+          for await (const event of readStream(
+            events,
             abortController.signal
           )) {
             if (!isCurrent()) return;
-            const event = parsed.data as unknown as ConversationEvent;
-            if (typeof event.seq !== 'number' || event.seq <= after) continue;
+            // Not kept, so not numbered: `caught_up`, and the pieces of a
+            // reply (`seq` 0).
+            if (!('seq' in event) || event.seq <= after) continue;
             after = event.seq;
             failures = 0;
             handleConversationEvent(event, sent.current);
@@ -281,7 +278,7 @@ export function useChatStream(workflowId: string) {
     store.setConversationKey(key);
     store.setStatus('streaming');
 
-    const opening: ConversationMessage = {
+    const opening: Message = {
       id: crypto.randomUUID(),
       payload: {},
     };
@@ -292,7 +289,7 @@ export function useChatStream(workflowId: string) {
         workflowId,
         key,
         opening,
-        abortController.signal
+        { signal: abortController.signal }
       );
       if (started.state === 'failed') {
         store.setError(started.detail ?? 'The workflow could not be started');
@@ -401,7 +398,7 @@ export function useChatStream(workflowId: string) {
         return true;
       } catch (err: unknown) {
         const refused =
-          err instanceof InputSubmissionError &&
+          err instanceof ConversationError &&
           err.status !== undefined &&
           err.status < 500;
         if (refused) {

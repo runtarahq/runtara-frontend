@@ -3,19 +3,20 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useChatStream } from './useChatStream';
 import { useChatStore } from '../../stores/chatStore';
 import {
-  sendConversationMessage,
-  streamConversationEvents,
-} from '../../queries/chat';
-import { InputSubmissionError } from '../../utils/input-submission';
+  ConversationError,
+  sendMessage as sendConversationMessage,
+  streamEvents,
+} from '../../queries/conversations';
 
 const submitInput = vi.hoisted(() => vi.fn());
 vi.mock('./useChatInputs', () => ({
   useChatInputs: () => ({ refreshPendingInput: vi.fn(), submitInput }),
 }));
 vi.mock('@/shared/hooks/useToken', () => ({ useToken: () => 'token' }));
-vi.mock('../../queries/chat', () => ({
-  sendConversationMessage: vi.fn(),
-  streamConversationEvents: vi.fn(),
+vi.mock('../../queries/conversations', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../queries/conversations')>()),
+  sendMessage: vi.fn(),
+  streamEvents: vi.fn(),
 }));
 beforeEach(() => {
   vi.resetAllMocks();
@@ -44,7 +45,7 @@ function stream() {
   const encoder = new TextEncoder();
   let seq = 0;
   return {
-    response: new Response(body),
+    body,
     push(kind: string, eventBody: Record<string, unknown>, at?: number) {
       seq = at ?? seq + 1;
       const event = { seq, kind, body: eventBody, createdAt: 'now' };
@@ -113,7 +114,7 @@ it("does not duplicate an in-flight send or put an old conversation's error into
 it('treats a refused message as final: nothing kept, nothing to retry', async () => {
   const { result } = renderHook(() => useChatStream('workflow'));
   vi.mocked(sendConversationMessage).mockRejectedValueOnce(
-    new InputSubmissionError(
+    new ConversationError(
       'the conversation already holds 32 messages waiting their turn',
       'CONVERSATION_QUEUE_FULL',
       429
@@ -151,7 +152,7 @@ it('says so when the message was taken but no run could be started for it', asyn
 
 it("reads a conversation's events as its transcript, both sides of it", async () => {
   const events = stream();
-  vi.mocked(streamConversationEvents).mockResolvedValue(events.response);
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
   const { result } = renderHook(() => useChatStream('workflow'));
   await act(async () => {
     void result.current.reconnect('conversation');
@@ -190,7 +191,7 @@ it("reads a conversation's events as its transcript, both sides of it", async ()
 
 it('does not show a message it sent again when the conversation reports it', async () => {
   const events = stream();
-  vi.mocked(streamConversationEvents).mockResolvedValue(events.response);
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
   vi.mocked(sendConversationMessage).mockImplementation(
     async (_token, _workflow, _key, message) => ({
       messageId: message.id,
@@ -225,9 +226,9 @@ it('reads on from the last event it saw when a stream ends', async () => {
   try {
     const first = stream();
     const second = stream();
-    vi.mocked(streamConversationEvents)
-      .mockResolvedValueOnce(first.response)
-      .mockResolvedValueOnce(second.response);
+    vi.mocked(streamEvents)
+      .mockResolvedValueOnce(first.body)
+      .mockResolvedValueOnce(second.body);
     const { result } = renderHook(() => useChatStream('workflow'));
     await act(async () => {
       void result.current.reconnect('conversation');
@@ -240,8 +241,8 @@ it('reads on from the last event it saw when a stream ends', async () => {
       second.push('reply', { text: 'two' }, 8);
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(vi.mocked(streamConversationEvents).mock.calls[0][3]).toBe(0);
-    expect(vi.mocked(streamConversationEvents).mock.calls[1][3]).toBe(7);
+    expect(vi.mocked(streamEvents).mock.calls[0][3]?.after).toBe(0);
+    expect(vi.mocked(streamEvents).mock.calls[1][3]?.after).toBe(7);
     expect(transcript()).toEqual([
       ['assistant', 'one'],
       ['assistant', 'two'],
