@@ -65,6 +65,8 @@ export function ChatPage() {
   const status = useChatStore((s) => s.status);
   const loading = useChatStore((s) => s.loading);
   const queued = useChatStore((s) => s.queued);
+  const hasEarlier = useChatStore((s) => s.hasEarlier);
+  const loadingEarlier = useChatStore((s) => s.loadingEarlier);
   const title = useChatStore((s) => s.title);
   const waitingForInput = useChatStore((s) => s.waitingForInput);
   const pendingInputs = useChatStore((s) => s.pendingInputs);
@@ -83,6 +85,7 @@ export function ChatPage() {
     submitInput,
     retryMessage,
     retryResponse,
+    loadEarlier,
     stop,
     cancelStream,
     uncertainMessages,
@@ -284,7 +287,12 @@ export function ChatPage() {
               <Skeleton className="h-10 w-1/3 self-end" />
             </div>
           ) : (
-            <ChatMessageList messages={messages} />
+            <ChatMessageList
+              messages={messages}
+              hasEarlier={hasEarlier}
+              loadingEarlier={loadingEarlier}
+              onLoadEarlier={() => void loadEarlier()}
+            />
           )}
           {uncertainResponses?.map((response) => (
             <div

@@ -26,6 +26,10 @@ export interface ConversationLog {
   lastSeq: number;
   /** How many messages wait their turn, as the conversation last said. */
   queued: number;
+  /** The earliest kept event read: what is before it is read on asking. */
+  firstSeq: number;
+  /** Whether there are kept events before `firstSeq`. */
+  hasEarlier: boolean;
   /** What a person calls the conversation: `null` when it has no title,
    * `undefined` until the conversation has been read. */
   title: string | null | undefined;
@@ -420,4 +424,99 @@ export function applyPieces(log: ConversationLog, pieces: ReplyDelta[]) {
       written.content = written.content.slice(0, piece.offset) + piece.text;
     }
   }
+}
+
+/** The line that says a run's activity before it is no longer kept. */
+const ACTIVITY_GAP = 'activity-gap';
+
+/**
+ * Events are numbered without a break, so a break means events that are no
+ * longer kept: a run's activity, which is kept for less time than what was
+ * said. The newest break is where activity stops being kept. This is the
+ * place in `events` (oldest first) it comes before, `events.length` when it
+ * is between the last of them and `next`, the event that follows them, and
+ * -1 when there is none.
+ */
+function newestGap(events: ConversationEvent[], next: number | null): number {
+  const last = events.at(-1);
+  if (last && next !== null && next - last.seq > 1) return events.length;
+  for (let at = events.length - 1; at > 0; at--) {
+    if (events[at].seq - events[at - 1].seq > 1) return at;
+  }
+  return -1;
+}
+
+/** Applies a page of kept events, oldest first, saying once where the
+ * runs' activity stops being kept. */
+function applyPage(
+  log: ConversationLog,
+  events: ConversationEvent[],
+  next: number | null,
+  noteGap: boolean
+) {
+  const gapBefore = noteGap ? newestGap(events, next) : -1;
+  const gap: ChatMessage = {
+    id: ACTIVITY_GAP,
+    role: 'system',
+    content: 'What the runs did before this is no longer kept.',
+    timestamp: events[Math.max(gapBefore - 1, 0)]?.createdAt ?? '',
+    events: [],
+  };
+  events.forEach((event, at) => {
+    if (at === gapBefore) log.messages.push(gap);
+    applyEvent(log, event);
+  });
+  if (gapBefore === events.length) log.messages.push(gap);
+}
+
+/**
+ * Opens the transcript with the conversation's last kept events, oldest
+ * first, read back from its log. `hasEarlier` says whether there is more
+ * before them.
+ */
+export function applyOpening(
+  log: ConversationLog,
+  events: ConversationEvent[],
+  hasEarlier: boolean
+) {
+  applyPage(log, events, null, true);
+  log.firstSeq = events[0]?.seq ?? 0;
+  log.hasEarlier = hasEarlier && log.firstSeq > 1;
+}
+
+/**
+ * Puts a page of earlier events, oldest first, before what the transcript
+ * has: their lines only, without what they would say the chat is doing now.
+ */
+export function applyEarlier(
+  log: ConversationLog,
+  events: ConversationEvent[],
+  hasEarlier: boolean
+) {
+  if (!events.length) {
+    log.hasEarlier = false;
+    return;
+  }
+  const known = new Set(log.messages.map((m) => m.id));
+  const page: ConversationLog = {
+    messages: [],
+    instanceId: null,
+    status: 'idle',
+    loading: false,
+    lastSeq: 0,
+    queued: 0,
+    firstSeq: 0,
+    hasEarlier: false,
+    title: undefined,
+    waitingForInput: null,
+    pendingInputs: [],
+    pendingInputError: null,
+  };
+  applyPage(page, events, log.firstSeq || null, !known.has(ACTIVITY_GAP));
+  log.messages = [
+    ...page.messages.filter((m) => !known.has(m.id)),
+    ...log.messages,
+  ];
+  log.firstSeq = events[0].seq;
+  log.hasEarlier = hasEarlier && log.firstSeq > 1;
 }

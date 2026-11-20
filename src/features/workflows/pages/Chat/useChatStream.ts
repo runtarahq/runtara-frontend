@@ -9,6 +9,7 @@ import {
   ConversationError,
   getConversation,
   openConversation,
+  readBack,
   readStream,
   sendMessage as sendConversationMessage,
   stopConversation,
@@ -29,6 +30,9 @@ const QUEUE_FULL = 'Too many messages waiting; wait for a reply';
  * every run, so it is kept small. */
 const CONSOLE_METADATA = { source: 'console' };
 const TITLE_LENGTH = 60;
+/** How many kept events a conversation is opened with, and how many more
+ * each reading back adds. */
+const PAGE = 200;
 
 /** A title for a conversation, from the first thing said in it. */
 export function titleFrom(text: string): string {
@@ -315,8 +319,10 @@ export function useChatStream(workflowId: string) {
   );
 
   /**
-   * Open a conversation that exists (e.g. after a page refresh): its events
-   * from the first are its transcript, and the stream carries on from there.
+   * Open a conversation that exists (e.g. after a page refresh). Its last
+   * events are read back and are its transcript, and the stream carries on
+   * from the last of them: a long conversation is not replayed whole. What
+   * is before them is read when asked for (`loadEarlier`).
    */
   const reconnect = useCallback(
     async (key: string) => {
@@ -324,10 +330,68 @@ export function useChatStream(workflowId: string) {
       const abortController = begin();
       store.setConversationKey(key);
       store.setLoading(true);
-      await follow(key, 0, abortController);
+      let from = 0;
+      try {
+        const newestFirst = await readBack(
+          token,
+          workflowId,
+          key,
+          { limit: PAGE },
+          abortController.signal
+        );
+        if (abortRef.current !== abortController) return;
+        const events = [...newestFirst].reverse();
+        store.openConversationEvents(events, newestFirst.length >= PAGE);
+        from = events.at(-1)?.seq ?? 0;
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (abortRef.current !== abortController) return;
+        if (
+          err instanceof ConversationError &&
+          err.code === 'CONVERSATION_NOT_FOUND'
+        ) {
+          store.setLoading(false);
+          store.setError(DELETED);
+          store.setStatus('error');
+          return;
+        }
+        // Not read back: the stream sends what is kept, from the first.
+      }
+      await follow(key, from, abortController);
     },
-    [begin, follow]
+    [token, workflowId, begin, follow]
   );
+
+  /** Read the events before the earliest one shown, and show them above. */
+  const loadEarlier = useCallback(async () => {
+    const store = useChatStore.getState();
+    const { conversationKey, firstSeq, hasEarlier, loadingEarlier } = store;
+    if (!conversationKey || !hasEarlier || loadingEarlier || firstSeq <= 1)
+      return;
+    store.setLoadingEarlier(true);
+    try {
+      const newestFirst = await readBack(token, workflowId, conversationKey, {
+        before: firstSeq,
+        limit: PAGE,
+      });
+      const current = useChatStore.getState();
+      if (current.conversationKey !== conversationKey) return;
+      current.prependConversationEvents(
+        [...newestFirst].reverse(),
+        newestFirst.length >= PAGE
+      );
+    } catch (err: unknown) {
+      if (useChatStore.getState().conversationKey === conversationKey)
+        store.setError(
+          err instanceof Error
+            ? err.message
+            : 'Earlier messages could not be read'
+        );
+    } finally {
+      if (useChatStore.getState().conversationKey === conversationKey)
+        useChatStore.getState().setLoadingEarlier(false);
+    }
+  }, [token, workflowId]);
 
   /**
    * Sends a message into the conversation: it starts a run, answers the
@@ -597,6 +661,7 @@ export function useChatStream(workflowId: string) {
     refreshPendingInput,
     submitInput,
     retryMessage,
+    loadEarlier,
     stop,
     /** Sends an unconfirmed answer to a run again, as the same operation. */
     retryResponse: submitRunInput,

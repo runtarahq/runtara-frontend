@@ -5,7 +5,9 @@ import type {
   ConversationState,
 } from '@/generated/RuntaraRuntimeApi';
 import {
+  applyEarlier,
   applyEvent,
+  applyOpening,
   applyPieces,
   applyState,
   type ConversationLog,
@@ -19,6 +21,8 @@ function empty(): ConversationLog {
     loading: false,
     lastSeq: 0,
     queued: 0,
+    firstSeq: 0,
+    hasEarlier: false,
     title: undefined,
     waitingForInput: null,
     pendingInputs: [],
@@ -328,6 +332,101 @@ describe('the conversation log', () => {
       expect(story(log)).toEqual([
         ['Once', true],
         ['Twice', true],
+      ]);
+    });
+  });
+
+  describe('reading back', () => {
+    const said = (seq: number, text: string): ConversationEvent => ({
+      seq,
+      turn: `m${String(seq)}`,
+      kind: 'message',
+      body: { id: `m${String(seq)}`, text },
+      createdAt: 'then',
+    });
+
+    it('opens with the last events and puts earlier ones above them', () => {
+      const log = empty();
+      applyOpening(log, [said(5, 'five'), said(6, 'six')], true);
+      expect([log.firstSeq, log.hasEarlier, log.lastSeq]).toEqual([5, true, 6]);
+      applyEarlier(log, [said(3, 'three'), said(4, 'four')], true);
+      expect(log.messages.map((m) => m.content)).toEqual([
+        'three',
+        'four',
+        'five',
+        'six',
+      ]);
+      expect([log.firstSeq, log.hasEarlier]).toEqual([3, true]);
+      // The first event of the log: there is nothing before it.
+      applyEarlier(log, [said(1, 'one'), said(2, 'two')], true);
+      expect([log.firstSeq, log.hasEarlier]).toEqual([1, false]);
+      expect(log.messages).toHaveLength(6);
+    });
+
+    it('does not let earlier events change what the chat is doing now', () => {
+      const log = empty();
+      applyOpening(
+        log,
+        [
+          {
+            seq: 9,
+            kind: 'run_started',
+            body: { instanceId: 'run-2', messageId: 'm' },
+            createdAt: 'now',
+          },
+        ],
+        true
+      );
+      applyEarlier(
+        log,
+        [
+          {
+            seq: 4,
+            kind: 'run_ended',
+            body: { instanceId: 'run-1', status: 'completed' },
+            createdAt: 'then',
+          },
+        ],
+        false
+      );
+      expect([log.status, log.instanceId, log.lastSeq]).toEqual([
+        'streaming',
+        'run-2',
+        9,
+      ]);
+    });
+
+    it('says once where what the runs did is no longer kept', () => {
+      const log = empty();
+      // 7 and 8 were activity, and are gone; 10 follows 9 with no break.
+      applyOpening(
+        log,
+        [said(6, 'six'), said(9, 'nine'), said(10, 'ten')],
+        true
+      );
+      expect(log.messages.map((m) => m.content)).toEqual([
+        'six',
+        'What the runs did before this is no longer kept.',
+        'nine',
+        'ten',
+      ]);
+      // Older breaks are behind the one already said.
+      applyEarlier(log, [said(2, 'two'), said(5, 'five')], false);
+      expect(
+        log.messages.filter((m) => m.content.includes('no longer kept'))
+      ).toHaveLength(1);
+    });
+
+    it('finds the break between an earlier page and what follows it', () => {
+      const log = empty();
+      applyOpening(log, [said(9, 'nine'), said(10, 'ten')], true);
+      applyEarlier(log, [said(5, 'five'), said(6, 'six')], true);
+      expect(log.messages.map((m) => m.content)).toEqual([
+        'five',
+        'six',
+        'What the runs did before this is no longer kept.',
+        'nine',
+        'ten',
       ]);
     });
   });
