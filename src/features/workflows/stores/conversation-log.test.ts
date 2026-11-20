@@ -104,4 +104,43 @@ describe('the conversation log', () => {
       ['', 'markdown', { only: 'data' }, undefined],
     ]);
   });
+
+  it('keeps each answer under its own message when one is sent mid-run', () => {
+    const log = read([
+      { kind: 'message', turn: 'm1', body: { id: 'm1', text: 'First' } },
+      {
+        kind: 'run_started',
+        turn: 'm1',
+        body: { instanceId: 'run-1', messageId: 'm1' },
+      },
+      // Sent while the first run is busy: logged now, answered later.
+      { kind: 'message', turn: 'm2', body: { id: 'm2', text: 'Second' } },
+      { kind: 'reply', turn: 'm1', body: { text: 'Answer to first' } },
+      {
+        kind: 'run_ended',
+        turn: 'm1',
+        body: { instanceId: 'run-1', status: 'completed' },
+      },
+      {
+        kind: 'run_started',
+        turn: 'm2',
+        body: { instanceId: 'run-2', messageId: 'm2' },
+      },
+      { kind: 'reply', turn: 'm2', body: { text: 'Answer to second' } },
+    ]);
+    expect(spoken(log)).toEqual([
+      ['user', 'First'],
+      ['assistant', 'Answer to first'],
+      ['user', 'Second'],
+      ['assistant', 'Answer to second'],
+    ]);
+    expect(log.messages.map((m) => m.turn)).toEqual([
+      'm1',
+      'm1',
+      'm1',
+      'm2',
+      'm2',
+      'm2',
+    ]);
+  });
 });

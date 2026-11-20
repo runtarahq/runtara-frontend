@@ -49,11 +49,24 @@ export function messageText(
   return JSON.stringify(payload);
 }
 
-/** Puts a line in the transcript, in place of the one with its id if there
- * is one. */
+/**
+ * Puts a line in the transcript, in place of the one with its id if there is
+ * one. A new line goes under the last line of its turn: a message sent while
+ * a run is busy is logged before that run's later replies, and each answer
+ * still belongs under its own question.
+ */
 function put(log: ConversationLog, line: ChatMessage) {
   const at = log.messages.findIndex((m) => m.id === line.id);
-  if (at >= 0) log.messages[at] = { ...log.messages[at], ...line };
+  if (at >= 0) {
+    log.messages[at] = { ...log.messages[at], ...line };
+    return;
+  }
+  let last = -1;
+  if (line.turn)
+    log.messages.forEach((m, index) => {
+      if (m.turn === line.turn) last = index;
+    });
+  if (last >= 0) log.messages.splice(last + 1, 0, line);
   else log.messages.push(line);
 }
 
