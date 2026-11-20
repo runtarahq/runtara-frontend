@@ -197,6 +197,11 @@ export async function sendMessage(
  * `caught_up`, then each event as it is said. The server ends a stream after
  * a while; the caller reads on from the last event it saw. `kinds` left out
  * asks for every kind, the pieces of replies among them.
+ *
+ * Where to read on from is said by `after` alone. `Last-Event-ID` says the
+ * same, but the server's CORS policy does not allow that header, and the
+ * console is served from another origin than the API: sending it makes the
+ * browser refuse the request before it is made.
  */
 export async function streamEvents(
   token: string,
@@ -215,7 +220,6 @@ export async function streamEvents(
       headers: {
         Accept: 'text/event-stream',
         Authorization: `Bearer ${token}`,
-        ...(after > 0 ? { 'Last-Event-ID': String(after) } : {}),
       },
       signal: options.signal,
     }
