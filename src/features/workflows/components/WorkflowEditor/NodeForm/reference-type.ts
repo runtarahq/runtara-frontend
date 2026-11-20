@@ -10,6 +10,7 @@
  * a used reference shows its real type — or honestly nothing when the shape is
  * runtime-dependent.
  */
+import { givenInputFields } from '@/features/workflows/utils/given-inputs';
 import { getStepOutputShape } from '@/features/workflows/utils/step-output-shapes';
 import { referenceSegments } from '@/features/workflows/utils/reference-path';
 import { SchemaField } from '../EditorSidebar/SchemaFieldsEditor';
@@ -224,7 +225,14 @@ export function resolveReferenceType(
     if (dataRest.length === 0) {
       return 'object';
     }
-    return resolveSchemaFieldType(dataRest, context.inputSchemaFields);
+    return (
+      resolveSchemaFieldType(dataRest, context.inputSchemaFields) ??
+      // What the server adds to the input, which no workflow declares.
+      resolveSchemaFieldType(
+        dataRest,
+        givenInputFields(context.inputSchemaFields)
+      )
+    );
   }
 
   const variableRest = rootRemainder(segments, VARIABLE_ROOTS);

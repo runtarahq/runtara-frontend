@@ -1,4 +1,5 @@
 import { appendPathSegment } from '@/features/workflows/utils/reference-path';
+import { givenInputFields } from '@/features/workflows/utils/given-inputs';
 import { SchemaField } from '../../EditorSidebar/SchemaFieldsEditor';
 import { StepInfo, StepParameter } from '../shared';
 import { SimpleVariable } from '../NodeFormContext';
@@ -156,6 +157,16 @@ export function composeVariableSuggestions(
         suggestions
       );
     }
+
+    // What the server adds to the input, which no workflow declares.
+    appendSchemaFieldSuggestions(
+      givenInputFields(inputSchemaFields),
+      '',
+      'workflow.inputs.data',
+      'Workflow Inputs',
+      'Given by the server',
+      suggestions
+    );
 
     // Always add generic workflow.inputs.data as fallback
     suggestions.push({
