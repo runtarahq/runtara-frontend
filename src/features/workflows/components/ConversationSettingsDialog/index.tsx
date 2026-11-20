@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
 import { useCustomQuery } from '@/shared/hooks/api';
+import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { useToken } from '@/shared/hooks/useToken';
 import { queryKeys } from '@/shared/queries/query-keys';
 import { Button } from '@/shared/components/ui/button';
@@ -59,7 +60,9 @@ export function ConversationSettingsDialog({
     queryKey: stateKey,
     queryFn: ({ signal }) =>
       getConversation(token, workflowId, conversationKey, signal),
-    enabled: !!token,
+    // Without OIDC the server signs requests in itself: there is no token
+    // to wait for.
+    enabled: !!token || !isOidcAuth,
   });
   const { data: listed } = useCustomQuery({
     queryKey: queryKeys.workflows.all,

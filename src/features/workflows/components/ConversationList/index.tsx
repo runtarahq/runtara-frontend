@@ -9,6 +9,7 @@ import { ConversationSettingsDialog } from '@/features/workflows/components/Conv
 import { toast } from 'sonner';
 import type { ConversationSummary } from '@/generated/RuntaraRuntimeApi';
 import { cn, formatRelativeTime } from '@/lib/utils';
+import { isOidcAuth } from '@/shared/config/runtimeConfig';
 import { useToken } from '@/shared/hooks/useToken';
 import { queryKeys } from '@/shared/queries/query-keys';
 import {
@@ -103,7 +104,9 @@ export function ConversationList({
       ),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next ?? undefined,
-    enabled: !!token && !!workflowId,
+    // Without OIDC the server signs requests in itself: there is no token
+    // to wait for.
+    enabled: (!!token || !isOidcAuth) && !!workflowId,
     refetchInterval: REFRESH_MS,
     refetchOnWindowFocus: true,
   });
