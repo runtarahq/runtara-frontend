@@ -250,6 +250,15 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       break;
     }
 
+    case 'reply_route_failed':
+      note(
+        log,
+        event,
+        `The reply workflow could not be started: ${event.body.reason}`,
+        'warning'
+      );
+      break;
+
     case 'run_ended':
       // One run of the conversation is over; the next message starts the
       // next one. A failure is a line where it happened, not a state of the

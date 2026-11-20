@@ -15,6 +15,11 @@ import {
  * says so. */
 const MAX_STREAM_FAILURES = 5;
 const STREAM_RETRY_MS = 1000;
+/** A workspace that holds as many streams as it may is asked again later:
+ * one frees when another chat is closed. */
+const STREAMS_FULL_RETRY_MS = 15000;
+const STREAMS_FULL = 'Too many open chats in this workspace';
+const DELETED = 'This conversation was deleted';
 
 interface Unconfirmed {
   conversationKey: string;
@@ -59,13 +64,17 @@ export function useChatStream(workflowId: string) {
         !abortController.signal.aborted && abortRef.current === abortController;
       let after = from;
       let failures = 0;
+      let retryIn = STREAM_RETRY_MS;
 
       while (isCurrent()) {
+        retryIn = STREAM_RETRY_MS;
         try {
           const events = await streamEvents(token, workflowId, key, {
             after,
             signal: abortController.signal,
           });
+          if (useChatStore.getState().error === STREAMS_FULL)
+            store.setError(null);
           for await (const event of readStream(
             events,
             abortController.signal
@@ -106,7 +115,20 @@ export function useChatStream(workflowId: string) {
         } catch (err: unknown) {
           if (err instanceof DOMException && err.name === 'AbortError') return;
           if (!isCurrent()) return;
-          failures += 1;
+          const code = err instanceof ConversationError ? err.code : undefined;
+          if (code === 'CONVERSATION_NOT_FOUND') {
+            // Nothing to read on from: the chat is over.
+            store.setLoading(false);
+            store.setError(DELETED);
+            store.setStatus('error');
+            return;
+          }
+          if (code === 'CONVERSATION_STREAMS_FULL') {
+            // Not a failure of this conversation, and not counted as one.
+            store.setLoading(false);
+            store.setError(STREAMS_FULL);
+            retryIn = STREAMS_FULL_RETRY_MS;
+          } else failures += 1;
           if (failures >= MAX_STREAM_FAILURES) {
             store.setLoading(false);
             store.setError(
@@ -119,7 +141,7 @@ export function useChatStream(workflowId: string) {
           }
         }
         if (isCurrent())
-          await new Promise((resolve) => setTimeout(resolve, STREAM_RETRY_MS));
+          await new Promise((resolve) => setTimeout(resolve, retryIn));
       }
     },
     [token, workflowId, refreshPendingInput]
