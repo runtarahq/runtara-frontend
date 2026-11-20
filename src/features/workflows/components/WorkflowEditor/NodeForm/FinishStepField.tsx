@@ -20,6 +20,10 @@ import {
 import { NodeFormContext } from './NodeFormContext';
 import { deriveTypeHintFromSchemaType } from './finish-type-hints';
 import {
+  hasHttpResponseOutput,
+  httpResponseOutput,
+} from './finish-http-response';
+import {
   MappingValueInput,
   ValueMode,
 } from './InputMappingField/MappingValueInput';
@@ -616,6 +620,21 @@ export function FinishStepField({ name }: FinishStepFieldProps) {
           >
             <Plus className="mr-2 size-4" />
             Add custom output
+          </Button>
+        )}
+        {/* What a synchronous HTTP trigger answers with, in place of the
+            usual envelope: offered as a shape, since its parts are fixed. */}
+        {!hasHttpResponseOutput(fieldArray) && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            bordered
+            title="Answer a synchronous HTTP trigger with this status, headers and body"
+            onClick={() => append(httpResponseOutput())}
+          >
+            <Plus className="mr-2 size-4" />
+            Add HTTP response
           </Button>
         )}
       </div>
