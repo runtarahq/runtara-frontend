@@ -80,6 +80,10 @@ export function TriggerForm(props: Props) {
         ) {
           return triggerType === 'HTTP' || triggerType === 'EMAIL';
         }
+        // Only an HTTP trigger can be answered by its workflow's run
+        if (field.name === 'httpSynchronous') {
+          return triggerType === 'HTTP';
+        }
         return true;
       })
       .map((field) => {

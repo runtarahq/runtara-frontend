@@ -88,6 +88,7 @@ export function EditTrigger() {
       cronDebug,
       webhookDebug,
       webhookConnectionId,
+      httpSynchronous,
       configuration,
       ...restTrigger
     } = data;
@@ -134,6 +135,8 @@ export function EditTrigger() {
           existing: existingConfiguration,
           debug: webhookDebug,
           connectionId: webhookConnectionId,
+          // Only an HTTP trigger has it.
+          synchronous: triggerType === 'HTTP' ? !!httpSynchronous : undefined,
         });
         finalConfiguration =
           Object.keys(webhookConfiguration).length > 0
@@ -204,6 +207,9 @@ export function EditTrigger() {
   // HTTP/EMAIL triggers
   initValues.webhookDebug = false;
   initValues.webhookConnectionId = '';
+  initValues.httpSynchronous =
+    initValues.triggerType === 'HTTP' &&
+    initValues.configuration?.synchronous === true;
   if (
     (initValues.triggerType === 'HTTP' || initValues.triggerType === 'EMAIL') &&
     initValues.configuration

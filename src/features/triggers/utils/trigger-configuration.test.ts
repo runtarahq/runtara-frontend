@@ -408,6 +408,27 @@ describe('buildWebhookConfiguration', () => {
     ).toEqual({ other: 'kept' });
   });
 
+  it('stores synchronous as a real boolean, and removes it when cleared', () => {
+    expect(buildWebhookConfiguration({ synchronous: true })).toEqual({
+      synchronous: true,
+    });
+    expect(
+      buildWebhookConfiguration({
+        existing: { synchronous: true, other: 'kept' },
+        synchronous: false,
+      })
+    ).toEqual({ other: 'kept' });
+  });
+
+  it('leaves synchronous as it is for a trigger that has no such setting', () => {
+    expect(
+      buildWebhookConfiguration({
+        existing: { synchronous: true },
+        debug: true,
+      })
+    ).toEqual({ synchronous: true, debug: true });
+  });
+
   it('preserves unknown keys from the existing configuration', () => {
     expect(
       buildWebhookConfiguration({

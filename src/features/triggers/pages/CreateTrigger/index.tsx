@@ -64,6 +64,7 @@ export function CreateTrigger() {
       cronDebug,
       webhookDebug,
       webhookConnectionId,
+      httpSynchronous,
       ...restTrigger
     } = data;
 
@@ -79,6 +80,8 @@ export function CreateTrigger() {
       const webhookConfiguration = buildWebhookConfiguration({
         debug: webhookDebug,
         connectionId: webhookConnectionId,
+        // Only an HTTP trigger has it.
+        synchronous: triggerType === 'HTTP' ? !!httpSynchronous : undefined,
       });
       configuration =
         Object.keys(webhookConfiguration).length > 0

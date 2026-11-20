@@ -1,5 +1,6 @@
 import {
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -11,11 +12,13 @@ interface CheckboxInputProps {
   label: string;
   disabled?: boolean;
   className?: string;
+  /** What switching it on does, said under its label. */
+  description?: string;
   onChange?: (event: unknown) => void;
 }
 
 export function CheckboxInput(props: CheckboxInputProps) {
-  const { label, name, disabled } = props;
+  const { label, name, disabled, description } = props;
 
   return (
     <FormField
@@ -29,7 +32,14 @@ export function CheckboxInput(props: CheckboxInputProps) {
               onCheckedChange={field.onChange}
             />
           </FormControl>
-          <FormLabel>{label}</FormLabel>
+          {description ? (
+            <div className="space-y-1">
+              <FormLabel>{label}</FormLabel>
+              <FormDescription>{description}</FormDescription>
+            </div>
+          ) : (
+            <FormLabel>{label}</FormLabel>
+          )}
         </FormItem>
       )}
     />

@@ -255,17 +255,32 @@ export interface WebhookConfigurationOptions {
    * removes the key (verification disabled).
    */
   connectionId?: string | null;
+  /**
+   * For an HTTP trigger: run the workflow and wait for it, and answer the
+   * request with its result. The server reads `configuration.synchronous`
+   * via as_bool (api/handlers/events.rs) and refuses a value that is not a
+   * boolean, so it is stored as one; false removes the key. Left out (an
+   * EMAIL trigger, which has no such setting), the key is kept as it is.
+   */
+  synchronous?: boolean;
 }
 
 /**
  * Build an HTTP/EMAIL trigger configuration, merging the form-managed keys
- * (`debug`, `connection_id`) over the existing configuration object.
+ * (`debug`, `connection_id`, and for HTTP `synchronous`) over the existing
+ * configuration object.
  */
 export function buildWebhookConfiguration(
   options: WebhookConfigurationOptions
 ): Record<string, unknown> {
-  const { existing, debug, connectionId } = options;
+  const { existing, debug, connectionId, synchronous } = options;
   const configuration: Record<string, unknown> = { ...(existing ?? {}) };
+
+  if (synchronous === true) {
+    configuration.synchronous = true;
+  } else if (synchronous === false) {
+    delete configuration.synchronous;
+  }
 
   if (debug) {
     configuration.debug = true;
