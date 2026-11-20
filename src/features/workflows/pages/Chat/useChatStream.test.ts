@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useChatStream } from './useChatStream';
 import { useChatStore } from '../../stores/chatStore';
+import { getPendingInput } from '../../queries';
 import {
   ConversationError,
   getConversation,
@@ -14,6 +15,7 @@ vi.mock('./useChatInputs', () => ({
   useChatInputs: () => ({ refreshPendingInput: vi.fn(), submitInput }),
 }));
 vi.mock('@/shared/hooks/useToken', () => ({ useToken: () => 'token' }));
+vi.mock('@/features/workflows/queries', () => ({ getPendingInput: vi.fn() }));
 vi.mock('../../queries/conversations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../queries/conversations')>()),
   getConversation: vi.fn(),
@@ -22,6 +24,7 @@ vi.mock('../../queries/conversations', async (importOriginal) => ({
 }));
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getPendingInput).mockResolvedValue([]);
   useChatStore.getState().resetChat();
   useChatStore.getState().resumeChat('workflow', 'Workflow', 'instance');
   useChatStore.getState().setConversationKey('conversation');
@@ -90,7 +93,7 @@ it('retries an unconfirmed message under its own id before newly discovered inpu
   );
   const original = sentMessage(0);
   expect(result.current.uncertainMessages).toEqual([
-    { conversationKey: 'conversation', message: 'Hello' },
+    { conversationKey: 'conversation', id: original.id, message: 'Hello' },
   ]);
   useChatStore
     .getState()
@@ -161,7 +164,10 @@ it('says so when the message was taken but no run could be started for it', asyn
     })
   );
   await act(() => result.current.sendMessage('Hello'));
-  expect(useChatStore.getState().error).toBe('Workflow not found');
+  // Said of the message, where it is shown.
+  expect(useChatStore.getState().messages).toMatchObject([
+    { role: 'user', content: 'Hello', failure: 'Workflow not found' },
+  ]);
   expect(result.current.uncertainMessages).toEqual([]);
 });
 
@@ -430,4 +436,226 @@ it('says when the workspace has too many open chats, and asks again later', asyn
   } finally {
     vi.useRealTimers();
   }
+});
+
+const waiting = {
+  requestId: 'request',
+  instanceId: 'run-1',
+  message: 'What next?',
+};
+const standing = (waitingFor?: unknown) => ({
+  id: 'id',
+  key: 'conversation',
+  workflowId: 'workflow',
+  createdAt: 'now',
+  updatedAt: 'now',
+  instanceId: 'run-1',
+  waitingFor,
+  lastSeq: 99,
+  queued: 0,
+  replyEvents: [],
+});
+const delivered = (messageId: string) => ({
+  messageId,
+  state: 'delivered' as const,
+  duplicate: false,
+});
+
+/** A chat whose run waits on `request`, as the conversation announced it. */
+async function waitingChat(body: Record<string, unknown> = waiting) {
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  const hook = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void hook.result.current.reconnect('conversation');
+    await settle();
+    events.push('run_started', { instanceId: 'run-1', messageId: 'm' });
+    events.push('waiting_for_input', body);
+    await settle();
+  });
+  return { ...hook, events };
+}
+
+it('takes what the run waits for from the conversation, and sends what is typed as the answer to it', async () => {
+  const { result, events } = await waitingChat();
+  expect(useChatStore.getState()).toMatchObject({
+    status: 'waiting_for_input',
+    waitingForInput: { requestId: 'request', instanceId: 'run-1' },
+  });
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => delivered(message.id)
+  );
+  await act(async () =>
+    expect(await result.current.sendMessage('This one')).toBe(true)
+  );
+  expect(sentMessage(0)).toMatchObject({
+    text: 'This one',
+    inReplyTo: 'request',
+  });
+  // On the conversation, not on the run.
+  expect(submitInput).not.toHaveBeenCalled();
+  expect(useChatStore.getState()).toMatchObject({
+    status: 'streaming',
+    waitingForInput: null,
+    pendingInputs: [],
+  });
+  // The answer is a message in the log: one line, with what it answered.
+  await act(async () => {
+    const id = sentMessage(0).id;
+    events.push('message', { id, text: 'This one', inReplyTo: 'request' });
+    events.push('message_delivered', {
+      messageId: id,
+      requestId: 'request',
+      instanceId: 'run-1',
+    });
+    await settle();
+  });
+  expect(transcript()).toEqual([['user', 'This one']]);
+});
+
+it("sends a form's values as the payload of the answer", async () => {
+  const { result } = await waitingChat({
+    ...waiting,
+    responseSchema: { city: { type: 'string' }, nights: { type: 'number' } },
+  });
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => delivered(message.id)
+  );
+  await act(async () =>
+    expect(
+      await result.current.submitInput(
+        'request',
+        { city: 'Lviv', nights: 2 },
+        'run-1',
+        'City: Lviv | Nights: 2'
+      )
+    ).toBe(true)
+  );
+  expect(sentMessage(0)).toMatchObject({
+    payload: { city: 'Lviv', nights: 2 },
+    inReplyTo: 'request',
+  });
+  expect(sentMessage(0).text).toBeUndefined();
+  expect(submitInput).not.toHaveBeenCalled();
+  expect(transcript()).toEqual([['user', 'city: Lviv\nnights: 2']]);
+});
+
+it('closes the form of a request that is gone, and says so of the answer', async () => {
+  const { result } = await waitingChat();
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => ({
+      messageId: message.id,
+      state: 'failed',
+      detail: 'what this message answers is no longer waited for',
+      duplicate: false,
+    })
+  );
+  // The run has moved on to another request.
+  vi.mocked(getConversation).mockResolvedValue(
+    standing({ ...waiting, requestId: 'next' })
+  );
+  await act(async () =>
+    expect(
+      await result.current.submitInput('request', { city: 'Lviv' }, 'run-1')
+    ).toBe(false)
+  );
+  expect(sendConversationMessage).toHaveBeenCalledTimes(1);
+  expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+    role: 'user',
+    failure: 'That request is no longer open',
+  });
+  // Never sent to the other request, which is now the one offered.
+  expect(useChatStore.getState().pendingInputs.map((r) => r.requestId)).toEqual(
+    ['next']
+  );
+});
+
+it('keeps the form of a request an answer did not fit', async () => {
+  const { result } = await waitingChat();
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => ({
+      messageId: message.id,
+      state: 'failed',
+      detail: 'city is required',
+      duplicate: false,
+    })
+  );
+  vi.mocked(getConversation).mockResolvedValue(standing(waiting));
+  await act(async () =>
+    expect(
+      await result.current.submitInput('request', { nights: 2 }, 'run-1')
+    ).toBe(false)
+  );
+  expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+    failure: 'city is required',
+  });
+  expect(useChatStore.getState().waitingForInput?.requestId).toBe('request');
+});
+
+it('retries an unconfirmed answer under its own id', async () => {
+  const { result } = await waitingChat();
+  vi.mocked(sendConversationMessage).mockRejectedValueOnce(
+    new TypeError('lost acknowledgement')
+  );
+  await act(() =>
+    result.current.submitInput('request', { city: 'Lviv' }, 'run-1')
+  );
+  const original = sentMessage(0);
+  expect(result.current.uncertainMessages).toEqual([
+    { conversationKey: 'conversation', id: original.id, message: 'Lviv' },
+  ]);
+  vi.mocked(sendConversationMessage).mockResolvedValue(delivered(original.id));
+  await act(async () =>
+    expect(await result.current.retryMessage(original.id)).toBe(true)
+  );
+  expect(sentMessage(1)).toEqual(original);
+  expect(result.current.uncertainMessages).toEqual([]);
+});
+
+it('offers the other requests of a run that waits on several', async () => {
+  vi.mocked(getPendingInput).mockResolvedValue([
+    { requestId: 'request', message: 'What next?' },
+    { requestId: 'other', message: 'And this?' },
+  ] as never);
+  await waitingChat();
+  // The conversation announced one: the rest are read once from the run.
+  // Reading back what was kept does not ask; the state it ends with does.
+  expect(getPendingInput).not.toHaveBeenCalled();
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  vi.mocked(getConversation).mockResolvedValue(standing(waiting));
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void result.current.reconnect('conversation');
+    await settle();
+    events.push('run_started', { instanceId: 'run-1', messageId: 'm' });
+    events.push('waiting_for_input', waiting);
+    events.caughtUp();
+    await settle();
+    await settle();
+  });
+  expect(getPendingInput).toHaveBeenCalledTimes(1);
+  expect(useChatStore.getState().pendingInputs.map((r) => r.requestId)).toEqual(
+    ['request', 'other']
+  );
+  expect(useChatStore.getState().waitingForInput?.requestId).toBe('request');
+});
+
+it('answers a run that no conversation started on the run itself', async () => {
+  useChatStore.getState().setConversationKey(null);
+  useChatStore
+    .getState()
+    .setPendingInputs([{ requestId: 'request', instanceId: 'instance' }]);
+  submitInput.mockResolvedValue(true);
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () =>
+    expect(await result.current.sendMessage('Yes')).toBe(true)
+  );
+  expect(submitInput).toHaveBeenCalledWith(
+    'request',
+    { message: 'Yes' },
+    'instance'
+  );
+  expect(sendConversationMessage).not.toHaveBeenCalled();
+  expect(transcript()).toEqual([['user', 'Yes']]);
 });

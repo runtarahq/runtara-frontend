@@ -26,8 +26,8 @@ function deferred<T>() {
 beforeEach(() => {
   vi.resetAllMocks();
   useChatStore.getState().resetChat();
+  // A run that no conversation started, opened from its history.
   useChatStore.getState().resumeChat('workflow', 'Workflow', 'instance');
-  useChatStore.getState().setConversationKey('conversation');
   vi.mocked(getPendingInput).mockResolvedValue([request]);
 });
 afterEach(() => {
@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 describe('authoritative chat input discovery and acceptance', () => {
-  it('retains exact payloads and operations for an uncertain original reply after editing and route advancement', async () => {
+  it('retains exact payloads and operations for an uncertain original reply after editing', async () => {
     const { result } = renderHook(() => useChatInputs('workflow', 'token'));
     await waitFor(() =>
       expect(useChatStore.getState().pendingInputs).toHaveLength(1)
@@ -53,7 +53,6 @@ describe('authoritative chat input discovery and acceptance', () => {
     expect(result.current.uncertainResponses).toHaveLength(2);
     const original = result.current.uncertainResponses[0];
     const originalCall = vi.mocked(deliverSignal).mock.calls[0];
-    act(() => useChatStore.getState().setInstanceId('replacement'));
     vi.mocked(getPendingInput).mockResolvedValue([]);
     vi.mocked(deliverSignal).mockResolvedValueOnce({
       receiptId: 'receipt',
@@ -70,45 +69,6 @@ describe('authoritative chat input discovery and acceptance', () => {
     );
     expect(vi.mocked(deliverSignal).mock.calls[2]).toEqual(originalCall);
     expect(result.current.uncertainResponses).toHaveLength(1);
-  });
-  it('follows the conversation to its next run while retaining an uncertain reply against its original instance', async () => {
-    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
-    await waitFor(() =>
-      expect(useChatStore.getState().pendingInputs).toHaveLength(1)
-    );
-    vi.mocked(deliverSignal).mockRejectedValueOnce(
-      new TypeError('lost acknowledgement')
-    );
-    await act(() =>
-      result.current.submitInput('request', { message: 'Yes' }, 'instance')
-    );
-    const original = vi.mocked(deliverSignal).mock.calls[0];
-    // Identical compiled signal identities in two executions must remain distinct.
-    vi.mocked(getPendingInput).mockResolvedValue([request]);
-    // The conversation said which run carries it now (`run_started`).
-    act(() => useChatStore.getState().setInstanceId('replacement'));
-    await act(() => result.current.refreshPendingInput());
-    await waitFor(() =>
-      expect(useChatStore.getState().instanceId).toBe('replacement')
-    );
-    expect(
-      useChatStore
-        .getState()
-        .pendingInputs.map((item) => item.instanceId)
-        .sort()
-    ).toEqual(['instance', 'replacement']);
-    vi.mocked(deliverSignal).mockResolvedValueOnce({
-      receiptId: 'receipt',
-      requestId: 'request',
-      acceptedAt: 'now',
-    });
-    await act(() =>
-      result.current.submitInput('request', { message: 'Yes' }, 'instance')
-    );
-    expect(vi.mocked(deliverSignal).mock.calls[1]).toEqual(original);
-    expect(
-      useChatStore.getState().pendingInputs.map((item) => item.instanceId)
-    ).toEqual(['replacement']);
   });
   it('discovers without SSE, retains explicit selection, and clears only on a successful empty result', async () => {
     vi.mocked(getPendingInput).mockResolvedValue([
@@ -250,14 +210,17 @@ describe('authoritative chat input discovery and acceptance', () => {
     expect(useChatStore.getState().pendingInputs).toEqual([]);
   });
 
-  it('supports a resumed instance without a conversation', async () => {
-    useChatStore.getState().setConversationKey(null);
-    vi.mocked(getPendingInput).mockResolvedValue([
-      { ...request, requestedAt: 'now' },
-    ]);
-    renderHook(() => useChatInputs('workflow', 'token'));
-    await waitFor(() =>
-      expect(useChatStore.getState().waitingForInput?.requestId).toBe('request')
-    );
+  it('neither polls nor answers for a chat that has a conversation', async () => {
+    useChatStore.getState().setConversationKey('conversation');
+    const { result } = renderHook(() => useChatInputs('workflow', 'token'));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(await result.current.refreshPendingInput()).toBe(false);
+    expect(getPendingInput).not.toHaveBeenCalled();
+    // What the conversation announced is answered through it, not here.
+    useChatStore.getState().setPendingInputs([request]);
+    expect(
+      await result.current.submitInput('request', { message: 'Yes' })
+    ).toBe(false);
+    expect(deliverSignal).not.toHaveBeenCalled();
   });
 });

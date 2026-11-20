@@ -12,13 +12,16 @@ import type { WaitingForInputData } from '../../types/chat';
 interface UncertainResponse {
   operationId: string;
   instanceId: string;
-  conversationKey: string | null;
   workflowId: string;
   request: WaitingForInputData;
   payload: Record<string, unknown>;
 }
 
-/** Discovery is independent of optional SSE/debug events and the stream lifetime. */
+/**
+ * The pending inputs of a run that no conversation started (one opened from
+ * its history): they are polled for, and answered on the run. Discovery is
+ * independent of optional SSE/debug events and the stream lifetime.
+ */
 export function useChatInputs(workflowId: string, token: string) {
   const instanceId = useChatStore((state) => state.instanceId);
   const conversationKey = useChatStore((state) => state.conversationKey);
@@ -33,8 +36,11 @@ export function useChatInputs(workflowId: string, token: string) {
   const refresh = useCallback(
     async (signal?: AbortSignal): Promise<boolean> => {
       const owner = useChatStore.getState();
+      // A conversation announces what its run waits for, and is answered
+      // through: only a run that no conversation started is asked.
       if (
         !owner.instanceId ||
+        owner.conversationKey ||
         owner.workflowId !== workflowId ||
         submitting.current
       )
@@ -47,7 +53,7 @@ export function useChatInputs(workflowId: string, token: string) {
           version === generation.current &&
           current.workflowId === workflowId &&
           current.instanceId === owner.instanceId &&
-          current.conversationKey === owner.conversationKey
+          !current.conversationKey
         );
       };
       try {
@@ -72,9 +78,7 @@ export function useChatInputs(workflowId: string, token: string) {
         for (const retry of retries) {
           if (
             retry.workflowId === workflowId &&
-            retry.conversationKey === owner.conversationKey &&
-            (owner.conversationKey !== null ||
-              retry.instanceId === owner.instanceId) &&
+            retry.instanceId === owner.instanceId &&
             !pending.some(
               (item) =>
                 item.requestId === retry.request.requestId &&
@@ -107,7 +111,7 @@ export function useChatInputs(workflowId: string, token: string) {
       delay = succeeded ? 3000 : Math.min(delay * 2, 30000);
       if (!controller.signal.aborted) timer = setTimeout(poll, delay);
     };
-    if (instanceId) void poll();
+    if (instanceId && !conversationKey) void poll();
     return () => {
       controller.abort();
       generation.current += 1;
@@ -132,11 +136,14 @@ export function useChatInputs(workflowId: string, token: string) {
             item.requestId === requestId &&
             (!instanceId || item.instanceId === instanceId)
         ) ??
-        (retained?.conversationKey === owner.conversationKey &&
-        retained?.workflowId === workflowId
-          ? retained.request
-          : undefined);
-      if (!owner.instanceId || !request || submitting.current) return false;
+        (retained?.workflowId === workflowId ? retained.request : undefined);
+      if (
+        !owner.instanceId ||
+        owner.conversationKey ||
+        !request ||
+        submitting.current
+      )
+        return false;
       const targetInstanceId = request.instanceId ?? owner.instanceId;
       const submission =
         retained &&
@@ -157,9 +164,8 @@ export function useChatInputs(workflowId: string, token: string) {
         const current = useChatStore.getState();
         return (
           current.workflowId === owner.workflowId &&
-          current.conversationKey === owner.conversationKey &&
-          (owner.conversationKey !== null ||
-            current.instanceId === owner.instanceId)
+          !current.conversationKey &&
+          current.instanceId === owner.instanceId
         );
       };
       submitting.current = true;
@@ -198,7 +204,6 @@ export function useChatInputs(workflowId: string, token: string) {
           uncertain.current.set(retryKey, {
             operationId: submission.operationId,
             instanceId: targetInstanceId,
-            conversationKey: owner.conversationKey,
             workflowId,
             request: { ...request, instanceId: targetInstanceId },
             payload: submission.payload,
@@ -224,9 +229,7 @@ export function useChatInputs(workflowId: string, token: string) {
     submitInput,
     uncertainResponses: uncertainResponses.filter(
       (response) =>
-        response.workflowId === workflowId &&
-        response.conversationKey === conversationKey &&
-        (conversationKey !== null || response.instanceId === instanceId)
+        response.workflowId === workflowId && response.instanceId === instanceId
     ),
   };
 }

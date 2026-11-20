@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useChatInputs } from './useChatInputs';
+import { getPendingInput } from '@/features/workflows/queries';
+import { messageText } from '@/features/workflows/stores/conversation-log';
 import { useToken } from '@/shared/hooks/useToken';
 import { useChatStore } from '@/features/workflows/stores/chatStore';
 import type { Message } from '@/generated/RuntaraRuntimeApi';
@@ -23,32 +25,70 @@ const DELETED = 'This conversation was deleted';
 
 interface Unconfirmed {
   conversationKey: string;
-  message: Message & { text: string };
+  message: Message;
+  /** What the user is shown of it. */
+  label: string;
 }
+
+/** The answer to a request that the server no longer waits on. */
+const REQUEST_CLOSED = 'That request is no longer open';
 
 export function useChatStream(workflowId: string) {
   const token = useToken();
-  const { refreshPendingInput, submitInput, uncertainResponses } =
-    useChatInputs(workflowId, token);
+  const {
+    refreshPendingInput,
+    submitInput: submitRunInput,
+    uncertainResponses,
+  } = useChatInputs(workflowId, token);
   const abortRef = useRef<AbortController | null>(null);
   // Every message whose receipt is unconfirmed, each with the id a retry
   // reuses so the conversation takes it once.
   const unconfirmed = useRef<Unconfirmed[]>([]);
   const enqueueing = useRef(false);
   const [uncertainMessages, setUncertainMessages] = useState<
-    { conversationKey: string; message: string }[]
+    { conversationKey: string; id: string; message: string }[]
   >([]);
   const settleUnconfirmed = useCallback(
     (update: (all: Unconfirmed[]) => Unconfirmed[]) => {
       unconfirmed.current = update(unconfirmed.current);
       setUncertainMessages(
-        unconfirmed.current.map(({ conversationKey, message }) => ({
+        unconfirmed.current.map(({ conversationKey, message, label }) => ({
           conversationKey,
-          message: message.text,
+          id: message.id,
+          message: label,
         }))
       );
     },
     []
+  );
+
+  /**
+   * The conversation announces the first thing its run waits for. A run
+   * that waits on several at once (tools called together) has the others
+   * only in its own pending inputs: they are read once, to be offered beside
+   * the one announced.
+   */
+  const listOtherWaits = useCallback(
+    async (key: string) => {
+      const { instanceId, waitingForInput } = useChatStore.getState();
+      if (!instanceId || !waitingForInput) return;
+      try {
+        const pending = await getPendingInput(token, workflowId, instanceId);
+        const current = useChatStore.getState();
+        if (
+          current.conversationKey !== key ||
+          current.instanceId !== instanceId ||
+          !pending.some((p) => p.requestId === waitingForInput.requestId)
+        )
+          return;
+        current.addPendingInputs(
+          pending.map((request) => ({ ...request, instanceId }))
+        );
+      } catch {
+        // The one the conversation announced can still be answered.
+      }
+    },
+    [token, workflowId]
   );
 
   /**
@@ -93,8 +133,9 @@ export function useChatStream(workflowId: string) {
                 abortController.signal
               )
                 .then((state) => {
-                  if (isCurrent())
-                    useChatStore.getState().applyConversationState(state);
+                  if (!isCurrent()) return;
+                  useChatStore.getState().applyConversationState(state);
+                  void listOtherWaits(key);
                 })
                 .catch(() => {
                   // The events still say what happens from here on.
@@ -107,10 +148,10 @@ export function useChatStream(workflowId: string) {
             failures = 0;
             useChatStore.getState().applyConversationEvent(event);
             if (
-              event.kind === 'waiting_for_input' ||
-              event.kind === 'run_started'
+              event.kind === 'waiting_for_input' &&
+              !useChatStore.getState().loading
             )
-              void refreshPendingInput();
+              void listOtherWaits(key);
           }
         } catch (err: unknown) {
           if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -144,7 +185,7 @@ export function useChatStream(workflowId: string) {
           await new Promise((resolve) => setTimeout(resolve, retryIn));
       }
     },
-    [token, workflowId, refreshPendingInput]
+    [token, workflowId, listOtherWaits]
   );
 
   /** Makes this the page's one stream, replacing any before it. */
@@ -214,52 +255,17 @@ export function useChatStream(workflowId: string) {
   );
 
   /**
-   * Send what the user typed. A run that waits for it is answered directly;
-   * otherwise the message goes into the conversation, which starts a run
-   * with it or holds it until its turn. The reply arrives on the stream.
+   * Sends a message into the conversation: it starts a run, answers the
+   * request it names, or waits its turn. What comes of it arrives on the
+   * stream. A message whose receipt is unconfirmed is kept, to be sent
+   * again under the same id.
    */
-  const sendMessage = useCallback(
-    async (content: string) => {
+  const deliver = useCallback(
+    async (intent: Unconfirmed): Promise<boolean> => {
       const store = useChatStore.getState();
-      const {
-        conversationKey,
-        waitingForInput,
-        pendingInputs,
-        pendingInputError,
-      } = store;
+      const { conversationKey, message, label } = intent;
+      const answers = message.inReplyTo ?? undefined;
       if (enqueueing.current) return false;
-      const retry =
-        unconfirmed.current.find(
-          (intent) =>
-            intent.conversationKey === conversationKey &&
-            intent.message.text === content
-        ) ?? null;
-      if (
-        !retry &&
-        (pendingInputError || (pendingInputs.length > 1 && !waitingForInput))
-      ) {
-        store.setError(pendingInputError ?? 'Choose which request to answer.');
-        return false;
-      }
-      if (!retry && waitingForInput) {
-        const accepted = await submitInput(
-          waitingForInput.requestId,
-          {
-            message: content,
-          },
-          waitingForInput.instanceId
-        );
-        if (accepted) store.addUserMessage(content);
-        return accepted;
-      }
-      if (!conversationKey) {
-        store.setError('No active conversation');
-        return false;
-      }
-      const intent: Unconfirmed = retry ?? {
-        conversationKey,
-        message: { id: crypto.randomUUID(), text: content },
-      };
       enqueueing.current = true;
       store.setError(null);
       try {
@@ -267,23 +273,48 @@ export function useChatStream(workflowId: string) {
           token,
           workflowId,
           conversationKey,
-          intent.message
+          message
         );
         settleUnconfirmed((all) => all.filter((i) => i !== intent));
         const current = useChatStore.getState();
         if (current.conversationKey !== conversationKey) return false;
         // The conversation may have reported it already: it is one line
         // either way.
-        store.showSentMessage(intent.message.id, content);
+        current.showSentMessage(message.id, label, answers);
         if (outcome.state === 'failed') {
-          store.setError(
+          current.setMessageFailure(
+            message.id,
             outcome.detail ?? 'The message could not be delivered'
           );
+          if (!answers) return true;
+          // An answer fails when it does not fit the request, which then
+          // stays open, or when the request is gone. The conversation says
+          // which; the answer is never sent to another request.
+          const state = await getConversation(
+            token,
+            workflowId,
+            conversationKey
+          ).catch(() => null);
+          const now = useChatStore.getState();
+          if (state && now.conversationKey === conversationKey) {
+            now.applyConversationState(state);
+            const waiting = state.waitingFor as
+              { requestId?: string } | null | undefined;
+            if (waiting?.requestId !== answers) {
+              now.closePendingInput(answers);
+              now.setMessageFailure(message.id, REQUEST_CLOSED);
+            } else void listOtherWaits(conversationKey);
+          }
+          // What was typed is in the transcript; a form keeps its values.
+          return !message.payload;
+        }
+        if (answers) {
+          current.closePendingInput(answers);
           return true;
         }
-        // Taken: it started a run, answered one, or waits its turn. Either
-        // way a reply is on its way, on the stream.
-        store.setStatus(
+        // Taken: it started a run or waits its turn. Either way a reply is
+        // on its way, on the stream.
+        current.setStatus(
           current.pendingInputs.length ? 'waiting_for_input' : 'streaming'
         );
         return true;
@@ -311,7 +342,113 @@ export function useChatStream(workflowId: string) {
         enqueueing.current = false;
       }
     },
-    [token, workflowId, submitInput, settleUnconfirmed]
+    [token, workflowId, settleUnconfirmed, listOtherWaits]
+  );
+
+  /**
+   * Send what the user typed. While the run waits it is the answer to that
+   * request (`inReplyTo`), and is in the conversation's log like any other
+   * message. A run that no conversation started is answered directly.
+   */
+  const sendMessage = useCallback(
+    async (content: string) => {
+      const store = useChatStore.getState();
+      const {
+        conversationKey,
+        waitingForInput,
+        pendingInputs,
+        pendingInputError,
+      } = store;
+      if (enqueueing.current) return false;
+      const retry =
+        unconfirmed.current.find(
+          (intent) =>
+            intent.conversationKey === conversationKey &&
+            intent.message.text === content
+        ) ?? null;
+      if (
+        !retry &&
+        (pendingInputError || (pendingInputs.length > 1 && !waitingForInput))
+      ) {
+        store.setError(pendingInputError ?? 'Choose which request to answer.');
+        return false;
+      }
+      if (!conversationKey) {
+        if (!waitingForInput) {
+          store.setError('No active conversation');
+          return false;
+        }
+        const accepted = await submitRunInput(
+          waitingForInput.requestId,
+          { message: content },
+          waitingForInput.instanceId
+        );
+        if (accepted) store.addUserMessage(content);
+        return accepted;
+      }
+      return deliver(
+        retry ?? {
+          conversationKey,
+          label: content,
+          message: {
+            id: crypto.randomUUID(),
+            text: content,
+            ...(waitingForInput
+              ? { inReplyTo: waitingForInput.requestId }
+              : {}),
+          },
+        }
+      );
+    },
+    [submitRunInput, deliver]
+  );
+
+  /**
+   * Answer a request with a form's values: a message whose payload is used
+   * as it is. `summary` is what a run that no conversation started shows of
+   * it, since nothing logs that answer.
+   */
+  const submitInput = useCallback(
+    async (
+      requestId: string,
+      payload: Record<string, unknown>,
+      instanceId?: string,
+      summary?: string
+    ) => {
+      const store = useChatStore.getState();
+      const { conversationKey } = store;
+      if (!conversationKey) {
+        const accepted = await submitRunInput(requestId, payload, instanceId);
+        if (accepted && summary) store.addUserMessage(summary);
+        return accepted;
+      }
+      const body = JSON.stringify(payload);
+      const retry = unconfirmed.current.find(
+        (intent) =>
+          intent.conversationKey === conversationKey &&
+          intent.message.inReplyTo === requestId &&
+          JSON.stringify(intent.message.payload) === body
+      );
+      return deliver(
+        retry ?? {
+          conversationKey,
+          label: messageText({ payload }),
+          message: { id: crypto.randomUUID(), payload, inReplyTo: requestId },
+        }
+      );
+    },
+    [submitRunInput, deliver]
+  );
+
+  /** Send an unconfirmed message again, under the id it had. */
+  const retryMessage = useCallback(
+    async (messageId: string) => {
+      const intent = unconfirmed.current.find(
+        (i) => i.message.id === messageId
+      );
+      return intent ? deliver(intent) : false;
+    },
+    [deliver]
   );
 
   const cancelStream = useCallback(() => {
@@ -334,6 +471,9 @@ export function useChatStream(workflowId: string) {
     sendMessage,
     refreshPendingInput,
     submitInput,
+    retryMessage,
+    /** Sends an unconfirmed answer to a run again, as the same operation. */
+    retryResponse: submitRunInput,
     uncertainMessages,
     uncertainResponses,
     cancelStream,

@@ -19,7 +19,8 @@ interface ChatInputProps {
   onSubmitInput: (
     requestId: string,
     payload: Record<string, unknown>,
-    instanceId?: string
+    instanceId?: string,
+    summary?: string
   ) => Promise<boolean>;
 }
 

@@ -78,7 +78,7 @@ describe('the conversation log', () => {
     ]);
     expect(spoken(log)).toEqual([
       ['user', 'Typed'],
-      ['user', '{"city":"Lviv","nights":2}'],
+      ['user', 'city: Lviv\nnights: 2'],
     ]);
   });
 

@@ -66,6 +66,8 @@ export function ChatPage() {
     reconnect,
     sendMessage,
     submitInput,
+    retryMessage,
+    retryResponse,
     cancelStream,
     uncertainMessages,
     uncertainResponses,
@@ -207,7 +209,7 @@ export function ChatPage() {
               <Button
                 variant="secondary"
                 onClick={() =>
-                  void submitInput(
+                  void retryResponse(
                     response.request.requestId,
                     response.payload,
                     response.instanceId,
@@ -223,16 +225,13 @@ export function ChatPage() {
             .filter(
               (unconfirmed) => unconfirmed.conversationKey === conversationKey
             )
-            .map(({ message }) => (
-              <div
-                key={message}
-                className="space-y-2 border-t px-4 py-2 text-sm"
-              >
+            .map(({ id, message }) => (
+              <div key={id} className="space-y-2 border-t px-4 py-2 text-sm">
                 <p>Message receipt is unconfirmed: {message}</p>
                 <Button
                   variant="secondary"
                   aria-label={`Retry this message: ${message}`}
-                  onClick={() => void sendMessage(message)}
+                  onClick={() => void retryMessage(id)}
                 >
                   Retry this message
                 </Button>
