@@ -201,13 +201,14 @@ export function ChatPage() {
   const [shareShown, setShareShown] = useState(false);
   const queryClient = useQueryClient();
   // The list has no stream of its own. What this page changes in it (a new
-  // conversation, a title) is read again at once.
+  // conversation, a title, a run that starts, waits or ends) is read again
+  // at once.
   useEffect(() => {
     if (!workflowId || !conversationKey) return;
     void queryClient.invalidateQueries({
       queryKey: queryKeys.workflows.conversations(workflowId),
     });
-  }, [queryClient, workflowId, conversationKey, title]);
+  }, [queryClient, workflowId, conversationKey, title, status]);
   const openChat = useCallback(
     (key?: string) =>
       navigate(
