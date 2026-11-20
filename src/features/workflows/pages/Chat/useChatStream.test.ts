@@ -234,33 +234,37 @@ it("reads a conversation's events as its transcript, both sides of it", async ()
   ).toBe(true);
 });
 
-it("shows an AI Agent's answer until the run's reply in that turn stands for it", async () => {
+it("shows an AI Agent's answer once: as its reply, not again from the run's activity", async () => {
   const events = stream();
   vi.mocked(streamEvents).mockResolvedValue(events.body);
   const { result } = renderHook(() => useChatStream('workflow'));
+  const answer = { replyId: 'ai-1', instanceId: 'run-1', text: 'Hello!' };
   await act(async () => {
     void result.current.reconnect('conversation');
     await settle();
     events.push('message', { id: 'm', text: 'Hi' }, undefined, 'm');
+    // As the server sends them: the reply, then the same text as activity.
+    events.push('reply', answer, undefined, 'm');
     events.push(
       'activity',
-      { type: 'message', content: 'Done.' },
+      { type: 'message', content: 'Hello!' },
       undefined,
       'm'
+    );
+    // And once more in a later turn, when the step is replayed.
+    events.push('message', { id: 'n', text: 'And?' }, undefined, 'n');
+    events.push(
+      'activity',
+      { type: 'message', content: 'Hello!' },
+      undefined,
+      'n'
     );
     await settle();
   });
   expect(transcript()).toEqual([
     ['user', 'Hi'],
-    ['assistant', 'Done.'],
-  ]);
-  await act(async () => {
-    events.push('reply', { text: 'Done, as returned.' }, undefined, 'm');
-    await settle();
-  });
-  expect(transcript()).toEqual([
-    ['user', 'Hi'],
-    ['assistant', 'Done, as returned.'],
+    ['assistant', 'Hello!'],
+    ['user', 'And?'],
   ]);
 });
 

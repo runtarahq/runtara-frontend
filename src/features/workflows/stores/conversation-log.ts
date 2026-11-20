@@ -165,9 +165,6 @@ function note(
   });
 }
 
-/** The line an AI Agent step's answer is shown as until the run says it. */
-const AGENT_LINE = 'agent:';
-
 /**
  * What a run is doing, as the conversation relays it (`activity`): model and
  * tool calls and memory, each a line in the transcript.
@@ -206,20 +203,9 @@ function applyActivity(log: ConversationLog, event: ConversationEvent) {
         `Saved ${String(body.message_count ?? 0)} messages to memory`
       );
       break;
-    case 'message':
-      // An AI Agent step's answer, before the run says or returns it. It is
-      // shown until a reply follows in its turn, which then stands for it.
-      if (typeof body.content === 'string' && body.content.trim())
-        put(
-          log,
-          line(
-            event,
-            `${AGENT_LINE}${String(event.seq)}`,
-            'assistant',
-            body.content
-          )
-        );
-      break;
+    // `message`, an AI Agent step's answer, is not shown from here: the
+    // step says its answer as a reply of its own, and this relays the same
+    // text again, after that reply and once more when the step is replayed.
   }
 }
 
@@ -283,10 +269,6 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       const attachments = event.body.attachments ?? [];
       const hasData = data !== undefined && data !== null;
       if (!text?.trim() && !attachments.length && !hasData) break;
-      if (event.turn)
-        log.messages = log.messages.filter(
-          (m) => !(m.id.startsWith(AGENT_LINE) && m.turn === event.turn)
-        );
       put(log, {
         ...line(
           event,
