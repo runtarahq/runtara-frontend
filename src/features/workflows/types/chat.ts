@@ -46,6 +46,8 @@ export interface ChatMessage {
   tone?: 'error' | 'warning';
   /** Why a message this line shows was not taken. */
   failure?: string;
+  /** A message that waits its turn: the run is busy with another. */
+  queued?: boolean;
   /** The request a message answers (`inReplyTo`). */
   answers?: string;
   /** A reply whose run ended before it was said whole: what was written of

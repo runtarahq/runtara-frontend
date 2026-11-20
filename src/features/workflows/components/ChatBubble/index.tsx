@@ -5,6 +5,7 @@ import {
   Braces,
   ChevronDown,
   ChevronRight,
+  Clock,
   Paperclip,
   Wrench,
   Check,
@@ -215,6 +216,7 @@ function Attachments({ attachments }: { attachments: ChatAttachment[] }) {
 export function ChatBubble({ message }: ChatBubbleProps) {
   const { role, content, events, isStreaming, sender } = message;
   const { format, data, attachments, tone, failure, incomplete } = message;
+  const { queued } = message;
   const hasData = data !== undefined && data !== null;
 
   if (role === 'user') {
@@ -234,6 +236,12 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         >
           <p className="whitespace-pre-wrap">{content}</p>
         </div>
+        {queued && !failure && (
+          <span className="flex items-center gap-1 px-1 text-xs text-muted-foreground">
+            <Clock className="size-3" />
+            Queued
+          </span>
+        )}
         {failure && (
           <span className="flex items-center gap-1 px-1 text-xs text-destructive">
             <AlertCircle className="size-3" />

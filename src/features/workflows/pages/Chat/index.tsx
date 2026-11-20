@@ -1,6 +1,12 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, MessageSquareOff } from 'lucide-react';
+import { ArrowLeft, ChevronDown, MessageSquareOff, Square } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/shared/components/ui/dropdown-menu';
 import { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
 import { Button } from '@/shared/components/ui/button.tsx';
 import { Skeleton } from '@/shared/components/ui/skeleton';
@@ -53,6 +59,7 @@ export function ChatPage() {
   const messages = useChatStore((s) => s.messages);
   const status = useChatStore((s) => s.status);
   const loading = useChatStore((s) => s.loading);
+  const queued = useChatStore((s) => s.queued);
   const waitingForInput = useChatStore((s) => s.waitingForInput);
   const pendingInputs = useChatStore((s) => s.pendingInputs);
   const pendingInputError = useChatStore((s) => s.pendingInputError);
@@ -68,6 +75,7 @@ export function ChatPage() {
     submitInput,
     retryMessage,
     retryResponse,
+    stop,
     cancelStream,
     uncertainMessages,
     uncertainResponses,
@@ -154,6 +162,44 @@ export function ChatPage() {
             </p>
           )}
         </div>
+        {queued > 1 && (
+          <span className="text-xs text-muted-foreground">
+            {queued} messages waiting
+          </span>
+        )}
+        {/* While a run carries the conversation it can be stopped. Leaving
+            the page does not stop it. */}
+        {conversationKey &&
+          (status === 'streaming' || status === 'waiting_for_input') && (
+            <div className="flex items-center">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-r-none"
+                onClick={() => void stop()}
+              >
+                <Square className="size-3" />
+                Stop
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="rounded-l-none border-l px-1.5"
+                    aria-label="More ways to stop"
+                  >
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => void stop(true)}>
+                    Stop and discard queued messages
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         {status === 'done' && (
           <span className="text-xs text-muted-foreground">Completed</span>
         )}

@@ -18,6 +18,7 @@ function empty(): ConversationLog {
     status: 'idle',
     loading: false,
     lastSeq: 0,
+    queued: 0,
     waitingForInput: null,
     pendingInputs: [],
     pendingInputError: null,
@@ -185,6 +186,19 @@ describe('the conversation log', () => {
       content: 'Error: boom',
       tone: 'error',
     });
+    expect(log.status).toBe('idle');
+  });
+
+  it('shows a stopped run as stopped, not as a failure', () => {
+    const log = read([
+      { kind: 'run_started', body: { instanceId: 'run-1', messageId: 'm' } },
+      { kind: 'run_ended', body: { instanceId: 'run-1', status: 'stopped' } },
+    ]);
+    expect(log.messages.at(-1)).toMatchObject({
+      role: 'system',
+      content: 'Stopped',
+    });
+    expect(log.messages.at(-1)?.tone).toBeUndefined();
     expect(log.status).toBe('idle');
   });
 

@@ -71,4 +71,23 @@ describe('chat response drafts', () => {
     );
     expect(options.onSend).not.toHaveBeenCalled();
   });
+  it('takes a message while a run is busy: it waits its turn', async () => {
+    const options = {
+      ...props(),
+      status: 'streaming' as const,
+      waitingForInput: null,
+      pendingInputs: [],
+      onSend: vi.fn().mockResolvedValue(true),
+    };
+    render(<ChatInput {...options} />);
+    expect(screen.getByRole('textbox')).toBeEnabled();
+    expect(screen.getByText(/waits its turn/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'One more thing' },
+    });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    await waitFor(() =>
+      expect(options.onSend).toHaveBeenCalledWith('One more thing')
+    );
+  });
 });

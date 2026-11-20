@@ -7,6 +7,7 @@ import {
   ConversationError,
   getConversation,
   sendMessage as sendConversationMessage,
+  stopConversation,
   streamEvents,
 } from '../../queries/conversations';
 
@@ -20,6 +21,7 @@ vi.mock('../../queries/conversations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../queries/conversations')>()),
   getConversation: vi.fn(),
   sendMessage: vi.fn(),
+  stopConversation: vi.fn(),
   streamEvents: vi.fn(),
 }));
 beforeEach(() => {
@@ -155,7 +157,7 @@ it('treats a refused message as final: nothing kept, nothing to retry', async ()
   );
   expect(result.current.uncertainMessages).toEqual([]);
   expect(useChatStore.getState().error).toBe(
-    'the conversation already holds 32 messages waiting their turn'
+    'Too many messages waiting; wait for a reply'
   );
   vi.mocked(sendConversationMessage).mockRejectedValueOnce(
     new TypeError('lost')
@@ -716,4 +718,67 @@ it('shows a reply as it is written, a frame at a time, then once as it is said',
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it('shows a message sent while a run is busy as queued, until its own run starts', async () => {
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  vi.mocked(getConversation).mockResolvedValue({
+    ...standing(),
+    lastSeq: 0,
+    queued: 2,
+  });
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => queued(message.id)
+  );
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void result.current.reconnect('conversation');
+    await settle();
+    events.caughtUp();
+    events.push('run_started', { instanceId: 'run-1', messageId: 'first' });
+    await settle();
+  });
+  expect(useChatStore.getState().status).toBe('streaming');
+  await act(async () =>
+    expect(await result.current.sendMessage('Second')).toBe(true)
+  );
+  const id = sentMessage(0).id;
+  expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+    content: 'Second',
+    queued: true,
+  });
+  // How many wait is the conversation's to say.
+  expect(useChatStore.getState().queued).toBe(2);
+  await act(async () => {
+    events.push('run_ended', { instanceId: 'run-1', status: 'completed' });
+    events.push('run_started', { instanceId: 'run-2', messageId: id });
+    await settle();
+  });
+  expect(
+    useChatStore.getState().messages.find((m) => m.content === 'Second')?.queued
+  ).toBe(false);
+});
+
+it('stops the run through the conversation, and may drop what waits', async () => {
+  vi.mocked(stopConversation).mockResolvedValue({ cleared: 0 });
+  vi.mocked(getConversation).mockResolvedValue(standing());
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(() => result.current.stop());
+  expect(stopConversation).toHaveBeenLastCalledWith(
+    'token',
+    'workflow',
+    'conversation',
+    { clearQueue: false }
+  );
+  await act(() => result.current.stop(true));
+  expect(stopConversation).toHaveBeenLastCalledWith(
+    'token',
+    'workflow',
+    'conversation',
+    { clearQueue: true }
+  );
+  vi.mocked(stopConversation).mockRejectedValue(new Error('no such run'));
+  await act(() => result.current.stop());
+  expect(useChatStore.getState().error).toBe('no such run');
 });

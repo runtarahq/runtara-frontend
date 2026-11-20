@@ -67,4 +67,20 @@ describe('ChatBubble', () => {
     render(<ChatBubble message={message({ data: [1, 2] })} />);
     expect(screen.getByRole('button', { name: /Data/ })).toBeInTheDocument();
   });
+
+  it('says of a message that it waits its turn, or why it was not taken', () => {
+    render(
+      <ChatBubble
+        message={message({ role: 'user', content: 'Hi', queued: true })}
+      />
+    );
+    expect(screen.getByText('Queued')).toBeInTheDocument();
+    cleanup();
+    render(
+      <ChatBubble
+        message={message({ role: 'user', content: 'Hi', failure: 'too late' })}
+      />
+    );
+    expect(screen.getByText(/Not delivered: too late/)).toBeInTheDocument();
+  });
 });
