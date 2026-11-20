@@ -1,6 +1,14 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, ChevronDown, MessageSquareOff, Square } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronDown,
+  MessageSquareOff,
+  PanelLeft,
+  Square,
+} from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ConversationList } from '@/features/workflows/components/ConversationList';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -181,175 +189,229 @@ export function ChatPage() {
     navigate(`/workflows/${workflowId}`);
   }, [navigate, workflowId]);
 
+  // The workflow's conversations, beside the one shown.
+  const [listShown, setListShown] = useState(true);
+  const queryClient = useQueryClient();
+  // The list has no stream of its own. What this page changes in it (a new
+  // conversation, a title) is read again at once.
+  useEffect(() => {
+    if (!workflowId || !conversationKey) return;
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.workflows.conversations(workflowId),
+    });
+  }, [queryClient, workflowId, conversationKey, title]);
+  const openChat = useCallback(
+    (key?: string) =>
+      navigate(
+        key
+          ? `/workflows/${workflowId}/chat/c/${encodeURIComponent(key)}`
+          : `/workflows/${workflowId}/chat`
+      ),
+    [navigate, workflowId]
+  );
+
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b px-4 py-3">
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={handleBack}
-          className="size-8"
-        >
-          <ArrowLeft className="size-4" />
-        </Button>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold">
-            {title || workflowName}
-          </h1>
-          {(title || storeInstanceId) && (
-            <p className="truncate text-xs text-muted-foreground">
-              {[
-                title ? workflowName : null,
-                storeInstanceId ? `Instance: ${storeInstanceId}` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-          )}
-        </div>
-        {queued > 1 && (
-          <span className="text-xs text-muted-foreground">
-            {queued} messages waiting
-          </span>
-        )}
-        {/* While a run carries the conversation it can be stopped. Leaving
-            the page does not stop it. */}
-        {conversationKey &&
-          (status === 'streaming' || status === 'waiting_for_input') && (
-            <div className="flex items-center">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="rounded-r-none"
-                onClick={() => void stop()}
-              >
-                <Square className="size-3" />
-                Stop
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="rounded-l-none border-l px-1.5"
-                    aria-label="More ways to stop"
-                  >
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => void stop(true)}>
-                    Stop and discard queued messages
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
-        {status === 'done' && (
-          <span className="text-xs text-muted-foreground">Completed</span>
-        )}
-      </div>
-
-      {/* Error banner */}
-      {(error || pendingInputError) && (
-        <div className="mx-4 mt-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error || pendingInputError}
-        </div>
+    <div className="flex h-dvh overflow-hidden">
+      {listShown && workflowId && !isDeadEnd && (
+        <ConversationList
+          workflowId={workflowId}
+          activeKey={conversationKey}
+          onOpen={openChat}
+          onNew={() => openChat()}
+          onRenamed={(key, renamed) => {
+            if (key === conversationKey)
+              useChatStore.getState().setTitle(renamed);
+          }}
+          onDeleted={(key) => {
+            // The one shown is gone: a new chat takes its place.
+            if (key === conversationKey) openChat();
+          }}
+          className="hidden md:flex"
+        />
       )}
-
-      {isDeadEnd ? (
-        <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
-          <MessageSquareOff className="mb-3 size-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium text-foreground">
-            This workflow does not support chat
-          </p>
-          <p className="mt-1 max-w-md text-xs text-muted-foreground">
-            A conversation needs a step that waits for your reply. Add a Wait
-            for signal step — on its own, or as an AI Agent tool — and this
-            workflow will start accepting messages.
-          </p>
-          <Button variant="secondary" className="mt-4" onClick={handleBack}>
-            Open workflow
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b px-4 py-3">
+          <Button
+            variant="secondary"
+            size="icon"
+            onClick={handleBack}
+            className="size-8"
+          >
+            <ArrowLeft className="size-4" />
           </Button>
-        </div>
-      ) : (
-        <>
-          {/* Message list */}
-          {loading ? (
-            <div
-              className="flex flex-1 flex-col gap-3 px-4 py-4"
-              role="status"
-              aria-label="Loading the conversation"
+          {!isDeadEnd && (
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setListShown((shown) => !shown)}
+              className="hidden size-8 md:inline-flex"
+              aria-label={
+                listShown ? 'Hide conversations' : 'Show conversations'
+              }
+              aria-pressed={listShown}
             >
-              <Skeleton className="h-10 w-2/5 self-end" />
-              <Skeleton className="h-16 w-3/5" />
-              <Skeleton className="h-10 w-1/3 self-end" />
-            </div>
-          ) : (
-            <ChatMessageList
-              messages={messages}
-              hasEarlier={hasEarlier}
-              loadingEarlier={loadingEarlier}
-              onLoadEarlier={() => void loadEarlier()}
-            />
+              <PanelLeft className="size-4" />
+            </Button>
           )}
-          {uncertainResponses?.map((response) => (
-            <div
-              key={response.operationId}
-              className="space-y-2 border-t px-4 py-2 text-sm"
-            >
-              <p>
-                Response to {response.request.message || 'input request'} is
-                unconfirmed.
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-sm font-semibold">
+              {title || workflowName}
+            </h1>
+            {(title || storeInstanceId) && (
+              <p className="truncate text-xs text-muted-foreground">
+                {[
+                  title ? workflowName : null,
+                  storeInstanceId ? `Instance: ${storeInstanceId}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  void retryResponse(
-                    response.request.requestId,
-                    response.payload,
-                    response.instanceId,
-                    response.operationId
-                  )
-                }
-              >
-                Retry original response
-              </Button>
-            </div>
-          ))}
-          {uncertainMessages
-            .filter(
-              (unconfirmed) => unconfirmed.conversationKey === conversationKey
-            )
-            .map(({ id, message }) => (
-              <div key={id} className="space-y-2 border-t px-4 py-2 text-sm">
-                <p>Message receipt is unconfirmed: {message}</p>
+            )}
+          </div>
+          {queued > 1 && (
+            <span className="text-xs text-muted-foreground">
+              {queued} messages waiting
+            </span>
+          )}
+          {/* While a run carries the conversation it can be stopped. Leaving
+            the page does not stop it. */}
+          {conversationKey &&
+            (status === 'streaming' || status === 'waiting_for_input') && (
+              <div className="flex items-center">
                 <Button
                   variant="secondary"
-                  aria-label={`Retry this message: ${message}`}
-                  onClick={() => void retryMessage(id)}
+                  size="sm"
+                  className="rounded-r-none"
+                  onClick={() => void stop()}
                 >
-                  Retry this message
+                  <Square className="size-3" />
+                  Stop
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="rounded-l-none border-l px-1.5"
+                      aria-label="More ways to stop"
+                    >
+                      <ChevronDown className="size-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => void stop(true)}>
+                      Stop and discard queued messages
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+          {status === 'done' && (
+            <span className="text-xs text-muted-foreground">Completed</span>
+          )}
+        </div>
+
+        {/* Error banner */}
+        {(error || pendingInputError) && (
+          <div className="mx-4 mt-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error || pendingInputError}
+          </div>
+        )}
+
+        {isDeadEnd ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+            <MessageSquareOff className="mb-3 size-10 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-foreground">
+              This workflow does not support chat
+            </p>
+            <p className="mt-1 max-w-md text-xs text-muted-foreground">
+              A conversation needs a step that waits for your reply. Add a Wait
+              for signal step — on its own, or as an AI Agent tool — and this
+              workflow will start accepting messages.
+            </p>
+            <Button variant="secondary" className="mt-4" onClick={handleBack}>
+              Open workflow
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Message list */}
+            {loading ? (
+              <div
+                className="flex flex-1 flex-col gap-3 px-4 py-4"
+                role="status"
+                aria-label="Loading the conversation"
+              >
+                <Skeleton className="h-10 w-2/5 self-end" />
+                <Skeleton className="h-16 w-3/5" />
+                <Skeleton className="h-10 w-1/3 self-end" />
+              </div>
+            ) : (
+              <ChatMessageList
+                messages={messages}
+                hasEarlier={hasEarlier}
+                loadingEarlier={loadingEarlier}
+                onLoadEarlier={() => void loadEarlier()}
+              />
+            )}
+            {uncertainResponses?.map((response) => (
+              <div
+                key={response.operationId}
+                className="space-y-2 border-t px-4 py-2 text-sm"
+              >
+                <p>
+                  Response to {response.request.message || 'input request'} is
+                  unconfirmed.
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    void retryResponse(
+                      response.request.requestId,
+                      response.payload,
+                      response.instanceId,
+                      response.operationId
+                    )
+                  }
+                >
+                  Retry original response
                 </Button>
               </div>
             ))}
+            {uncertainMessages
+              .filter(
+                (unconfirmed) => unconfirmed.conversationKey === conversationKey
+              )
+              .map(({ id, message }) => (
+                <div key={id} className="space-y-2 border-t px-4 py-2 text-sm">
+                  <p>Message receipt is unconfirmed: {message}</p>
+                  <Button
+                    variant="secondary"
+                    aria-label={`Retry this message: ${message}`}
+                    onClick={() => void retryMessage(id)}
+                  >
+                    Retry this message
+                  </Button>
+                </div>
+              ))}
 
-          {/* Input */}
-          <ChatInput
-            onSend={sendMessage}
-            onSignalResponse={sendMessage}
-            status={status}
-            waitingForInput={waitingForInput}
-            pendingInputs={pendingInputs}
-            onSelectInput={(input) =>
-              useChatStore.getState().setWaitingForInput(input)
-            }
-            onSubmitInput={submitInput}
-            key={conversationKey ?? storeInstanceId ?? 'new-conversation'}
-          />
-        </>
-      )}
+            {/* Input */}
+            <ChatInput
+              onSend={sendMessage}
+              onSignalResponse={sendMessage}
+              status={status}
+              waitingForInput={waitingForInput}
+              pendingInputs={pendingInputs}
+              onSelectInput={(input) =>
+                useChatStore.getState().setWaitingForInput(input)
+              }
+              onSubmitInput={submitInput}
+              key={conversationKey ?? storeInstanceId ?? 'new-conversation'}
+            />
+          </>
+        )}
+      </div>
     </div>
   );
 }

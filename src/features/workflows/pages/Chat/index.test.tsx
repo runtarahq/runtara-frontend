@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +10,7 @@ import { ChatPage } from './index';
 const mocks = vi.hoisted(() => ({
   getWorkflow: vi.fn(),
   getWorkflowInstance: vi.fn(),
+  listConversations: vi.fn(),
   openConversation: vi.fn(),
   readBack: vi.fn(),
   sendConversationMessage: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock(
     ...(await importOriginal<
       typeof import('@/features/workflows/queries/conversations')
     >()),
+    listConversations: mocks.listConversations,
     openConversation: mocks.openConversation,
     readBack: mocks.readBack,
     sendMessage: mocks.sendConversationMessage,
@@ -104,6 +106,7 @@ beforeEach(() => {
   useChatStore.getState().resetChat();
   mocks.openConversation.mockResolvedValue({ key: 'opened', lastSeq: 0 });
   mocks.readBack.mockResolvedValue([]);
+  mocks.listConversations.mockResolvedValue({ conversations: [] });
   mocks.sendConversationMessage.mockResolvedValue({
     messageId: 'opening',
     state: 'started',
@@ -264,5 +267,40 @@ describe('ChatPage and the conversation it shows', () => {
       )
     );
     expect(mocks.fetchChatHistory).not.toHaveBeenCalled();
+  });
+
+  it("lists the workflow's conversations and opens the one chosen", async () => {
+    mocks.getWorkflow.mockResolvedValue({ data: buildWorkflow(true) });
+    mocks.listConversations.mockResolvedValue({
+      conversations: [
+        {
+          id: '1',
+          key: 'slack:C1',
+          title: 'From Slack',
+          active: false,
+          waiting: false,
+          createdAt: '2026-11-20T05:00:00Z',
+          updatedAt: '2026-11-20T05:00:00Z',
+        },
+      ],
+    });
+
+    renderChat(undefined, 'console%3Aabc');
+
+    fireEvent.click(await screen.findByRole('button', { name: /^From Slack/ }));
+    await waitFor(() =>
+      expect(location()).toMatch(/\/chat\/c\/slack(:|%3A)C1$/)
+    );
+    // Another conversation: what was shown is replaced by it.
+    await waitFor(() =>
+      expect(mocks.readBack).toHaveBeenLastCalledWith(
+        'test-token',
+        WORKFLOW_ID,
+        'slack:C1',
+        expect.anything(),
+        expect.anything()
+      )
+    );
+    expect(useChatStore.getState().conversationKey).toBe('slack:C1');
   });
 });

@@ -125,6 +125,8 @@ export const queryKeys = {
         includeSubfolders,
       ] as const,
     // Chat operations
+    conversations: (workflowId: string) =>
+      [...queryKeys.workflows.byId(workflowId), 'conversations'] as const,
     chat: (workflowId: string) =>
       [...queryKeys.workflows.byId(workflowId), 'chat'] as const,
     chatInstance: (workflowId: string, instanceId: string) =>
