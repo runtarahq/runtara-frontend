@@ -46,9 +46,14 @@ function stream() {
   let seq = 0;
   return {
     body,
-    push(kind: string, eventBody: Record<string, unknown>, at?: number) {
+    push(
+      kind: string,
+      eventBody: Record<string, unknown>,
+      at?: number,
+      turn?: string
+    ) {
       seq = at ?? seq + 1;
-      const event = { seq, kind, body: eventBody, createdAt: 'now' };
+      const event = { seq, turn, kind, body: eventBody, createdAt: 'now' };
       controller.enqueue(
         encoder.encode(
           `id: ${String(seq)}\nevent: ${kind}\ndata: ${JSON.stringify(event)}\n\n`
@@ -157,10 +162,14 @@ it("reads a conversation's events as its transcript, both sides of it", async ()
   await act(async () => {
     void result.current.reconnect('conversation');
     await settle();
+    // How a chat is opened: a message that says nothing, shown to no one.
+    events.push('message', { id: 'opening', payload: {} });
+    events.push('message', { id: 'theirs', text: 'Hello' });
+    // The text here is deprecated, and no longer what the line is read from.
     events.push('run_started', {
       instanceId: 'run-1',
       messageId: 'theirs',
-      text: 'Hello',
+      text: 'Not this',
     });
     events.push('activity', { type: 'tool_call', tool_name: 'lookup' });
     events.push('reply', { text: 'Working on it.' });
@@ -169,10 +178,11 @@ it("reads a conversation's events as its transcript, both sides of it", async ()
       message: 'What next?',
       responseSchema: { message: { type: 'string' } },
     });
-    events.push('message_delivered', { messageId: 'theirs-2', text: 'This' });
-    // An AI Agent step's answer, and the same text as the run's reply.
-    events.push('activity', { type: 'message', content: 'Done.' });
-    events.push('reply', { text: 'Done.' });
+    events.push('message', { id: 'theirs-2', text: 'This' });
+    events.push('message_delivered', {
+      messageId: 'theirs-2',
+      text: 'Nor this',
+    });
     events.push('run_ended', { instanceId: 'run-1', status: 'completed' });
     await settle();
   });
@@ -180,7 +190,6 @@ it("reads a conversation's events as its transcript, both sides of it", async ()
     ['user', 'Hello'],
     ['assistant', 'Working on it.'],
     ['user', 'This'],
-    ['assistant', 'Done.'],
   ]);
   expect(useChatStore.getState().instanceId).toBe('run-1');
   expect(useChatStore.getState().status).toBe('idle');
@@ -189,36 +198,110 @@ it("reads a conversation's events as its transcript, both sides of it", async ()
   ).toBe(true);
 });
 
-it('does not show a message it sent again when the conversation reports it', async () => {
+it("shows an AI Agent's answer until the run's reply in that turn stands for it", async () => {
   const events = stream();
   vi.mocked(streamEvents).mockResolvedValue(events.body);
-  vi.mocked(sendConversationMessage).mockImplementation(
-    async (_token, _workflow, _key, message) => ({
-      messageId: message.id,
-      state: 'started',
-      duplicate: false,
-    })
-  );
   const { result } = renderHook(() => useChatStream('workflow'));
   await act(async () => {
     void result.current.reconnect('conversation');
     await settle();
-    await result.current.sendMessage('Hello');
-    events.push('run_started', {
-      instanceId: 'run-1',
-      messageId: sentMessage(0).id,
-      text: 'Hello',
-    });
-    events.push('run_ended', {
-      instanceId: 'run-1',
-      status: 'failed',
-      error: 'boom',
-    });
+    events.push('message', { id: 'm', text: 'Hi' }, undefined, 'm');
+    events.push(
+      'activity',
+      { type: 'message', content: 'Done.' },
+      undefined,
+      'm'
+    );
     await settle();
   });
-  expect(transcript()).toEqual([['user', 'Hello']]);
-  expect(useChatStore.getState().error).toBe('boom');
-  expect(useChatStore.getState().status).toBe('error');
+  expect(transcript()).toEqual([
+    ['user', 'Hi'],
+    ['assistant', 'Done.'],
+  ]);
+  await act(async () => {
+    events.push('reply', { text: 'Done, as returned.' }, undefined, 'm');
+    await settle();
+  });
+  expect(transcript()).toEqual([
+    ['user', 'Hi'],
+    ['assistant', 'Done, as returned.'],
+  ]);
+});
+
+it.each(['before', 'after'])(
+  'shows a message it sent once when its event arrives %s the send returns',
+  async (order) => {
+    const events = stream();
+    vi.mocked(streamEvents).mockResolvedValue(events.body);
+    let returnSend!: () => void;
+    vi.mocked(sendConversationMessage).mockImplementation(
+      (_token, _workflow, _key, message) =>
+        new Promise((resolve) => {
+          returnSend = () =>
+            resolve({
+              messageId: message.id,
+              state: 'started',
+              duplicate: false,
+            });
+        })
+    );
+    const { result } = renderHook(() => useChatStream('workflow'));
+    await act(async () => {
+      void result.current.reconnect('conversation');
+      await settle();
+      const sending = result.current.sendMessage('Hello');
+      await settle();
+      const id = sentMessage(0).id;
+      if (order === 'after') {
+        returnSend();
+        await sending;
+      }
+      events.push('message', { id, text: 'Hello' }, undefined, id);
+      events.push('run_started', { instanceId: 'run-1', messageId: id });
+      await settle();
+      if (order === 'before') {
+        returnSend();
+        await sending;
+      }
+      events.push('run_ended', {
+        instanceId: 'run-1',
+        status: 'failed',
+        error: 'boom',
+      });
+      await settle();
+    });
+    expect(transcript()).toEqual([['user', 'Hello']]);
+    expect(useChatStore.getState().error).toBe('boom');
+    expect(useChatStore.getState().status).toBe('error');
+  }
+);
+
+it('shows a reply with an id once, however often it is read', async () => {
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  const { result } = renderHook(() => useChatStream('workflow'));
+  const reply = { replyId: 'story', instanceId: 'run-1', text: 'Once.' };
+  await act(async () => {
+    void result.current.reconnect('conversation');
+    await settle();
+    events.push('reply', reply, 3);
+    // The same id from another run is another reply.
+    events.push('reply', { ...reply, instanceId: 'run-2' }, 9);
+    await settle();
+  });
+  // Read again from the start, as a reader that kept nothing would.
+  act(() =>
+    useChatStore.getState().applyConversationEvent({
+      seq: 3,
+      kind: 'reply',
+      body: reply,
+      createdAt: 'now',
+    })
+  );
+  expect(transcript()).toEqual([
+    ['assistant', 'Once.'],
+    ['assistant', 'Once.'],
+  ]);
 });
 
 it('reads on from the last event it saw when a stream ends', async () => {
