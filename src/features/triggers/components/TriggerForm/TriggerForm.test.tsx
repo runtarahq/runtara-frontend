@@ -63,4 +63,31 @@ describe('TriggerForm workflow field', () => {
 
     expect(workflowCombobox()).toHaveTextContent('Inventory reconcile');
   });
+
+  it('offers to wait for the workflow on an HTTP trigger only', () => {
+    const name = 'Wait for the workflow and answer with its result';
+    renderForm({
+      ...initialValues,
+      triggerType: 'HTTP',
+      httpSynchronous: true,
+    } as TriggerSchemaType);
+    expect(screen.getByRole('switch', { name })).toBeChecked();
+    expect(
+      screen.getByText(/httpResponse \{status, headers, body\}/)
+    ).toBeVisible();
+  });
+
+  it('does not offer to wait for the workflow on an email trigger', () => {
+    renderForm({
+      ...initialValues,
+      triggerType: 'EMAIL',
+    } as TriggerSchemaType);
+    expect(
+      screen.queryByRole('switch', {
+        name: 'Wait for the workflow and answer with its result',
+      })
+    ).not.toBeInTheDocument();
+    // The settings the two share are still there.
+    expect(screen.getByRole('switch', { name: 'Debug mode' })).toBeVisible();
+  });
 });

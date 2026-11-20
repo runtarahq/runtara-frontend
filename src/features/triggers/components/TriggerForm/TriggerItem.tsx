@@ -77,6 +77,14 @@ export const fieldsConfig = [
     hint: 'Capture detailed step events for each webhook-triggered run',
   },
   {
+    type: 'checkbox',
+    label: 'Wait for the workflow and answer with its result',
+    name: 'httpSynchronous',
+    initialValue: false,
+    description:
+      'The request is held until the run ends. A workflow whose output has httpResponse {status, headers, body} is answered with exactly that.',
+  },
+  {
     label: 'Webhook verification connection',
     name: 'webhookConnectionId',
     initialValue: '',
@@ -176,6 +184,7 @@ export const schema = z
     cronInputs: z.string().optional(),
     cronDebug: z.boolean().optional(),
     webhookDebug: z.boolean().optional(),
+    httpSynchronous: z.boolean().optional(),
     webhookConnectionId: z.string().optional(),
     // Loaded configurations can contain non-string values (e.g. CRON
     // `inputs` objects or the `debug` boolean), so values must stay loose.

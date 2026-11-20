@@ -121,6 +121,7 @@ export function FormField(props: Props) {
         className={className}
         label={label}
         name={name}
+        description={description}
         onChange={handleChange}
       />
     );
