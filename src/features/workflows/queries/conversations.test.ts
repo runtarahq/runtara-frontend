@@ -143,7 +143,7 @@ describe('the conversation client', () => {
     } satisfies Partial<ConversationError>);
   });
 
-  it('asks for a stream after an event, by query and by header', async () => {
+  it('asks for a stream after an event by query, with only headers the server allows', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('retry: 2000\n\n'));
     vi.stubGlobal('fetch', fetch);
     await streamEvents('token', 'workflow', 'key', {
@@ -153,16 +153,19 @@ describe('the conversation client', () => {
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe(`${base}/key/events?after=7&kinds=message%2Creply`);
     expect(init.headers.Accept).toBe('text/event-stream');
-    expect(init.headers['Last-Event-ID']).toBe('7');
+    // Not among the headers the server's CORS policy allows: sent from
+    // another origin, it would have the browser refuse the request.
+    expect(Object.keys(init.headers).sort()).toEqual([
+      'Accept',
+      'Authorization',
+    ]);
   });
 
-  it('asks for a stream from the first event with no Last-Event-ID', async () => {
+  it('asks for a stream from the first event', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('retry: 2000\n\n'));
     vi.stubGlobal('fetch', fetch);
     await streamEvents('token', 'workflow', 'key');
-    const [url, init] = fetch.mock.calls[0];
-    expect(url).toBe(`${base}/key/events?after=0`);
-    expect(init.headers['Last-Event-ID']).toBeUndefined();
+    expect(fetch.mock.calls[0][0]).toBe(`${base}/key/events?after=0`);
   });
 
   it('keeps the code of a refused stream', async () => {
