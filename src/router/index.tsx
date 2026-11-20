@@ -205,6 +205,16 @@ export const router = createBrowserRouter(
           ),
         },
         {
+          path: '/workflows/:workflowId/chat/c/:conversationKey',
+          element: (
+            <PrivateRoute>
+              <Suspense fallback={<PageLoader />}>
+                <ChatPage />
+              </Suspense>
+            </PrivateRoute>
+          ),
+        },
+        {
           path: '/workflows/:workflowId/chat/:instanceId',
           element: (
             <PrivateRoute>

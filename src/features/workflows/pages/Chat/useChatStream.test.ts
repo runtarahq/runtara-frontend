@@ -1,11 +1,12 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { useChatStream } from './useChatStream';
+import { titleFrom, useChatStream } from './useChatStream';
 import { useChatStore } from '../../stores/chatStore';
 import { getPendingInput } from '../../queries';
 import {
   ConversationError,
   getConversation,
+  openConversation,
   sendMessage as sendConversationMessage,
   stopConversation,
   streamEvents,
@@ -20,6 +21,7 @@ vi.mock('@/features/workflows/queries', () => ({ getPendingInput: vi.fn() }));
 vi.mock('../../queries/conversations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../queries/conversations')>()),
   getConversation: vi.fn(),
+  openConversation: vi.fn(),
   sendMessage: vi.fn(),
   stopConversation: vi.fn(),
   streamEvents: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('../../queries/conversations', async (importOriginal) => ({
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(getPendingInput).mockResolvedValue([]);
+  vi.mocked(openConversation).mockResolvedValue({} as never);
   useChatStore.getState().resetChat();
   useChatStore.getState().resumeChat('workflow', 'Workflow', 'instance');
   useChatStore.getState().setConversationKey('conversation');
@@ -781,4 +784,71 @@ it('stops the run through the conversation, and may drop what waits', async () =
   vi.mocked(stopConversation).mockRejectedValue(new Error('no such run'));
   await act(() => result.current.stop());
   expect(useChatStore.getState().error).toBe('no such run');
+});
+
+it("opens a new chat as the console's, then lets the workflow speak first", async () => {
+  const events = stream();
+  vi.mocked(streamEvents).mockResolvedValue(events.body);
+  vi.mocked(openConversation).mockResolvedValue({
+    ...standing(),
+    instanceId: undefined,
+  });
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => ({
+      messageId: message.id,
+      state: 'started',
+      duplicate: false,
+    })
+  );
+  const opened = vi.fn();
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(async () => {
+    void result.current.startSession(opened);
+    await settle();
+  });
+  const key = vi.mocked(openConversation).mock.calls[0][2];
+  expect(key).toMatch(/^console:/);
+  expect(vi.mocked(openConversation).mock.calls[0][3]).toEqual({
+    metadata: { source: 'console' },
+  });
+  expect(opened).toHaveBeenCalledWith(key);
+  // Opened before anything is said in it.
+  expect(vi.mocked(openConversation).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(sendConversationMessage).mock.invocationCallOrder[0]
+  );
+  expect(sentMessage(0)).toMatchObject({ payload: {} });
+  expect(vi.mocked(sendConversationMessage).mock.calls[0][2]).toBe(key);
+  act(() => result.current.cancelStream());
+});
+
+it('names an untitled conversation by the first thing said in it, once', async () => {
+  vi.mocked(openConversation).mockResolvedValue(standing());
+  vi.mocked(sendConversationMessage).mockImplementation(
+    async (_token, _workflow, _key, message) => queued(message.id)
+  );
+  vi.mocked(getConversation).mockResolvedValue(standing());
+  const { result } = renderHook(() => useChatStream('workflow'));
+  // Not yet read: it may have a title a person gave it.
+  await act(() => result.current.sendMessage('Too early'));
+  expect(openConversation).not.toHaveBeenCalled();
+  act(() => useChatStore.getState().setTitle(null));
+  await act(() =>
+    result.current.sendMessage('Where is my order?\nIt was due on Monday.')
+  );
+  expect(openConversation).toHaveBeenCalledWith(
+    'token',
+    'workflow',
+    'conversation',
+    { title: 'Where is my order?' }
+  );
+  expect(useChatStore.getState().title).toBe('Where is my order?');
+  await act(() => result.current.sendMessage('And another thing'));
+  expect(openConversation).toHaveBeenCalledTimes(1);
+});
+
+it('shortens a long first message into a title', () => {
+  const title = titleFrom(`${'word '.repeat(30)}end`);
+  expect(title.length).toBeLessThanOrEqual(60);
+  expect(title.endsWith('…')).toBe(true);
+  expect(titleFrom('  Short   one \n more')).toBe('Short one');
 });

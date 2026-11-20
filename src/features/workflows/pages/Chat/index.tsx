@@ -23,9 +23,14 @@ import { ChatInput } from '@/features/workflows/components/ChatInput';
 import { toast } from 'sonner';
 
 export function ChatPage() {
-  const { workflowId, instanceId } = useParams<{
+  const {
+    workflowId,
+    instanceId,
+    conversationKey: routeKey,
+  } = useParams<{
     workflowId: string;
     instanceId?: string;
+    conversationKey?: string;
   }>();
   const navigate = useNavigate();
   const token = useToken();
@@ -46,26 +51,29 @@ export function ChatPage() {
   // session is a dead end and the page says so instead. Direct URLs still land
   // here — this is the fallback for them, not a redirect.
   //
-  // Resuming a run (`:instanceId`) is exempt: it already has a transcript, and
-  // Invocation History only links here for a run that is holding a pending
-  // input. Refusing that would block the one reply the user came to give.
+  // Resuming a run (`:instanceId`) or a conversation that exists is exempt:
+  // it already has a transcript, and Invocation History only links here for
+  // a run that is holding a pending input. Refusing that would block the one
+  // reply the user came to give.
   const isWorkflowLoaded = !!workflow;
   const supportsChat = workflow?.supportsChat === true;
-  const isDeadEnd = isWorkflowLoaded && !instanceId && !supportsChat;
-
-  usePageTitle(`Chat - ${workflowName}`);
+  const isDeadEnd =
+    isWorkflowLoaded && !instanceId && !routeKey && !supportsChat;
 
   // Chat store state
   const messages = useChatStore((s) => s.messages);
   const status = useChatStore((s) => s.status);
   const loading = useChatStore((s) => s.loading);
   const queued = useChatStore((s) => s.queued);
+  const title = useChatStore((s) => s.title);
   const waitingForInput = useChatStore((s) => s.waitingForInput);
   const pendingInputs = useChatStore((s) => s.pendingInputs);
   const pendingInputError = useChatStore((s) => s.pendingInputError);
   const error = useChatStore((s) => s.error);
   const storeInstanceId = useChatStore((s) => s.instanceId);
   const conversationKey = useChatStore((s) => s.conversationKey);
+
+  usePageTitle(`Chat - ${title || workflowName}`);
 
   // Chat stream actions
   const {
@@ -81,37 +89,56 @@ export function ChatPage() {
     uncertainResponses,
   } = useChatStream(workflowId ?? '');
 
-  // Guard against StrictMode double-mount and dependency-triggered re-runs
-  const initRef = useRef(false);
+  // What the page shows now: a conversation by its key, a run, or a new
+  // chat. It changes with the URL, and a change replaces what was shown.
+  const shown = useRef<string | null>(null);
+  // The conversation this page started itself. Its URL is replaced with the
+  // conversation's own once it exists, and that is not a change of chat.
+  const started = useRef<string | null>(null);
 
-  // Initialize or resume chat on mount
   useEffect(() => {
     if (!workflowId) return;
     // Nothing starts until the workflow has answered — a new session on a
     // workflow that never waits allocated an instance for a chat that could
     // never reply.
     if (!isWorkflowLoaded || isDeadEnd) return;
-    if (initRef.current) return;
-    initRef.current = true;
+    const target = routeKey
+      ? `conversation:${routeKey}`
+      : instanceId
+        ? `run:${instanceId}`
+        : 'new';
+    if (shown.current === target) return;
+    if (routeKey && started.current === routeKey) {
+      shown.current = target;
+      return;
+    }
+    shown.current = target;
+    started.current = null;
+    cancelStream();
 
     const store = useChatStore.getState();
-    let disposed = false;
+    const isShown = () => shown.current === target;
+    const chatUrl = (key: string) =>
+      `/workflows/${workflowId}/chat/c/${encodeURIComponent(key)}`;
 
-    if (instanceId) {
+    if (routeKey) {
+      // A conversation that exists: its events are its transcript, and the
+      // stream carries on from there.
+      store.initChat(workflowId, workflowName);
+      void reconnect(routeKey);
+    } else if (instanceId) {
       store.resumeChat(workflowId, workflowName, instanceId);
 
-      // A run a conversation started names it in its input. The
-      // conversation's events are then the transcript, from the first, and
-      // the stream carries on from there. A run nothing of the kind started
-      // (one waiting for input, opened from Invocation History) has only
-      // its own history.
+      // A run a conversation started names it in its input, and is shown as
+      // that conversation. A run nothing of the kind started (one waiting
+      // for input, opened from Invocation History) has only its own history.
       getWorkflowInstance(token, workflowId, instanceId)
         .then(async (instanceData) => {
-          if (disposed) return;
+          if (!isShown()) return;
           const key = instanceData?.inputs?.data?.conversation?.key as
             string | undefined;
           if (key) {
-            void reconnect(key);
+            navigate(chatUrl(key), { replace: true });
             return;
           }
           const historyMessages = await fetchChatHistory(
@@ -119,24 +146,33 @@ export function ChatPage() {
             workflowId,
             instanceId
           );
-          if (!disposed) store.loadHistory(historyMessages);
+          if (isShown()) store.loadHistory(historyMessages);
         })
         .catch(() => {
-          if (!disposed) toast.error('Failed to load chat history');
+          if (isShown()) toast.error('Failed to load chat history');
         });
     } else {
       store.initChat(workflowId, workflowName);
-      // Start a new conversation: the workflow begins, and speaks first
-      startSession();
+      // Start a new conversation: the workflow begins, and speaks first. Its
+      // URL becomes the conversation's, so a refresh reopens the same one.
+      void startSession((key) => {
+        if (!isShown()) return;
+        started.current = key;
+        navigate(chatUrl(key), { replace: true });
+      });
     }
+  }, [workflowId, instanceId, routeKey, isWorkflowLoaded, isDeadEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return () => {
-      disposed = true;
-      initRef.current = false;
+  // Leaving the page stops reading. It does not stop the run.
+  useEffect(
+    () => () => {
+      shown.current = null;
+      started.current = null;
       cancelStream();
       useChatStore.getState().resetChat();
-    };
-  }, [workflowId, instanceId, isWorkflowLoaded, isDeadEnd]); // eslint-disable-line react-hooks/exhaustive-deps
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const handleBack = useCallback(() => {
     navigate(`/workflows/${workflowId}`);
@@ -155,10 +191,17 @@ export function ChatPage() {
           <ArrowLeft className="size-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold">{workflowName}</h1>
-          {useChatStore.getState().instanceId && (
+          <h1 className="truncate text-sm font-semibold">
+            {title || workflowName}
+          </h1>
+          {(title || storeInstanceId) && (
             <p className="truncate text-xs text-muted-foreground">
-              Instance: {useChatStore.getState().instanceId}
+              {[
+                title ? workflowName : null,
+                storeInstanceId ? `Instance: ${storeInstanceId}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           )}
         </div>

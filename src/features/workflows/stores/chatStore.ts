@@ -35,6 +35,8 @@ interface ChatStoreState {
   lastSeq: number;
   /** How many messages wait their turn in the conversation. */
   queued: number;
+  /** The conversation's title: `null` for none, `undefined` until read. */
+  title: string | null | undefined;
   waitingForInput: WaitingForInputData | null;
   pendingInputs: WaitingForInputData[];
   pendingInputError: string | null;
@@ -69,6 +71,7 @@ interface ChatStoreState {
   /** Applies the conversation as it stands, read once it has caught up. */
   applyConversationState: (state: ConversationState) => void;
   setLoading: (loading: boolean) => void;
+  setTitle: (title: string | null) => void;
   addSystemMessage: (content: string) => void;
   startAssistantMessage: () => void;
   appendToAssistantMessage: (content: string) => void;
@@ -109,6 +112,7 @@ export const useChatStore = create<ChatStoreState>()(
       loading: false,
       lastSeq: 0,
       queued: 0,
+      title: undefined,
       waitingForInput: null,
       pendingInputs: [],
       pendingInputError: null,
@@ -127,6 +131,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.loading = false;
           state.lastSeq = 0;
           state.queued = 0;
+          state.title = undefined;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;
@@ -146,6 +151,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.loading = false;
           state.lastSeq = 0;
           state.queued = 0;
+          state.title = undefined;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;
@@ -215,6 +221,12 @@ export const useChatStore = create<ChatStoreState>()(
       applyConversationState: (conversation) => {
         set((state) => {
           applyState(state, conversation);
+        });
+      },
+
+      setTitle: (title) => {
+        set((state) => {
+          state.title = title;
         });
       },
 
@@ -305,6 +317,7 @@ export const useChatStore = create<ChatStoreState>()(
           if (state.conversationKey !== key) {
             state.lastSeq = 0;
             state.queued = 0;
+            state.title = undefined;
             state.pendingInputs = [];
             state.waitingForInput = null;
             state.pendingInputError = null;
@@ -403,6 +416,7 @@ export const useChatStore = create<ChatStoreState>()(
           state.loading = false;
           state.lastSeq = 0;
           state.queued = 0;
+          state.title = undefined;
           state.waitingForInput = null;
           state.pendingInputs = [];
           state.pendingInputError = null;

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkflowDto } from '@/generated/RuntaraRuntimeApi';
@@ -10,6 +10,7 @@ import { ChatPage } from './index';
 const mocks = vi.hoisted(() => ({
   getWorkflow: vi.fn(),
   getWorkflowInstance: vi.fn(),
+  openConversation: vi.fn(),
   sendConversationMessage: vi.fn(),
   streamConversationEvents: vi.fn(),
   fetchChatHistory: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock(
     ...(await importOriginal<
       typeof import('@/features/workflows/queries/conversations')
     >()),
+    openConversation: mocks.openConversation,
     sendMessage: mocks.sendConversationMessage,
     streamEvents: mocks.streamConversationEvents,
   })
@@ -60,19 +62,31 @@ function buildWorkflow(supportsChat: boolean): WorkflowDto {
   } as unknown as WorkflowDto;
 }
 
-function renderChat(instanceId?: string) {
+/** Where the page is now, for a test to read. */
+function Location() {
+  return <output data-testid="location">{useLocation().pathname}</output>;
+}
+
+function renderChat(instanceId?: string, conversationKey?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const entry = instanceId
-    ? `/workflows/${WORKFLOW_ID}/chat/${instanceId}`
-    : `/workflows/${WORKFLOW_ID}/chat`;
+  const entry = conversationKey
+    ? `/workflows/${WORKFLOW_ID}/chat/c/${conversationKey}`
+    : instanceId
+      ? `/workflows/${WORKFLOW_ID}/chat/${instanceId}`
+      : `/workflows/${WORKFLOW_ID}/chat`;
 
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[entry]}>
+        <Location />
         <Routes>
           <Route path="/workflows/:workflowId/chat" element={<ChatPage />} />
+          <Route
+            path="/workflows/:workflowId/chat/c/:conversationKey"
+            element={<ChatPage />}
+          />
           <Route
             path="/workflows/:workflowId/chat/:instanceId"
             element={<ChatPage />}
@@ -86,6 +100,7 @@ function renderChat(instanceId?: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   useChatStore.getState().resetChat();
+  mocks.openConversation.mockResolvedValue({ key: 'opened', lastSeq: 0 });
   mocks.sendConversationMessage.mockResolvedValue({
     messageId: 'opening',
     state: 'started',
@@ -181,5 +196,70 @@ describe('ChatPage on a chat-capable workflow', () => {
     expect(
       screen.getByPlaceholderText('Type a message...')
     ).toBeInTheDocument();
+  });
+});
+
+describe('ChatPage and the conversation it shows', () => {
+  const location = () => screen.getByTestId('location').textContent;
+
+  it("takes the conversation's URL once it has started one, without starting another", async () => {
+    mocks.getWorkflow.mockResolvedValue({ data: buildWorkflow(true) });
+
+    renderChat();
+
+    await waitFor(() =>
+      expect(location()).toMatch(
+        new RegExp(`^/workflows/${WORKFLOW_ID}/chat/c/console(:|%3A)`)
+      )
+    );
+    await waitFor(() =>
+      expect(mocks.sendConversationMessage).toHaveBeenCalledTimes(1)
+    );
+    // The same chat under its own URL: opened once, read once.
+    expect(mocks.openConversation).toHaveBeenCalledTimes(1);
+    expect(mocks.streamConversationEvents).toHaveBeenCalledTimes(1);
+    expect(useChatStore.getState().conversationKey).toMatch(/^console:/);
+  });
+
+  it('reopens a conversation by its key, sending nothing', async () => {
+    mocks.getWorkflow.mockResolvedValue({ data: buildWorkflow(true) });
+
+    renderChat(undefined, 'console%3Aabc');
+
+    await waitFor(() =>
+      expect(mocks.streamConversationEvents).toHaveBeenCalledWith(
+        'test-token',
+        WORKFLOW_ID,
+        'console:abc',
+        expect.objectContaining({ after: 0 })
+      )
+    );
+    expect(mocks.openConversation).not.toHaveBeenCalled();
+    expect(mocks.sendConversationMessage).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('status', { name: 'Loading the conversation' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows a run a conversation started as that conversation', async () => {
+    mocks.getWorkflow.mockResolvedValue({ data: buildWorkflow(true) });
+    mocks.getWorkflowInstance.mockResolvedValue({
+      inputs: { data: { conversation: { key: 'slack:C1' } } },
+    });
+
+    renderChat(INSTANCE_ID);
+
+    await waitFor(() =>
+      expect(location()).toMatch(/\/chat\/c\/slack(:|%3A)C1$/)
+    );
+    await waitFor(() =>
+      expect(mocks.streamConversationEvents).toHaveBeenCalledWith(
+        'test-token',
+        WORKFLOW_ID,
+        'slack:C1',
+        expect.anything()
+      )
+    );
+    expect(mocks.fetchChatHistory).not.toHaveBeenCalled();
   });
 });

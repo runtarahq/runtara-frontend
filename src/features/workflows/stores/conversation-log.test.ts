@@ -19,6 +19,7 @@ function empty(): ConversationLog {
     loading: false,
     lastSeq: 0,
     queued: 0,
+    title: undefined,
     waitingForInput: null,
     pendingInputs: [],
     pendingInputError: null,
