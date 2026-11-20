@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { LinkIcon, Square } from 'lucide-react';
+import { LinkIcon } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 import { formatDate } from '@/lib/utils';
@@ -70,7 +70,11 @@ function Conversation({ chat }: { chat: SharedChat }) {
 
   // A line may lead into the console, where this page's reader cannot go.
   const shown = useMemo(
-    () => messages.map((m) => (m.link ? { ...m, link: undefined } : m)),
+    () =>
+      messages
+        // What the runs did is the workspace's to see.
+        .filter((m) => !m.activity)
+        .map((m) => (m.link ? { ...m, link: undefined } : m)),
     [messages]
   );
   const over = status === 'error';
@@ -88,12 +92,6 @@ function Conversation({ chat }: { chat: SharedChat }) {
             </p>
           )}
         </div>
-        {(status === 'streaming' || status === 'waiting_for_input') && (
-          <Button variant="secondary" size="sm" onClick={() => void stop()}>
-            <Square className="size-3" />
-            Stop
-          </Button>
-        )}
       </div>
 
       {error && (
@@ -120,6 +118,9 @@ function Conversation({ chat }: { chat: SharedChat }) {
           hasEarlier={hasEarlier}
           loadingEarlier={loadingEarlier}
           onLoadEarlier={() => void loadEarlier()}
+          working={
+            status === 'streaming' && !messages.some((m) => m.isStreaming)
+          }
         />
       )}
 
@@ -141,6 +142,7 @@ function Conversation({ chat }: { chat: SharedChat }) {
         <ChatInput
           onSend={sendMessage}
           onSignalResponse={sendMessage}
+          onStop={() => void stop()}
           status={status}
           waitingForInput={waitingForInput}
           pendingInputs={pendingInputs}

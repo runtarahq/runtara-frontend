@@ -90,11 +90,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         )}
         <div
           className={cn(
-            'max-w-[80%] rounded-lg rounded-tr-md px-4 py-2.5 text-sm',
+            'max-w-[80%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm',
             // Someone else's message is told apart from this page's own.
             sender
-              ? 'border bg-muted text-foreground'
-              : 'bg-primary text-primary-foreground'
+              ? 'border bg-background text-foreground'
+              : 'bg-muted text-foreground'
           )}
         >
           <p className="whitespace-pre-wrap">{content}</p>
@@ -148,9 +148,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   // Assistant message
   return (
     <div className="flex justify-start">
+      {/* What the workflow says is the page's own text, not a bubble: it
+          is read at the column's full width, as a chat's answers are. */}
       <div
         className={cn(
-          'max-w-[80%] rounded-lg rounded-tl-md border bg-card px-4 py-2.5 text-sm',
+          'min-w-0 max-w-full py-1 text-sm leading-relaxed',
           isStreaming && !content && 'animate-pulse'
         )}
       >

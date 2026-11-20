@@ -207,6 +207,25 @@ describe('the conversation log', () => {
     expect(runError(null)).toBe('Execution failed');
   });
 
+  it('tells what a run did apart from what is said and what went wrong', () => {
+    const log = read([
+      { kind: 'run_started', body: { instanceId: 'run-1', messageId: 'm' } },
+      { kind: 'activity', body: { type: 'tool_call', tool_name: 'lookup' } },
+      { kind: 'reply', body: { text: 'Found it.' } },
+      {
+        kind: 'run_ended',
+        body: { instanceId: 'run-1', status: 'failed', error: 'boom' },
+      },
+    ]);
+    expect(log.messages.map((m) => [m.content, !!m.activity])).toEqual([
+      ['Execution started', true],
+      ['Calling tool: lookup', true],
+      ['Found it.', false],
+      // A failure is not activity to hide.
+      ['Error: boom', false],
+    ]);
+  });
+
   it('shows a stopped run as stopped, not as a failure', () => {
     const log = read([
       { kind: 'run_started', body: { instanceId: 'run-1', messageId: 'm' } },

@@ -21,6 +21,9 @@ export interface ChatMessage {
   data?: unknown;
   /** Files a reply names: the conversation keeps none of them. */
   attachments?: ChatAttachment[];
+  /** A line about what a run did (it started, a model or tool call, its
+   * memory), not something said: shown only when asked for. */
+  activity?: boolean;
   /** A line that reports a failure, or something to look into. */
   tone?: 'error' | 'warning';
   /** Where a line that reports something leads, to look into it. */
