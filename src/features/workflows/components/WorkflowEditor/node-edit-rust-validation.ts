@@ -1,3 +1,4 @@
+import { declareGivenInputs } from '@/features/workflows/utils/given-inputs';
 import type { Edge, Node } from '@xyflow/react';
 
 import {
@@ -211,7 +212,16 @@ function buildPendingEdges(
   return candidateEdges;
 }
 
-function buildGraphOptions(workflow?: WorkflowValidationContext) {
+function buildGraphOptions(
+  workflow: WorkflowValidationContext | undefined,
+  steps: Node[]
+) {
+  // As when the workflow is saved: what the server gives a run is declared
+  // where a step refers to it, or the reference would be refused.
+  const inputSchemaFields = declareGivenInputs(
+    workflow?.inputSchemaFields,
+    steps.map((node) => node.data)
+  );
   const variables = workflow?.variables?.length
     ? workflow.variables.reduce(
         (acc, variable) => {
@@ -236,8 +246,8 @@ function buildGraphOptions(workflow?: WorkflowValidationContext) {
     name: workflow?.name ?? '',
     description: workflow?.description ?? '',
     variables,
-    inputSchema: workflow?.inputSchemaFields?.length
-      ? buildSchemaFromFields(workflow.inputSchemaFields)
+    inputSchema: inputSchemaFields.length
+      ? buildSchemaFromFields(inputSchemaFields)
       : undefined,
     outputSchema: workflow?.outputSchemaFields?.length
       ? buildSchemaFromFields(workflow.outputSchemaFields)
@@ -314,7 +324,7 @@ export async function validateNodeEditWithRust({
     candidateEdges = edges;
   }
 
-  const graphOptions = buildGraphOptions(workflow);
+  const graphOptions = buildGraphOptions(workflow, candidateNodes);
   if (pendingNode?.becomesEntryPoint) {
     graphOptions.entryPoint = nodeId;
   }
