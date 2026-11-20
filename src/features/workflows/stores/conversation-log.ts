@@ -209,6 +209,31 @@ function applyActivity(log: ConversationLog, event: ConversationEvent) {
   }
 }
 
+/**
+ * Why a run failed, for a person to read. A step's failure arrives as JSON
+ * (`message`, `code`, `stepId` and more): its message is said, with the
+ * step and the code that tell which failure it was.
+ */
+export function runError(error: string | null | undefined): string {
+  if (!error) return 'Execution failed';
+  try {
+    const parsed: unknown = JSON.parse(error);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const { message, code, stepId } = parsed as Record<string, unknown>;
+      if (typeof message === 'string' && message) {
+        const where = [
+          typeof stepId === 'string' && stepId ? `step ${stepId}` : null,
+          typeof code === 'string' && code ? code : null,
+        ].filter(Boolean);
+        return where.length ? `${message} (${where.join(', ')})` : message;
+      }
+    }
+  } catch {
+    // Not JSON: said as it is.
+  }
+  return error;
+}
+
 /** A message's turn has come, or never will: it no longer waits. */
 function taken(log: ConversationLog, messageId: string) {
   const sent = log.messages.find((m) => m.id === messageLineId(messageId));
@@ -336,12 +361,7 @@ export function applyEvent(log: ConversationLog, event: ConversationEvent) {
       // chat: the conversation goes on.
       if (event.body.status === 'stopped') note(log, event, 'Stopped');
       else if (event.body.status !== 'completed')
-        note(
-          log,
-          event,
-          `Error: ${event.body.error ?? 'Execution failed'}`,
-          'error'
-        );
+        note(log, event, `Error: ${runError(event.body.error)}`, 'error');
       // A reply it was writing and never said whole stays as far as it got.
       for (const written of log.messages) {
         if (
