@@ -187,6 +187,22 @@ describe('the conversation log', () => {
     expect(log.status).toBe('idle');
   });
 
+  it('warns when the reply workflow could not be started', () => {
+    const log = read([
+      {
+        kind: 'reply_route_failed',
+        body: { seq: 4, replyWorkflowId: 'wf', reason: 'it was deleted' },
+      },
+    ]);
+    expect(log.messages).toMatchObject([
+      {
+        role: 'system',
+        tone: 'warning',
+        content: 'The reply workflow could not be started: it was deleted',
+      },
+    ]);
+  });
+
   const state = (fields: Partial<ConversationState>): ConversationState => ({
     id: 'id',
     key: 'key',

@@ -384,3 +384,50 @@ it('reads on from the last event it saw when a stream ends', async () => {
     vi.useRealTimers();
   }
 });
+
+it('ends the chat when its conversation was deleted', async () => {
+  vi.mocked(streamEvents).mockRejectedValue(
+    new ConversationError('no such conversation', 'CONVERSATION_NOT_FOUND', 404)
+  );
+  const { result } = renderHook(() => useChatStream('workflow'));
+  await act(() => result.current.reconnect('conversation'));
+  expect(streamEvents).toHaveBeenCalledTimes(1);
+  expect(useChatStore.getState()).toMatchObject({
+    error: 'This conversation was deleted',
+    status: 'error',
+    loading: false,
+  });
+});
+
+it('says when the workspace has too many open chats, and asks again later', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout'] });
+  try {
+    const events = stream();
+    vi.mocked(streamEvents)
+      .mockRejectedValueOnce(
+        new ConversationError(
+          'too many streams',
+          'CONVERSATION_STREAMS_FULL',
+          429
+        )
+      )
+      .mockResolvedValueOnce(events.body);
+    const { result } = renderHook(() => useChatStream('workflow'));
+    await act(async () => {
+      void result.current.reconnect('conversation');
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(useChatStore.getState().error).toBe(
+      'Too many open chats in this workspace'
+    );
+    // Later than a dropped stream is asked for again.
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(streamEvents).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTimeAsync(10000));
+    expect(streamEvents).toHaveBeenCalledTimes(2);
+    expect(useChatStore.getState().error).toBeNull();
+    act(() => result.current.cancelStream());
+  } finally {
+    vi.useRealTimers();
+  }
+});
