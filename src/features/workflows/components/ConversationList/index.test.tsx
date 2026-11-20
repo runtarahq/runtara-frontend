@@ -18,7 +18,18 @@ import {
 import { conversationName } from './conversation-name';
 import { ConversationList } from './index';
 
-vi.mock('@/shared/hooks/useToken', () => ({ useToken: () => 'token' }));
+const auth = vi.hoisted(() => ({ token: 'token', isOidcAuth: true }));
+vi.mock('@/shared/hooks/useToken', () => ({ useToken: () => auth.token }));
+vi.mock('@/shared/config/runtimeConfig', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/shared/config/runtimeConfig')>();
+  return {
+    ...actual,
+    get isOidcAuth() {
+      return auth.isOidcAuth;
+    },
+  };
+});
 vi.mock('@/features/workflows/queries/conversations', () => ({
   deleteConversation: vi.fn(),
   listConversations: vi.fn(),
@@ -71,6 +82,8 @@ const rows = () =>
 
 beforeEach(() => {
   vi.resetAllMocks();
+  auth.token = 'token';
+  auth.isOidcAuth = true;
   vi.mocked(listConversations).mockResolvedValue({ conversations: [] });
 });
 afterEach(cleanup);
@@ -216,5 +229,21 @@ describe('ConversationList', () => {
     expect(
       await screen.findByText('No conversations yet.')
     ).toBeInTheDocument();
+  });
+
+  it('lists without a token where the server needs none, and waits for one where it does', async () => {
+    auth.token = '';
+    renderList();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Signed in through OIDC, but the token is not there yet.
+    expect(listConversations).not.toHaveBeenCalled();
+    cleanup();
+
+    auth.isOidcAuth = false;
+    renderList();
+    expect(
+      await screen.findByText('No conversations yet.')
+    ).toBeInTheDocument();
+    expect(listConversations).toHaveBeenCalledTimes(1);
   });
 });
