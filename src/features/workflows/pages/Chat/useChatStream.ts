@@ -64,6 +64,21 @@ interface ChatOptions {
 }
 
 const NO_ACCESS = 'This link has expired or is not valid';
+/**
+ * What the holder of a conversation token is shown: what is said, and what
+ * the chat needs to know of its runs. Not what the runs did (`activity`:
+ * model calls, tool calls, memory), which is the workspace's to see.
+ */
+const SAID = [
+  'message',
+  'reply',
+  'reply_delta',
+  'waiting_for_input',
+  'message_delivered',
+  'message_failed',
+  'run_started',
+  'run_ended',
+];
 
 /** The signed-in console's chat with a workflow. */
 export function useChatStream(workflowId: string) {
@@ -79,6 +94,8 @@ export function useConversationChat(
   token: string,
   { restricted = false }: ChatOptions = {}
 ) {
+  // Every kind for the console; only what is said for a token's holder.
+  const kinds = restricted ? SAID : undefined;
   const {
     refreshPendingInput,
     submitInput: submitRunInput,
@@ -185,6 +202,7 @@ export function useConversationChat(
         try {
           const events = await streamEvents(token, workflowId, key, {
             after,
+            kinds,
             signal: abortController.signal,
           });
           if (useChatStore.getState().error === STREAMS_FULL)
@@ -272,7 +290,7 @@ export function useConversationChat(
           await new Promise((resolve) => setTimeout(resolve, retryIn));
       }
     },
-    [token, workflowId, listOtherWaits, readState, restricted]
+    [token, workflowId, listOtherWaits, readState, restricted, kinds]
   );
 
   /** Makes this the page's one stream, replacing any before it. */
@@ -371,12 +389,16 @@ export function useConversationChat(
           token,
           workflowId,
           key,
-          { limit: PAGE },
+          { limit: PAGE, kinds },
           abortController.signal
         );
         if (abortRef.current !== abortController) return;
         const events = [...newestFirst].reverse();
-        store.openConversationEvents(events, newestFirst.length >= PAGE);
+        store.openConversationEvents(
+          events,
+          newestFirst.length >= PAGE,
+          !kinds
+        );
         from = events.at(-1)?.seq ?? 0;
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -394,7 +416,7 @@ export function useConversationChat(
       }
       await follow(key, from, abortController);
     },
-    [token, workflowId, begin, follow]
+    [token, workflowId, begin, follow, kinds]
   );
 
   /** Read the events before the earliest one shown, and show them above. */
@@ -408,12 +430,14 @@ export function useConversationChat(
       const newestFirst = await readBack(token, workflowId, conversationKey, {
         before: firstSeq,
         limit: PAGE,
+        kinds,
       });
       const current = useChatStore.getState();
       if (current.conversationKey !== conversationKey) return;
       current.prependConversationEvents(
         [...newestFirst].reverse(),
-        newestFirst.length >= PAGE
+        newestFirst.length >= PAGE,
+        !kinds
       );
     } catch (err: unknown) {
       if (useChatStore.getState().conversationKey === conversationKey)
@@ -426,7 +450,7 @@ export function useConversationChat(
       if (useChatStore.getState().conversationKey === conversationKey)
         useChatStore.getState().setLoadingEarlier(false);
     }
-  }, [token, workflowId]);
+  }, [token, workflowId, kinds]);
 
   /**
    * Sends a message into the conversation: it starts a run, answers the
