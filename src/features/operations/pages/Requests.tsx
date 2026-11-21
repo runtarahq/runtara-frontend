@@ -1,14 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { useCustomQuery } from '@/shared/hooks/api';
 import { useDebounce } from '@/shared/hooks/useDebounce';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { Can } from '@/shared/components/Can';
-import { Input } from '@/shared/components/ui/input';
-import { TablePagination } from '@/shared/components/console';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/shared/components/ui/table';
+import {
+  Breadcrumb,
+  ConsoleEmptyState,
+  ConsoleTableShell,
+  ConsoleToolbar,
+  TablePagination,
+  TableSkeletonRows,
+  TableStatusFooter,
+  ToolbarSearch,
+} from '@/shared/components/console';
 import { InputRetryPanel } from '@/features/workflows/components/ManagedInputSubmissions';
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
 import {
@@ -20,11 +36,11 @@ import {
   type AttentionRequest,
 } from '../attention-requests';
 import { useOperations } from '../queries';
-import { contextSummary } from '../request-context';
+import { RequestDetails } from '../components/RequestDetails';
 import { QueueAnswer } from '../components/QueueAnswer';
 import { RequestPanel, RequestTiming } from '../components/RequestPanel';
 import { RequestTabs } from '../components/RequestTabs';
-import { OperationHeader, RefreshControls } from './shared';
+import { RefreshControls } from './shared';
 import { failedWithNothingToShow } from '../poll-errors';
 
 const PAGE_SIZE = 25;
@@ -157,228 +173,150 @@ export function RequestsPage() {
 
   const error = queues.error || views.error || query.error;
   const unavailable = failedWithNothingToShow(queues, views, query);
+  const loading = query.isPending || !queues.data || !views.data;
   return (
-    <div className="mx-auto min-h-full w-full max-w-[1600px] bg-background p-5 lg:px-10 lg:py-7">
-      <OperationHeader
-        title="Requests"
-        description={
-          scope
-            ? `${scope.queue.name} · ${scope.queue.workflowName}`
-            : 'Everything waiting on a person, across all workflows.'
-        }
-        actions={
-          <RefreshControls
-            busy={query.isFetching || queues.isFetching || views.isFetching}
-            updatedAt={query.dataUpdatedAt}
-            onRefresh={() =>
-              void client.invalidateQueries({
-                queryKey: ['operations', tenant],
-              })
-            }
-          />
-        }
-      />
-      <main className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <RequestTabs
-            active={overdue && tracksDue ? 'overdue' : 'open'}
-            open={query.data ? inQueue.length : undefined}
-            overdue={
-              tracksDue
-                ? query.data
-                  ? inQueue.filter((request) => request.isOverdue).length
-                  : undefined
-                : null
-            }
-            onChange={(tab) =>
-              show({ filter: tab === 'overdue' ? 'overdue' : null })
-            }
-          />
-          <Input
-            type="search"
-            aria-label="Search requests"
-            placeholder="Search requests"
-            className="ml-auto w-full sm:w-64"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <select
-            aria-label="Order"
-            className="h-8 rounded-md border bg-background px-2 text-sm"
-            value={oldest ? 'oldest' : 'urgent'}
-            onChange={(event) =>
-              show({ sort: event.target.value === 'oldest' ? 'oldest' : null })
-            }
-          >
-            <option value="urgent">Most urgent first</option>
-            <option value="oldest">Longest waiting first</option>
-          </select>
-        </div>
-        {scopes.length > 1 || scope ? (
-          <nav aria-label="Queues" className="flex flex-wrap gap-2 text-xs">
-            <QueueChip
-              active={!scope}
-              label="All queues"
-              count={query.data?.requests.length}
-              onClick={() => show({ queue: null })}
+    <>
+      <ConsoleTableShell
+        toolbar={
+          <>
+            <ConsoleToolbar
+              left={
+                <Breadcrumb
+                  items={[
+                    { label: 'Operations', to: '/operations' },
+                    { label: 'Requests' },
+                  ]}
+                />
+              }
+              search={
+                <ToolbarSearch
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search requests…"
+                  className="w-56"
+                />
+              }
             />
-            {scopes.map((candidate) => (
-              <QueueChip
-                key={queueKey(candidate)}
-                active={candidate === scope}
-                label={candidate.queue.name}
-                title={`${candidate.queue.name} · ${candidate.queue.workflowName}`}
-                count={candidate.queue.count}
-                onClick={() => show({ queue: queueKey(candidate) })}
+            <div className="border-b">
+              <RequestTabs
+                className="border-b px-4 md:px-7"
+                active={overdue && tracksDue ? 'overdue' : 'open'}
+                open={query.data ? inQueue.length : undefined}
+                overdue={
+                  tracksDue
+                    ? query.data
+                      ? inQueue.filter((request) => request.isOverdue).length
+                      : undefined
+                    : null
+                }
+                onChange={(tab) =>
+                  show({ filter: tab === 'overdue' ? 'overdue' : null })
+                }
               />
-            ))}
-            <Link
-              className="ml-auto self-center text-primary-text hover:underline"
-              to="/operations/queues"
-            >
-              Manage queues
-            </Link>
-          </nav>
-        ) : null}
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            Could not refresh requests.
-            {list.length ? ' Showing the last loaded requests.' : ''} Try
-            Refresh.
-          </p>
-        )}
-        {truncated.length ? (
-          <p
-            role="status"
-            className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
-          >
-            Showing the {truncated[0].shown} most urgent of{' '}
-            {truncated
-              .map(
-                ({ queue, total }) =>
-                  `${total.toLocaleString()} in ${queue.name}`
-              )
-              .join(', ')}
-            . Search to narrow the list, or{' '}
-            <Link
-              className="text-primary-text hover:underline"
-              to={`/operations/queues/${encodeURIComponent(truncated[0].queue.workflowId)}/${encodeURIComponent(truncated[0].queue.actionKey)}`}
-            >
-              open the queue
-            </Link>{' '}
-            to page through all of them.
-          </p>
-        ) : null}
-        <Can permission="workflow:execute">
-          <InputRetryPanel matches={() => true} />
-        </Can>
-        <section
-          aria-label="Requests"
-          className="overflow-x-auto rounded-lg border bg-background"
-        >
-          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-            <thead className="bg-muted/90 text-[11px] uppercase tracking-wide text-muted-foreground">
-              <tr>
-                {['Request', 'Queue', 'Waiting', 'Due', 'Answer'].map(
-                  (label) => (
-                    <th key={label} className="px-4 py-3 font-semibold">
-                      {label}
-                    </th>
+              <div className="flex flex-wrap items-center gap-3 px-4 py-3 md:px-7">
+                <ToolbarSelect
+                  aria-label="Queue"
+                  value={scope ? queueKey(scope) : ''}
+                  onChange={(event) =>
+                    show({ queue: event.target.value || null })
+                  }
+                >
+                  <option value="">All queues</option>
+                  {scopes.map((candidate) => (
+                    <option
+                      key={queueKey(candidate)}
+                      value={queueKey(candidate)}
+                    >
+                      {candidate.queue.name} · {candidate.queue.workflowName} (
+                      {candidate.queue.count})
+                    </option>
+                  ))}
+                </ToolbarSelect>
+                <ToolbarSelect
+                  aria-label="Order"
+                  value={oldest ? 'oldest' : 'urgent'}
+                  onChange={(event) =>
+                    show({
+                      sort: event.target.value === 'oldest' ? 'oldest' : null,
+                    })
+                  }
+                >
+                  <option value="urgent">Most urgent first</option>
+                  <option value="oldest">Longest waiting first</option>
+                </ToolbarSelect>
+                <Link
+                  className="text-sm text-primary-text hover:underline"
+                  to="/operations/queues"
+                >
+                  Manage queues
+                </Link>
+                <div className="ml-auto flex items-center gap-3">
+                  <RefreshControls
+                    busy={
+                      query.isFetching || queues.isFetching || views.isFetching
+                    }
+                    updatedAt={query.dataUpdatedAt}
+                    onRefresh={() =>
+                      void client.invalidateQueries({
+                        queryKey: ['operations', tenant],
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+            {error && (
+              <p
+                role="alert"
+                className="border-b px-4 py-2 text-sm text-destructive md:px-7"
+              >
+                Could not refresh requests.
+                {list.length ? ' Showing the last loaded requests.' : ''} Try
+                Refresh.
+              </p>
+            )}
+            {truncated.length ? (
+              <p
+                role="status"
+                className="border-b bg-warning/10 px-4 py-2 text-sm md:px-7"
+              >
+                Showing the {truncated[0].shown} most urgent of{' '}
+                {truncated
+                  .map(
+                    ({ queue, total }) =>
+                      `${total.toLocaleString()} in ${queue.name}`
                   )
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((request) => {
-                const { row, view } = request;
-                const key = requestKey(request);
-                const title = requestTitle(request);
-                // What the request is about, when its title alone does not say.
-                const about = row.message || contextSummary(row.context);
-                return (
-                  <tr
-                    key={key}
-                    className={cn(
-                      'border-t',
-                      key === openKey ? 'bg-primary/5' : 'hover:bg-muted/20'
-                    )}
-                  >
-                    <td className="max-w-80 px-4 py-3">
-                      <button
-                        type="button"
-                        className="block max-w-full truncate text-left font-medium text-primary-text hover:underline"
-                        aria-label={`Open request ${title}`}
-                        title={title}
-                        onClick={() => show({ request: key })}
-                      >
-                        {title}
-                      </button>
-                      {about ? (
-                        <p
-                          className="truncate text-xs text-muted-foreground"
-                          title={about}
-                        >
-                          {about}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="max-w-64 px-4 py-3">
-                      <p className="truncate" title={request.queueName}>
-                        {request.queueName}
-                      </p>
-                      <p
-                        className="truncate text-xs text-muted-foreground"
-                        title={request.workflowName}
-                      >
-                        {request.workflowName}
-                      </p>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 tabular-nums">
-                      <time dateTime={row.requestedAt} title={row.requestedAt}>
-                        {formatDistanceToNowStrict(new Date(row.requestedAt))}
-                      </time>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 tabular-nums">
-                      <RequestTiming request={request} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Can
-                        permission="workflow:execute"
-                        fallback={
-                          <span className="text-muted-foreground">
-                            Read only
-                          </span>
-                        }
-                      >
-                        <QueueAnswer
-                          row={row}
-                          inline={view.answers?.inline}
-                          infer
-                        />
-                      </Can>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {rows.length ? null : (
-            <p className="p-8 text-center text-sm text-muted-foreground">
-              {/* A failed refresh of a loaded list keeps its empty text
-                  (OP-14); the alert above says the refresh failed. */}
-              {unavailable
-                ? 'Requests unavailable.'
-                : query.isPending || !queues.data || !views.data
-                  ? 'Loading requests…'
-                  : term
-                    ? `No requests match “${term}”.`
-                    : overdue
-                      ? 'Nothing is overdue.'
-                      : 'Nothing is waiting. Requests appear here when a run pauses for a person.'}
-            </p>
-          )}
-          {list.length > PAGE_SIZE ? (
-            <div className="flex flex-wrap items-center justify-end gap-3 border-t px-4 py-3">
+                  .join(', ')}
+                . Search to narrow the list, or{' '}
+                <Link
+                  className="text-primary-text hover:underline"
+                  to={`/operations/queues/${encodeURIComponent(truncated[0].queue.workflowId)}/${encodeURIComponent(truncated[0].queue.actionKey)}`}
+                >
+                  open the queue
+                </Link>{' '}
+                to page through all of them.
+              </p>
+            ) : null}
+            <Can permission="workflow:execute">
+              <div className="px-4 md:px-7">
+                <InputRetryPanel matches={() => true} />
+              </div>
+            </Can>
+          </>
+        }
+        footer={
+          <TableStatusFooter
+            left={
+              <span>
+                <strong className="font-semibold text-foreground">
+                  {query.data ? list.length.toLocaleString() : '—'}
+                </strong>{' '}
+                {list.length === 1 ? 'request' : 'requests'}{' '}
+                <span className="mx-0.5 text-muted-foreground/60">·</span>{' '}
+                {rows.length} on this page
+              </span>
+            }
+            right={
               <TablePagination
                 pageIndex={current}
                 pageSize={PAGE_SIZE}
@@ -387,10 +325,112 @@ export function RequestsPage() {
                   show({ page: next ? String(next + 1) : null })
                 }
               />
-            </div>
-          ) : null}
+            }
+          />
+        }
+      >
+        <section aria-label="Requests" className="h-full">
+          {rows.length ? (
+            <Table variant="console">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Request</TableHead>
+                  <TableHead>Details</TableHead>
+                  <TableHead>Waiting</TableHead>
+                  <TableHead>Due</TableHead>
+                  <TableHead>Answer</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((request) => {
+                  const { row, view } = request;
+                  const key = requestKey(request);
+                  const title = requestTitle(request);
+                  const origin = `${request.queueName} · ${request.workflowName}`;
+                  return (
+                    <TableRow
+                      key={key}
+                      data-state={key === openKey ? 'selected' : undefined}
+                    >
+                      <TableCell className="max-w-72">
+                        <button
+                          type="button"
+                          className="block max-w-full truncate text-left font-medium text-primary-text hover:underline"
+                          aria-label={`Open request ${title}`}
+                          title={title}
+                          onClick={() => show({ request: key })}
+                        >
+                          {title}
+                        </button>
+                        <p
+                          className="mt-1 truncate text-[12.5px] text-muted-foreground"
+                          title={origin}
+                        >
+                          {origin}
+                        </p>
+                      </TableCell>
+                      <TableCell className="max-w-xl">
+                        <RequestDetails request={request} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
+                        <time
+                          dateTime={row.requestedAt}
+                          title={row.requestedAt}
+                        >
+                          {formatDistanceToNowStrict(new Date(row.requestedAt))}
+                        </time>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        <RequestTiming request={request} />
+                      </TableCell>
+                      <TableCell>
+                        <Can
+                          permission="workflow:execute"
+                          fallback={
+                            <span className="text-muted-foreground">
+                              Read only
+                            </span>
+                          }
+                        >
+                          <QueueAnswer
+                            row={row}
+                            inline={view.answers?.inline}
+                            infer
+                          />
+                        </Can>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          ) : unavailable ? (
+            // A failed refresh of a loaded list keeps its empty text (OP-14);
+            // the alert above says the refresh failed.
+            <ConsoleEmptyState
+              title="Requests unavailable."
+              description="Try Refresh."
+            />
+          ) : loading ? (
+            <TableSkeletonRows rows={6} />
+          ) : (
+            <ConsoleEmptyState
+              title={
+                term
+                  ? `No requests match “${term}”.`
+                  : overdue
+                    ? 'Nothing is overdue.'
+                    : 'Nothing is waiting.'
+              }
+              description={
+                term || overdue
+                  ? undefined
+                  : 'Requests appear here when a run pauses for a person.'
+              }
+            />
+          )}
         </section>
-      </main>
+      </ConsoleTableShell>
       <RequestPanel
         request={openIndex >= 0 ? list[openIndex] : undefined}
         position={
@@ -405,40 +445,22 @@ export function RequestsPage() {
           show({ request: null });
         }}
       />
-    </div>
+    </>
   );
 }
 
-function QueueChip({
-  active,
-  label,
-  title,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  title?: string;
-  count?: number;
-  onClick: () => void;
-}) {
+/** A select drawn as the Runs page draws its own. */
+function ToolbarSelect(props: ComponentProps<'select'>) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      title={title}
-      className={cn(
-        'rounded-full border px-2.5 py-1 font-medium transition-colors',
-        active
-          ? 'border-primary bg-primary/10 text-primary-text'
-          : 'text-muted-foreground hover:text-foreground'
-      )}
-      onClick={onClick}
-    >
-      {label}
-      <span className="ml-1.5 tabular-nums">
-        {count?.toLocaleString() ?? '…'}
-      </span>
-    </button>
+    <span className="relative inline-flex min-w-0 max-w-full">
+      <select
+        {...props}
+        className="h-8 w-full min-w-0 appearance-none rounded-md border bg-background pl-3 pr-9 text-sm"
+      />
+      <ChevronDown
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+      />
+    </span>
   );
 }

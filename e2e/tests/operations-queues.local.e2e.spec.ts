@@ -95,8 +95,8 @@ for (const width of [1440, 390]) {
       ).toBeLessThanOrEqual(width);
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await page.goto(appPath('/operations/queues'));
-      const item = page.getByRole('listitem').filter({
-        has: page.getByRole('heading', {
+      const item = page.getByRole('row').filter({
+        has: page.getByRole('link', {
           name: `${name} edited`,
           exact: true,
         }),
@@ -128,7 +128,7 @@ for (const width of [1440, 390]) {
       await expect(item).toHaveCount(0);
       await page.reload();
       await expect(
-        page.getByRole('heading', { name: `${name} edited`, exact: true })
+        page.getByRole('link', { name: `${name} edited`, exact: true })
       ).toHaveCount(0);
       id = undefined;
     } finally {

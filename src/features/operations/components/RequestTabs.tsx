@@ -2,18 +2,23 @@ import { cn } from '@/lib/utils';
 
 export type RequestTab = 'open' | 'overdue';
 
-/** Open and Overdue, with their counts: the same control on every request list. */
+/**
+ * Open and Overdue, with their counts: the same strip on every request list,
+ * drawn as the Runs page draws its status filters.
+ */
 export function RequestTabs({
   active,
   open,
   overdue,
   onChange,
+  className,
 }: {
   active: RequestTab;
   open?: number;
   /** Left out when no queue in the list tracks a due time. */
   overdue?: number | null;
   onChange: (tab: RequestTab) => void;
+  className?: string;
 }) {
   const tabs = [
     { key: 'open' as const, label: 'Open', count: open },
@@ -25,7 +30,7 @@ export function RequestTabs({
     <div
       role="tablist"
       aria-label="Requests"
-      className="flex items-center gap-1 rounded-lg bg-muted p-1 text-sm"
+      className={cn('flex flex-wrap items-center gap-x-6 gap-y-1', className)}
     >
       {tabs.map((tab) => (
         <button
@@ -34,23 +39,25 @@ export function RequestTabs({
           role="tab"
           aria-selected={active === tab.key}
           className={cn(
-            'rounded-md px-3 py-1 font-medium transition-colors',
+            '-mb-px inline-flex h-11 items-center gap-1.5 border-b-2 px-0.5 text-sm font-medium',
             active === tab.key
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'border-primary font-semibold text-primary-text'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           )}
           onClick={() => onChange(tab.key)}
         >
           {tab.label}
           <span
             className={cn(
-              'ml-1.5 tabular-nums',
+              'rounded-full px-[7px] py-px text-[11.5px] font-semibold tabular-nums',
               tab.key === 'overdue' && tab.count
-                ? 'text-warning'
-                : 'text-muted-foreground'
+                ? 'bg-warning/15 text-warning-text'
+                : active === tab.key
+                  ? 'bg-accent text-accent-foreground'
+                  : 'bg-muted text-muted-foreground'
             )}
           >
-            {tab.count?.toLocaleString() ?? '…'}
+            {tab.count?.toLocaleString() ?? '—'}
           </span>
         </button>
       ))}

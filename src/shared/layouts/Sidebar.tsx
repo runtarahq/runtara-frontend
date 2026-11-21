@@ -356,7 +356,7 @@ function OpenRequestCount() {
   if (!count) return null;
   return (
     <span
-      className="ml-auto rounded-full bg-primary px-1.5 text-[11px] font-semibold tabular-nums text-primary-foreground"
+      className="ml-auto rounded-full bg-accent px-[7px] py-px text-[11.5px] font-semibold tabular-nums text-accent-foreground"
       aria-label={`${count} open requests`}
     >
       {count > 999 ? '999+' : count}
