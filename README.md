@@ -26,9 +26,11 @@ releases are independent, so a console fix ships without a server release.
   (see `package.json`). `npm run generate-api-runtime-release` regenerates
   `src/generated/RuntaraRuntimeApi.ts` from the same release's `openapi.json`.
   Moving to a new runtara minor means bumping that URL and regenerating.
-- **Releasing.** Set `version` in `package.json`, merge, and push the tag
-  `vX.Y.Z`. The release workflow builds with `VITE_RUNTARA_VERSION` set and
-  publishes `runtara-frontend-X.Y.Z.tar.gz` (the contents of `dist/`) with its
+- **Releasing.** `./scripts/release.sh <patch|minor|major>` releases the latest
+  commit of `main`: it bumps `version` in `package.json` from the latest stable
+  tag, commits, and pushes the tag `vX.Y.Z`. The release workflow builds with
+  `VITE_RUNTARA_VERSION` set and publishes `runtara-frontend-X.Y.Z.tar.gz`
+  (the contents of `dist/`) with its
   `.sha256`, and the image `ghcr.io/runtarahq/runtara-frontend:X.Y.Z` (and
   `:latest`, unless the tag is a prerelease) for `linux/amd64` and
   `linux/arm64`. runtara's evaluation `docker-compose.yml` runs `:latest`.
