@@ -18,6 +18,8 @@ interface ActionFormProps {
   disabled?: boolean;
   submitLabel?: string;
   emptySchemaMessage?: string;
+  /** Sizes the submit button; it fills the form's width unless told otherwise. */
+  submitClassName?: string;
   onSubmit: (payload: Record<string, unknown>) => void;
 }
 
@@ -26,6 +28,7 @@ export function ActionForm({
   disabled = false,
   submitLabel = 'Submit Response',
   emptySchemaMessage = 'No response schema defined. Submit an empty response to continue.',
+  submitClassName = 'w-full',
   onSubmit,
 }: ActionFormProps) {
   const { definition, loading, error } = useWorkflowFormDefinition(inputSchema);
@@ -78,7 +81,7 @@ export function ActionForm({
       <Button
         type="button"
         size="sm"
-        className="w-full"
+        className={submitClassName}
         onClick={handleSubmit}
         disabled={
           disabled ||

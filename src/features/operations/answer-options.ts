@@ -1,3 +1,4 @@
+import { stateLabel } from './state-label';
 export function inlineOptions(
   schema: Record<string, unknown> | null | undefined,
   field?: string | null,
@@ -21,8 +22,29 @@ export function inlineOptions(
 export function isNegativeAnswer(value: unknown): boolean {
   return (
     value === false ||
-    /^(reject|decline|deny|denied|cancel|refuse|no|false|block|stop)/i.test(
+    /^(reject(ed)?|decline(d)?|deny|denied|cancel(led)?|refuse(d)?|no|false|block(ed)?|stop)\b/i.test(
       String(value)
     )
+  );
+}
+
+/**
+ * An answer schema whose unnamed fields carry a readable label: a field the
+ * workflow only gave a key (`decision`) is shown as "Decision", not as its key.
+ * Schemas in JSON Schema form (`properties`) are left as they are.
+ */
+export function withFieldLabels(
+  schema: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null | undefined {
+  if (!schema || 'properties' in schema) return schema;
+  return Object.fromEntries(
+    Object.entries(schema).map(([name, field]) => [
+      name,
+      field && typeof field === 'object' && !Array.isArray(field)
+        ? 'label' in field || 'title' in field
+          ? field
+          : { ...field, label: stateLabel(name) }
+        : field,
+    ])
   );
 }
