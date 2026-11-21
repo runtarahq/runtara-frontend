@@ -11,7 +11,23 @@ import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
 import { WithTooltip } from '@/shared/components/ui/tooltip';
 import { queryRequests, useOperations } from '../queries';
-import { OperationHeader, OperationSection, RefreshControls } from './shared';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/shared/components/ui/table';
+import {
+  Breadcrumb,
+  ConsoleEmptyState,
+  ConsoleTableShell,
+  ConsoleToolbar,
+  TableSkeletonRows,
+  TableStatusFooter,
+} from '@/shared/components/console';
+import { RefreshControls } from './shared';
 
 const builtInPath = (queue: OperationQueue) =>
   `/operations/queues/${encodeURIComponent(queue.workflowId)}/${encodeURIComponent(queue.actionKey)}`;
@@ -61,13 +77,67 @@ export function QueuesPage() {
       a.workflowName.localeCompare(b.workflowName) ||
       a.name.localeCompare(b.name)
   );
+  const rows: QueueRowData[] = [
+    ...builtIn.map((queue) => ({
+      key: `${queue.workflowId}/${queue.actionKey}`,
+      to: builtInPath(queue),
+      name: queue.name,
+      workflow: queue.workflowName,
+      kind: 'Workflow step',
+      count: queue.count,
+    })),
+    ...custom.map((view) => ({
+      key: view.id,
+      to: `/operations/queues/${view.id}`,
+      name: view.configuration.name,
+      workflow: workflowName(view.configuration.workflow),
+      kind: 'Custom',
+      count: counts.data?.[view.id],
+      edit: view,
+    })),
+    ...runLists.map((view) => ({
+      key: view.id,
+      to: `/operations/queues/${view.id}`,
+      name: view.configuration.name,
+      workflow: workflowName(view.configuration.workflow),
+      kind: 'Run list',
+      count: null,
+      edit: view,
+    })),
+  ];
+  const error = queues.error || views.error;
+  const loading = queues.isPending || views.isPending;
   return (
-    <div className="mx-auto min-h-full w-full max-w-[1600px] bg-background p-5 lg:px-10 lg:py-7">
-      <OperationHeader
-        title="Queues"
-        description="One queue for every workflow step that waits on a person, plus the ones your team made."
-        actions={
-          <>
+    <ConsoleTableShell
+      toolbar={
+        <>
+          <ConsoleToolbar
+            left={
+              <>
+                <Breadcrumb
+                  items={[
+                    { label: 'Operations', to: '/operations' },
+                    { label: 'Queues' },
+                  ]}
+                />
+                <span className="ml-1 hidden truncate text-[13px] text-muted-foreground lg:inline">
+                  One per workflow step that waits on a person, plus the ones
+                  your team made.
+                </span>
+              </>
+            }
+            actions={
+              <Can permission="workflow:update">
+                <Button asChild>
+                  <Link to="/operations/queues/new">
+                    <Plus className="size-4" />
+                    Create queue
+                  </Link>
+                </Button>
+              </Can>
+            }
+          />
+          <div className="flex flex-wrap items-center justify-end gap-3 border-b px-4 py-3 md:px-7">
             <RefreshControls
               updatedAt={queues.dataUpdatedAt}
               busy={queues.isFetching || views.isFetching}
@@ -75,151 +145,124 @@ export function QueuesPage() {
                 void client.invalidateQueries({ queryKey: ['operations'] })
               }
             />
-            <Can permission="workflow:update">
-              <Button asChild>
-                <Link to="/operations/queues/new">
-                  <Plus className="size-4" />
-                  Create queue
-                </Link>
-              </Button>
-            </Can>
-          </>
-        }
-      />
-      <main className="space-y-5">
-        <OperationSection title="Workflow queues">
-          <ul className="divide-y">
-            {builtIn.map((queue) => (
-              <QueueRow
-                key={`${queue.workflowId}/${queue.actionKey}`}
-                to={builtInPath(queue)}
-                name={queue.name}
-                detail={queue.workflowName}
-                count={queue.count}
-              />
-            ))}
-          </ul>
-          {queues.error ? (
-            <p role="alert" className="p-4 text-sm text-destructive">
+          </div>
+          {error ? (
+            <p
+              role="alert"
+              className="border-b px-4 py-2 text-sm text-destructive md:px-7"
+            >
               Could not load queues. Try Refresh.
             </p>
-          ) : queues.isPending ? (
-            <p className="p-4 text-sm">Loading queues…</p>
-          ) : !builtIn.length ? (
-            <div className="space-y-2 p-5 text-sm">
-              <p>No workflow waits on a person yet.</p>
-              <p className="text-muted-foreground">
-                A queue appears here for each workflow step that asks for an
-                answer.
-              </p>
-            </div>
           ) : null}
-        </OperationSection>
-        <OperationSection title="Custom queues">
-          <ul className="divide-y">
-            {custom.map((view) => (
-              <QueueRow
-                key={view.id}
-                to={`/operations/queues/${view.id}`}
-                name={view.configuration.name}
-                detail={workflowName(view.configuration.workflow)}
-                count={counts.data?.[view.id]}
-                edit={view}
-              />
+        </>
+      }
+      footer={
+        <TableStatusFooter
+          left={
+            <span>
+              <strong className="font-semibold text-foreground">
+                {loading ? '—' : rows.length}
+              </strong>{' '}
+              {rows.length === 1 ? 'queue' : 'queues'}
+            </span>
+          }
+        />
+      }
+    >
+      {rows.length ? (
+        <Table variant="console">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Queue</TableHead>
+              <TableHead>Workflow</TableHead>
+              <TableHead>Kind</TableHead>
+              <TableHead>Open requests</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.key}>
+                <TableCell className="max-w-80">
+                  <Link
+                    className="block truncate font-medium text-primary-text hover:underline"
+                    title={row.name}
+                    to={row.to}
+                  >
+                    {row.name}
+                  </Link>
+                </TableCell>
+                <TableCell className="max-w-80 truncate text-muted-foreground">
+                  {row.workflow}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {row.kind}
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {row.count === null ? (
+                    <span
+                      className="text-muted-foreground"
+                      title="A run list holds runs, not requests"
+                    >
+                      —
+                    </span>
+                  ) : row.count === undefined ? (
+                    <span className="text-muted-foreground">…</span>
+                  ) : (
+                    <span
+                      className={
+                        row.count ? 'font-semibold' : 'text-muted-foreground'
+                      }
+                    >
+                      {row.count.toLocaleString()}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {row.edit ? (
+                    <Can permission="workflow:update">
+                      <WithTooltip label="Edit queue">
+                        <Button
+                          asChild
+                          variant="secondary"
+                          size="icon"
+                          className="h-8 w-8"
+                        >
+                          <Link
+                            aria-label={`Edit queue ${row.edit.configuration.name}`}
+                            to={`/operations/queues/${row.edit.id}/edit`}
+                          >
+                            <Pencil className="size-4" />
+                          </Link>
+                        </Button>
+                      </WithTooltip>
+                    </Can>
+                  ) : null}
+                </TableCell>
+              </TableRow>
             ))}
-          </ul>
-          {views.error ? (
-            <p role="alert" className="p-4 text-sm text-destructive">
-              Could not load custom queues. Try Refresh.
-            </p>
-          ) : views.isPending ? (
-            <p className="p-4 text-sm">Loading queues…</p>
-          ) : !custom.length ? (
-            <div className="space-y-2 p-5 text-sm">
-              <p>No custom queues yet.</p>
-              <p className="text-muted-foreground">
-                Create one to show part of a workflow queue, choose its columns,
-                or track when its requests are due.
-              </p>
-            </div>
-          ) : null}
-        </OperationSection>
-        {runLists.length ? (
-          <OperationSection title="Saved run lists">
-            <ul className="divide-y">
-              {runLists.map((view) => (
-                <QueueRow
-                  key={view.id}
-                  to={`/operations/queues/${view.id}`}
-                  name={view.configuration.name}
-                  detail={`${workflowName(view.configuration.workflow)} · runs, not requests`}
-                  edit={view}
-                />
-              ))}
-            </ul>
-          </OperationSection>
-        ) : null}
-      </main>
-    </div>
+          </TableBody>
+        </Table>
+      ) : loading ? (
+        <TableSkeletonRows rows={6} />
+      ) : error ? null : (
+        <ConsoleEmptyState
+          title="No queues yet."
+          description="A queue appears here for each workflow step that asks a person for an answer."
+        />
+      )}
+    </ConsoleTableShell>
   );
 }
 
-function QueueRow({
-  to,
-  name,
-  detail,
-  count,
-  edit,
-}: {
+interface QueueRowData {
+  key: string;
   to: string;
   name: string;
-  detail: string;
-  /** Open requests; left out for a list of runs. */
-  count?: number;
+  workflow: string;
+  kind: string;
+  /** Open requests; null for a list of runs, undefined while counting. */
+  count?: number | null;
   /** The saved queue, when the row can be edited. */
   edit?: SavedOperationView;
-}) {
-  return (
-    <li className="flex min-w-0 items-center gap-4 px-4 py-3">
-      <Link className="min-w-0 flex-1 hover:text-primary-text" to={to}>
-        <h3 className="truncate text-sm font-medium" title={name}>
-          {name}
-        </h3>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>
-      </Link>
-      {count === undefined ? null : (
-        <span
-          className={`shrink-0 text-sm tabular-nums ${count ? 'font-semibold' : 'text-muted-foreground'}`}
-          aria-label={`${count} open requests`}
-        >
-          {count.toLocaleString()}{' '}
-          <span className="text-xs font-normal text-muted-foreground">
-            open
-          </span>
-        </span>
-      )}
-      {edit ? (
-        <Can permission="workflow:update">
-          <WithTooltip label="Edit queue">
-            <Button
-              asChild
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8 shrink-0 text-muted-foreground"
-            >
-              <Link
-                aria-label={`Edit queue ${edit.configuration.name}`}
-                to={`/operations/queues/${edit.id}/edit`}
-              >
-                <Pencil className="size-4" />
-              </Link>
-            </Button>
-          </WithTooltip>
-        </Can>
-      ) : (
-        // Keeps the counts in one column across both kinds of row.
-        <span className="w-8 shrink-0" aria-hidden="true" />
-      )}
-    </li>
-  );
 }

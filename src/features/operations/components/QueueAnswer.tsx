@@ -213,25 +213,15 @@ export const QueueAnswer = forwardRef<
     <div className="min-w-40 space-y-3">
       {!editing && options ? (
         <div className="flex flex-wrap gap-2">
-          {options.values.map((value, index) => {
+          {options.values.map((value) => {
+            // The choice that turns a request down reads apart from the rest.
             const negative = isNegativeAnswer(value);
-            // The accepting choice leads; the one that turns down reads apart.
-            const primary =
-              !negative &&
-              index === options.values.findIndex((v) => !isNegativeAnswer(v)) &&
-              options.values.some(isNegativeAnswer);
             return (
               <Button
                 key={JSON.stringify(value)}
                 size="sm"
-                variant={
-                  primary
-                    ? 'primary'
-                    : negative
-                      ? 'secondaryDestructive'
-                      : 'secondary'
-                }
-                bordered={!primary}
+                variant={negative ? 'secondaryDestructive' : 'secondary'}
+                bordered
                 disabled={disabled}
                 onClick={() => void choose(value, true)}
               >

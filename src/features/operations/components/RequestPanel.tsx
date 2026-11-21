@@ -10,7 +10,13 @@ import {
 } from '@/shared/components/ui/sheet';
 import { ActionForm } from '@/features/workflows/components/ActionForm';
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
-import { requestTitle, type AttentionRequest } from '../attention-requests';
+import {
+  contextKeys,
+  requestTitle,
+  stateEntries,
+  type AttentionRequest,
+} from '../attention-requests';
+import { StateValue } from './StateValue';
 import { RequestContext } from './RequestContext';
 
 /** When a request is due, or when it expires unanswered; nothing when neither is set. */
@@ -86,6 +92,7 @@ export function RequestPanel({
               ) : null}
             </div>
             <RequestContext context={row.context} />
+            <RunState request={request} />
             <Can
               permission="workflow:execute"
               fallback={
@@ -158,5 +165,30 @@ export function RequestPanel({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** The run's state the queue shows, beside what the request itself carries. */
+function RunState({ request }: { request: AttentionRequest }) {
+  const entries = stateEntries(request, contextKeys(request.row.context));
+  if (!entries.length) return null;
+  return (
+    <dl
+      aria-label="Run state"
+      className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-md border p-3 text-sm"
+    >
+      {entries.map(({ key, label, value }) => (
+        <div key={key} className="contents">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="min-w-0 break-words">
+            <StateValue
+              value={value}
+              field={request.stateSchema[key]}
+              display={request.view.formats?.[key] ?? undefined}
+            />
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

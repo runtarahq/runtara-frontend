@@ -8,6 +8,8 @@ import type {
   StateFilterDto,
 } from '@/generated/RuntaraRuntimeApi';
 import { defaultView, operationsRequest, selectedFields } from './queries';
+import type { StateField } from './components/StateValue';
+import { stateLabel } from './state-label';
 
 export interface AttentionRequest {
   row: OperationRequest;
@@ -16,6 +18,8 @@ export interface AttentionRequest {
   queueName: string;
   /** How the request's queue presents and answers it. */
   view: OperationViewConfig;
+  /** The workflow's state fields, for labels and formats. */
+  stateSchema: Record<string, StateField>;
   due?: string;
   isOverdue: boolean;
 }
@@ -57,6 +61,7 @@ export function attentionRequest(
     workflowName: queue.workflowName,
     queueName: queue.name,
     view,
+    stateSchema: (queue.stateSchema ?? {}) as Record<string, StateField>,
     due,
     isOverdue: !!due && Date.parse(due) < now,
   };
@@ -153,4 +158,38 @@ export async function queryInbox(
 export function requestTitle({ row, view }: AttentionRequest): string {
   const key = view.roles?.key ? row.state?.[view.roles.key] : undefined;
   return String(key ?? row.runLabel ?? row.instanceId.slice(0, 8));
+}
+
+/**
+ * The run's state fields a request's queue shows, with a value: what the
+ * request is about beyond what its workflow put on it. `skip` leaves out the
+ * fields already shown some other way.
+ */
+export function stateEntries(
+  { row, view, stateSchema }: AttentionRequest,
+  skip: Iterable<string | null | undefined> = []
+) {
+  const skipped = new Set(skip);
+  return (view.columns ?? [])
+    .filter((field) => {
+      const value = row.state?.[field] as unknown;
+      return (
+        !skipped.has(field) &&
+        value !== undefined &&
+        value !== null &&
+        value !== ''
+      );
+    })
+    .map((field) => ({
+      key: field,
+      label: view.labels?.[field] || stateLabel(field, stateSchema[field]),
+      value: row.state?.[field] as unknown,
+    }));
+}
+
+/** The names of the values a request's workflow put on it. */
+export function contextKeys(context: unknown): string[] {
+  return context && typeof context === 'object' && !Array.isArray(context)
+    ? Object.keys(context)
+    : [];
 }
