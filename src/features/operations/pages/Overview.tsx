@@ -176,7 +176,7 @@ export function OverviewPage() {
             status line, and the one that isn't set up yet says so. */}
         <div className="flex flex-wrap overflow-hidden rounded-[10px] border bg-background">
           <Metric
-            title="Waiting for a decision"
+            title="Open requests"
             value={waiting}
             note={`Across ${queues.data ? new Set(queues.data.filter((q) => q.count > 0).map((q) => q.workflowId)).size : '…'} workflows`}
             to="/operations/requests"
@@ -205,7 +205,8 @@ export function OverviewPage() {
             note="Runs started across all workflows"
             to="/operations/runs?range=24h"
           />
-          {overdueTracked ? (
+          {overdueTracked || queues.error || views.error || attention.error ? (
+            // Unknown is not "not tracked": a failed load shows no number.
             <Metric
               title="Overdue"
               value={overdue}

@@ -30,7 +30,7 @@ for (const width of [1440, 390]) {
         .selectOption(fixture.workflow);
       await page.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
       await expect(
-        page.getByRole('combobox', { name: 'Queue contents' })
+        page.getByRole('combobox', { name: 'Shows' })
       ).not.toHaveValue('');
       await page
         .getByRole('button', { name: 'Create queue', exact: true })
@@ -47,9 +47,7 @@ for (const width of [1440, 390]) {
       await page
         .getByRole('textbox', { name: 'Name', exact: true })
         .fill(`${name} edited`);
-      await page
-        .getByRole('combobox', { name: 'Queue contents' })
-        .selectOption('');
+      await page.getByRole('combobox', { name: 'Shows' }).selectOption('');
       const statuses = page.getByRole('group', { name: 'Run status' });
       await expect(
         statuses.getByRole('button', { name: 'All statuses', exact: true })
@@ -107,27 +105,26 @@ for (const width of [1440, 390]) {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth)
       ).toBeLessThanOrEqual(width);
+      // Deleting is on the queue's settings page, away from Edit.
       await item
-        .getByRole('button', {
-          name: `Delete queue ${name} edited`,
-          exact: true,
-        })
+        .getByRole('link', { name: `Edit queue ${name} edited`, exact: true })
         .click();
+      const remove = page.getByRole('button', {
+        name: `Delete queue ${name} edited`,
+        exact: true,
+      });
+      await remove.click();
       await page
         .getByRole('dialog')
         .getByRole('button', { name: 'Cancel', exact: true })
         .click();
-      await expect(item).toBeVisible();
-      await item
-        .getByRole('button', {
-          name: `Delete queue ${name} edited`,
-          exact: true,
-        })
-        .click();
+      await expect(remove).toBeVisible();
+      await remove.click();
       await page
         .getByRole('dialog')
         .getByRole('button', { name: 'Delete queue', exact: true })
         .click();
+      await expect(page).toHaveURL(/\/operations\/queues$/);
       await expect(item).toHaveCount(0);
       await page.reload();
       await expect(

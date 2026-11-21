@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { Can } from '@/shared/components/Can';
 import { useOperations, defaultView } from '../queries';
 import { ViewEditor } from '../components/ViewEditor';
+import { DeleteQueue } from '../components/DeleteQueue';
 import { OperationHeader } from './shared';
 
 export function QueueSettingsPage() {
@@ -130,6 +131,21 @@ export function QueueSettingsPage() {
                 }
               />
             )}
+            {saved ? (
+              <section
+                aria-label="Delete queue"
+                className="m-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-5 text-sm"
+              >
+                <p className="text-muted-foreground">
+                  Deleting removes this queue for everyone. Its workflow, runs
+                  and requests stay.
+                </p>
+                <DeleteQueue
+                  queue={saved}
+                  onDeleted={() => navigate('/operations/queues')}
+                />
+              </section>
+            ) : null}
           </>
         )}
       </Can>

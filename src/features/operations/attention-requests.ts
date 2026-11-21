@@ -12,6 +12,10 @@ import { defaultView, operationsRequest, selectedFields } from './queries';
 export interface AttentionRequest {
   row: OperationRequest;
   workflowName: string;
+  /** The wait step the request belongs to, as the workflow names it. */
+  queueName: string;
+  /** How the request's queue presents and answers it. */
+  view: OperationViewConfig;
   due?: string;
   isOverdue: boolean;
 }
@@ -51,6 +55,8 @@ export function attentionRequest(
   return {
     row,
     workflowName: queue.workflowName,
+    queueName: queue.name,
+    view,
     due,
     isOverdue: !!due && Date.parse(due) < now,
   };
@@ -72,77 +78,79 @@ export function overdueFilters(
     : [];
 }
 
-/** Page across queue partitions without loading every request or silently truncating to a preview. */
-export async function queryAttentionRequests(
+/** The most one queue contributes to the inbox; the server's page limit. */
+export const INBOX_QUEUE_LIMIT = 100;
+
+/** When a request has to be acted on: its due time or its expiry, whichever is first. */
+export function actBy(request: AttentionRequest): number | undefined {
+  const times = [request.due, request.row.deadline]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Date.parse(value))
+    .filter(Number.isFinite);
+  return times.length ? Math.min(...times) : undefined;
+}
+
+/** Overdue first, then what must be acted on soonest, then the longest waiting. */
+export function byUrgency(a: AttentionRequest, b: AttentionRequest): number {
+  const [left, right] = [actBy(a), actBy(b)];
+  return (
+    Number(b.isOverdue) - Number(a.isOverdue) ||
+    (left ?? Infinity) - (right ?? Infinity) ||
+    a.row.requestedAt.localeCompare(b.row.requestedAt)
+  );
+}
+
+/**
+ * Every open request of the given queues, for one list sorted across them.
+ * A queue contributes its most urgent INBOX_QUEUE_LIMIT; `truncated` names
+ * the queues that hold more, so the list can say so instead of hiding them.
+ */
+export async function queryInbox(
   token: string,
   sources: AttentionQueue[],
-  overdue: boolean,
-  requestedPage: number,
-  size = 25,
+  search = '',
   now = Date.now()
 ) {
-  const scopes = sources
-    .filter((scope) => !overdue || scope.view.roles?.due)
-    .sort(
-      (a, b) =>
-        a.queue.workflowName.localeCompare(b.queue.workflowName) ||
-        a.queue.workflowId.localeCompare(b.queue.workflowId) ||
-        a.queue.actionKey.localeCompare(b.queue.actionKey)
-    );
-  const fetchPage = (scope: AttentionQueue, page: number) =>
-    operationsRequest<OperationRequestPage>(
-      token,
-      'operations/requests/query',
-      'POST',
-      {
-        workflowId: scope.queue.workflowId,
-        actionKey: scope.queue.actionKey,
-        query: {
-          page,
-          size,
-          stateFields: selectedFields(scope.view),
-          state: overdue ? overdueFilters(scope.view, now) : [],
-          stateSort:
-            overdue && scope.view.roles?.due
+  const pages = await Promise.all(
+    sources.map((scope) =>
+      operationsRequest<OperationRequestPage>(
+        token,
+        'operations/requests/query',
+        'POST',
+        {
+          workflowId: scope.queue.workflowId,
+          actionKey: scope.queue.actionKey,
+          query: {
+            page: 0,
+            size: INBOX_QUEUE_LIMIT,
+            search: search.trim() || undefined,
+            stateFields: selectedFields(scope.view),
+            state: [],
+            stateSort: scope.view.roles?.due
               ? { field: scope.view.roles.due, descending: false }
               : undefined,
-        },
-      }
-    );
-  // Each partition supplies its total and first page in one call; all must succeed.
-  const firstPages = await Promise.all(
-    scopes.map((scope) => fetchPage(scope, 0))
+          },
+        }
+      )
+    )
   );
-  const totalElements = firstPages.reduce(
-    (sum, page) => sum + page.totalElements,
-    0
-  );
-  const totalPages = Math.ceil(totalElements / size);
-  const number = Math.max(0, Math.min(requestedPage, totalPages - 1));
-  let offset = 0;
-  const slices = scopes.map((scope, index) => {
-    const first = firstPages[index];
-    const start = Math.max(0, number * size - offset);
-    const end = Math.min(first.totalElements, (number + 1) * size - offset);
-    offset += first.totalElements;
-    return { scope, first, start, end };
-  });
-  const parts = await Promise.all(
-    slices.map(async ({ scope, first, start, end }) => {
-      if (end <= start) return [];
-      const firstPage = Math.floor(start / size);
-      const lastPage = Math.floor((end - 1) / size);
-      const pages = await Promise.all(
-        Array.from(
-          { length: lastPage - firstPage + 1 },
-          (_, i) => firstPage + i
-        ).map((page) => (page === 0 ? first : fetchPage(scope, page)))
-      );
-      return pages
-        .flatMap((page) => page.content)
-        .slice(start % size, (start % size) + end - start)
-        .map((row) => attentionRequest(row, scope, now));
-    })
-  );
-  return { content: parts.flat(), totalElements, totalPages, number, size };
+  return {
+    requests: pages.flatMap((page, index) =>
+      page.content.map((row) => attentionRequest(row, sources[index], now))
+    ),
+    total: pages.reduce((sum, page) => sum + page.totalElements, 0),
+    truncated: sources
+      .map((scope, index) => ({
+        queue: scope.queue,
+        total: pages[index].totalElements,
+        shown: pages[index].content.length,
+      }))
+      .filter(({ total, shown }) => total > shown),
+  };
+}
+
+/** What a request is called in a list: its queue's key field, its run label, or a short run id. */
+export function requestTitle({ row, view }: AttentionRequest): string {
+  const key = view.roles?.key ? row.state?.[view.roles.key] : undefined;
+  return String(key ?? row.runLabel ?? row.instanceId.slice(0, 8));
 }

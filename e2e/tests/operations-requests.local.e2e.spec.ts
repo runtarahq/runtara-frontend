@@ -12,9 +12,7 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(appPath('/operations'));
     // Each metric is one link: label, value, note.
-    const waiting = page
-      .getByRole('link')
-      .filter({ hasText: 'Waiting for a decision' });
+    const waiting = page.getByRole('link').filter({ hasText: 'Open requests' });
     const overdue = page
       .getByRole('link')
       .filter({ hasText: 'Past their configured due time' });
@@ -28,45 +26,26 @@ for (const width of [1440, 390]) {
     );
     expect(waitingCount).toBeGreaterThan(overdueCount);
     expect(overdueCount).toBeGreaterThan(0);
+    // The inbox lists every request in one table; a header row leads it.
+    const rows = page
+      .getByRole('region', { name: 'Requests' })
+      .getByRole('row');
+    const tab = (name: string) =>
+      page.getByRole('tab', { name: new RegExp(`^${name}`) });
     await waiting.click();
     await expect(page).toHaveURL(/\/operations\/requests$/);
-    await expect(
-      page.getByRole('heading', {
-        name: `${waitingCount} waiting requests`,
-        exact: true,
-      })
-    ).toBeVisible();
-    await expect(
-      page
-        .getByRole('list', { name: 'Requests requiring input' })
-        .getByRole('listitem')
-    ).toHaveCount(waitingCount);
+    await expect(tab('Open')).toHaveAttribute('aria-selected', 'true');
+    await expect(tab('Open')).toContainText(String(waitingCount));
+    await expect(rows).toHaveCount(waitingCount + 1);
     await page.goBack();
-    await overdue.getByRole('link', { name: 'Review', exact: true }).click();
+    await overdue.click();
     await expect(page).toHaveURL(/\/operations\/requests\?filter=overdue$/);
-    await expect(
-      page.getByRole('heading', {
-        name: `${overdueCount} overdue requests`,
-        exact: true,
-      })
-    ).toBeVisible();
-    await expect(
-      page
-        .getByRole('list', { name: 'Requests requiring input' })
-        .getByRole('listitem')
-    ).toHaveCount(overdueCount);
+    await expect(tab('Overdue')).toHaveAttribute('aria-selected', 'true');
+    await expect(tab('Overdue')).toContainText(String(overdueCount));
+    await expect(rows).toHaveCount(overdueCount + 1);
     await page.reload();
-    await expect(
-      page.getByRole('heading', {
-        name: `${overdueCount} overdue requests`,
-        exact: true,
-      })
-    ).toBeVisible();
-    await expect(
-      page
-        .getByRole('navigation', { name: 'Request filters' })
-        .getByRole('link', { name: 'Overdue', exact: true })
-    ).toHaveAttribute('aria-current', 'page');
+    await expect(tab('Overdue')).toHaveAttribute('aria-selected', 'true');
+    await expect(rows).toHaveCount(overdueCount + 1);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth)
     ).toBeLessThanOrEqual(width);

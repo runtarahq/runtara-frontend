@@ -16,3 +16,13 @@ export function inlineOptions(
     ? { field: name, values: fields[name].enum! }
     : null;
 }
+
+/** A choice that turns the request down; shown apart from the one that accepts. */
+export function isNegativeAnswer(value: unknown): boolean {
+  return (
+    value === false ||
+    /^(reject|decline|deny|denied|cancel|refuse|no|false|block|stop)/i.test(
+      String(value)
+    )
+  );
+}

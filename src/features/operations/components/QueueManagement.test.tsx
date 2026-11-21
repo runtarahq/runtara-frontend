@@ -13,6 +13,10 @@ import { DeleteQueue } from './DeleteQueue';
 import { ViewEditor } from './ViewEditor';
 const api = vi.hoisted(() => vi.fn());
 vi.mock('@/shared/hooks', () => ({ useToken: () => 'test-token' }));
+// The editor reads a sample request for its answer choices; none here.
+vi.mock('@/shared/hooks/api', () => ({
+  useCustomQuery: () => ({ data: undefined }),
+}));
 vi.mock('../queries', async () => ({
   ...(await vi.importActual('../queries')),
   operationsRequest: api,

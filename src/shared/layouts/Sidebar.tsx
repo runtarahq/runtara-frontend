@@ -18,6 +18,7 @@ import {
 import { menu, filterMenu, type MenuItem } from '@/shared/config';
 import { config } from '@/shared/config/runtimeConfig';
 import { useFeatureEntitlements } from '@/shared/hooks/useEntitlements';
+import { useOpenRequestCount } from '@/shared/hooks/useOpenRequestCount';
 import Logo from '@/assets/logo/runtara-logo-icon.svg';
 import { AuthSidebar } from './AuthSidebar.tsx';
 import { TenantSwitcher } from '@/shared/tenant/TenantSwitcher';
@@ -335,6 +336,9 @@ function SideBarNavLink({
                   <Link to={child.to}>
                     {child.icon}
                     {child.title}
+                    {child.key === 'operations-requests' && (
+                      <OpenRequestCount />
+                    )}
                   </Link>
                 )}
               </SidebarMenuSubButton>
@@ -343,5 +347,19 @@ function SideBarNavLink({
         </SidebarMenuSub>
       )}
     </SidebarMenuItem>
+  );
+}
+
+/** The number of requests waiting on a person, beside the Requests item. */
+function OpenRequestCount() {
+  const count = useOpenRequestCount();
+  if (!count) return null;
+  return (
+    <span
+      className="ml-auto rounded-full bg-primary px-1.5 text-[11px] font-semibold tabular-nums text-primary-foreground"
+      aria-label={`${count} open requests`}
+    >
+      {count > 999 ? '999+' : count}
+    </span>
   );
 }

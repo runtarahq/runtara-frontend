@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import type {
   OperationRequest,
   OperationViewConfig,
@@ -41,7 +41,7 @@ import {
   type StateField,
 } from '../components/StateValue';
 import { QueueAnswer, type AnswerController } from '../components/QueueAnswer';
-import { DeleteQueue } from '../components/DeleteQueue';
+import { RequestTabs } from '../components/RequestTabs';
 import { ViewEditor, StateFilters } from '../components/ViewEditor';
 import { overdueFilters } from '../attention-requests';
 import { OperationHeader, RunRows, RefreshControls } from './shared';
@@ -127,13 +127,51 @@ function QueueContent({
   saved?: import('@/generated/RuntaraRuntimeApi').SavedOperationView;
   workflowName?: string;
 }) {
-  const [view, setView] = useState(initial);
-  const [page, setPage] = useState(0);
-  const [search, setSearch] = useState('');
+  // Tab, page, search and order are in the URL, so a reload or a shared link
+  // shows the same list.
+  const [params, setParams] = useSearchParams();
+  const [view, setView] = useState(() => {
+    const sort = params.get('sort');
+    return sort
+      ? {
+          ...initial,
+          sort: {
+            field: sort.replace(/^-/, ''),
+            descending: sort.startsWith('-'),
+          },
+        }
+      : initial;
+  });
+  const [page, setPage] = useState(() => {
+    const value = Number(params.get('page') ?? '1');
+    return Number.isSafeInteger(value) && value > 0 ? value - 1 : 0;
+  });
+  const [search, setSearch] = useState(params.get('q') ?? '');
+  // A bulk answer waits here for its one confirmation.
+  const [confirming, setConfirming] = useState<unknown>();
   const [selection, setSelection] = useState<Set<string>>(() => new Set());
   const [editing, setEditing] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [tab, setTab] = useState<'open' | 'overdue'>('open');
+  const [tab, setTab] = useState<'open' | 'overdue'>(
+    params.get('filter') === 'overdue' ? 'overdue' : 'open'
+  );
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
+  const sortParam =
+    view.sort && JSON.stringify(view.sort) !== JSON.stringify(initial.sort)
+      ? `${view.sort.descending ? '-' : ''}${view.sort.field}`
+      : '';
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (tab === 'overdue') next.set('filter', 'overdue');
+    if (page) next.set('page', String(page + 1));
+    if (search) next.set('q', search);
+    if (sortParam) next.set('sort', sortParam);
+    if (next.toString() !== paramsRef.current.toString())
+      setParamsRef.current(next, { replace: true });
+  }, [tab, page, search, sortParam]);
   const refs = useRef(new Map<string, AnswerController>());
   const tenant = useAuthStore((s) => s.orgId);
   const navigate = useNavigate();
@@ -200,7 +238,7 @@ function QueueContent({
     );
     if (!sent.some(Boolean))
       toast.info(
-        "No prepared answers to submit. Choose an answer or open a row's form first."
+        "No filled-in answers to send. Choose an answer or open a row's form first."
       );
   }
   const options = selected.map((row) =>
@@ -223,10 +261,13 @@ function QueueContent({
     if (pageCount !== undefined && page > 0 && page >= pageCount)
       setPage(Math.max(0, pageCount - 1));
   }, [page, pageCount]);
-  // Every row of a queue asks the same question; name it once in the header.
+  // Every row of a queue asks the same question; name it once, above the list.
   const question = rows[0]?.label;
   // Context values that a column already shows are noise in the row.
   const shown = new Set([...(view.columns ?? []), view.roles?.key]);
+  const savedFilters = JSON.stringify(initial.where?.state ?? []);
+  const filtersChanged =
+    JSON.stringify(view.where?.state ?? []) !== savedFilters;
   function filters(state: StateFilterDto[]) {
     setView((v) => ({ ...v, where: { ...v.where, state } }));
     setPage(0);
@@ -249,18 +290,6 @@ function QueueContent({
     }));
     goPage(0);
   };
-  const tabs = [
-    { key: 'open' as const, label: 'Open', count: counts.data?.open ?? total },
-    ...(due
-      ? [
-          {
-            key: 'overdue' as const,
-            label: 'Overdue',
-            count: counts.data?.overdue,
-          },
-        ]
-      : []),
-  ];
   return (
     <ConsoleTableShell
       className="mx-auto h-auto max-h-none min-h-full w-full max-w-[1600px] overflow-visible p-5 lg:px-10 lg:py-7"
@@ -279,7 +308,7 @@ function QueueContent({
                   {workflowName}
                 </Link>
               ) : isQueue ? (
-                'Requests waiting for a decision.'
+                'Requests waiting for an answer.'
               ) : (
                 'Follow runs and their published state.'
               )
@@ -297,24 +326,17 @@ function QueueContent({
                 />
                 <Can permission="workflow:update">
                   {saved ? (
-                    <>
-                      <Button asChild variant="secondary">
-                        <Link to={`/operations/queues/${saved.id}/edit`}>
-                          Edit queue
-                        </Link>
-                      </Button>
-                      <DeleteQueue
-                        queue={saved}
-                        icon
-                        onDeleted={() => navigate('/operations/queues')}
-                      />
-                    </>
+                    <Button asChild variant="secondary" bordered>
+                      <Link to={`/operations/queues/${saved.id}/edit`}>
+                        Edit queue
+                      </Link>
+                    </Button>
                   ) : (
                     <Button
                       variant="secondary"
                       onClick={() => setEditing((value) => !value)}
                     >
-                      Create queue
+                      Save as custom queue
                     </Button>
                   )}
                 </Can>
@@ -323,44 +345,16 @@ function QueueContent({
           />
           <div className="mb-4 flex flex-wrap items-center gap-2">
             {isQueue ? (
-              <div
-                role="tablist"
-                aria-label="Requests"
-                className="mr-auto flex items-center gap-1 rounded-lg bg-muted p-1 text-sm"
-              >
-                {tabs.map((t) => {
-                  const active = (overdueTab ? 'overdue' : 'open') === t.key;
-                  return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      className={cn(
-                        'rounded-md px-3 py-1 font-medium transition-colors',
-                        active
-                          ? 'bg-background text-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                      onClick={() => {
-                        setTab(t.key);
-                        goPage(0);
-                      }}
-                    >
-                      {t.label}
-                      <span
-                        className={cn(
-                          'ml-1.5 tabular-nums',
-                          t.key === 'overdue' && t.count
-                            ? 'text-warning'
-                            : 'text-muted-foreground'
-                        )}
-                      >
-                        {t.count?.toLocaleString() ?? '…'}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="mr-auto">
+                <RequestTabs
+                  active={overdueTab ? 'overdue' : 'open'}
+                  open={counts.data?.open ?? (overdueTab ? undefined : total)}
+                  overdue={due ? counts.data?.overdue : null}
+                  onChange={(next) => {
+                    setTab(next);
+                    goPage(0);
+                  }}
+                />
               </div>
             ) : (
               <p className="mr-auto text-sm font-medium tabular-nums">
@@ -371,8 +365,8 @@ function QueueContent({
               </p>
             )}
             <Input
-              aria-label="Search runs"
-              placeholder="Search label or run"
+              aria-label={isQueue ? 'Search requests' : 'Search runs'}
+              placeholder={isQueue ? 'Search requests' : 'Search runs'}
               className="w-full sm:w-64"
               value={search}
               onChange={(e) => {
@@ -389,6 +383,16 @@ function QueueContent({
               Filters
               {view.where?.state?.length ? ` (${view.where.state.length})` : ''}
             </Button>
+            {saved && filtersChanged ? (
+              // Filters changed here are a temporary look, not the saved queue.
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => filters(initial.where?.state ?? [])}
+              >
+                Reset to saved filters
+              </Button>
+            ) : null}
             {isQueue ? null : (
               <div className="flex items-center gap-1">
                 <select
@@ -504,51 +508,91 @@ function QueueContent({
           />
         </div>
       </Can>
+      {isQueue && question ? (
+        <p className="border-b px-4 py-2 text-sm">
+          <span className="text-muted-foreground">Request: </span>
+          {question}
+        </p>
+      ) : null}
       {isQueue && bulk && selected.length ? (
         <Can permission="workflow:execute">
           <div className="flex flex-wrap items-center gap-3 border-b bg-primary/5 px-4 py-3 text-sm">
-            <strong>{selected.length} requests selected</strong>
-            {common.map((value) => (
-              <Button
-                size="sm"
-                key={JSON.stringify(value)}
-                onClick={() =>
-                  void Promise.all(
-                    selected.map((row) =>
-                      refs.current.get(requestKey(row))?.choose(value)
-                    )
-                  )
-                }
-              >
-                {stateLabel(String(value))} selected
-              </Button>
-            ))}
-            <Button
-              size="sm"
-              variant="secondary"
-              bordered
-              onClick={() => void submitPrepared()}
-            >
-              Submit prepared answers
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              bordered
-              onClick={() => setSelection(new Set())}
-            >
-              Clear
-            </Button>
-            <p className="basis-full text-muted-foreground">
-              Additional fields appear in each row. Review them before
-              submitting.
-            </p>
+            <strong>
+              {selected.length} {selected.length === 1 ? 'request' : 'requests'}{' '}
+              selected
+            </strong>
+            {confirming !== undefined ? (
+              <>
+                <span>
+                  Answer “{stateLabel(String(confirming))}” for{' '}
+                  {selected.length === 1
+                    ? 'this request'
+                    : `all ${selected.length}`}
+                  ? This cannot be undone.
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const value = confirming;
+                    setConfirming(undefined);
+                    void Promise.all(
+                      selected.map((row) =>
+                        refs.current.get(requestKey(row))?.choose(value)
+                      )
+                    );
+                  }}
+                >
+                  Confirm
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  bordered
+                  onClick={() => setConfirming(undefined)}
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                {common.map((value) => (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    bordered
+                    key={JSON.stringify(value)}
+                    onClick={() => setConfirming(value)}
+                  >
+                    {stateLabel(String(value))} {selected.length}
+                  </Button>
+                ))}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  bordered
+                  onClick={() => void submitPrepared()}
+                >
+                  Send filled-in answers
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSelection(new Set())}
+                >
+                  Clear selection
+                </Button>
+                <p className="basis-full text-muted-foreground">
+                  A choice that needs more fields opens them in each row. Fill
+                  them in, then send them together.
+                </p>
+              </>
+            )}
           </div>
         </Can>
       ) : null}
       {query.error ? (
         <p role="alert" className="p-6 text-destructive">
-          Could not load this view. Check its filters or refresh to try again.
+          Could not load this queue. Check its filters or refresh to try again.
         </p>
       ) : query.isPending ? (
         <p className="p-6">Loading…</p>
@@ -599,7 +643,7 @@ function QueueContent({
                   onSort={sortBy}
                 />
               ))}
-              <th className="px-4 py-3">{question ?? 'Decision'}</th>
+              <th className="px-4 py-3">Answer</th>
             </tr>
           </thead>
           <tbody>
@@ -646,7 +690,7 @@ function QueueContent({
                     />
                     {row.deadline ? (
                       <>
-                        {' · deadline '}
+                        {' · expires '}
                         <StateValue
                           value={row.deadline}
                           display={{ kind: 'relative' }}
@@ -713,8 +757,10 @@ function QueueContent({
       {!query.isPending && !query.error && (data?.totalElements ?? 0) === 0 ? (
         <p className="p-10 text-center text-muted-foreground">
           {isQueue
-            ? 'No requests waiting for an answer.'
-            : 'No runs match this view.'}
+            ? overdueTab
+              ? 'Nothing is overdue.'
+              : 'Nothing is waiting in this queue.'
+            : 'No runs match this list.'}
         </p>
       ) : null}
     </ConsoleTableShell>

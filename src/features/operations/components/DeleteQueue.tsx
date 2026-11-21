@@ -5,7 +5,6 @@ import type { SavedOperationView } from '@/generated/RuntaraRuntimeApi';
 import { useToken } from '@/shared/hooks';
 import { Can } from '@/shared/components/Can';
 import { Button } from '@/shared/components/ui/button';
-import { WithTooltip } from '@/shared/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -21,11 +20,9 @@ import {
 
 export function DeleteQueue({
   queue,
-  icon = false,
   onDeleted,
 }: {
   queue: SavedOperationView;
-  icon?: boolean;
   onDeleted?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -65,25 +62,19 @@ export function DeleteQueue({
   }
   return (
     <Can permission="workflow:update">
-      <WithTooltip label="Delete queue">
-        <Button
-          variant="secondary"
-          size={icon ? 'icon' : 'default'}
-          bordered={!icon}
-          className={
-            icon ? 'h-8 w-8 text-muted-foreground hover:text-destructive' : ''
-          }
-          aria-label={`Delete queue ${queue.configuration.name}`}
-          onClick={() => {
-            setError('');
-            setTarget(queue);
-            setOpen(true);
-          }}
-        >
-          <Trash2 className="size-4" />
-          {!icon && 'Delete queue'}
-        </Button>
-      </WithTooltip>
+      <Button
+        variant="secondaryDestructive"
+        bordered
+        aria-label={`Delete queue ${queue.configuration.name}`}
+        onClick={() => {
+          setError('');
+          setTarget(queue);
+          setOpen(true);
+        }}
+      >
+        <Trash2 className="size-4" />
+        Delete queue
+      </Button>
       <Dialog
         open={open}
         onOpenChange={(value) => {
