@@ -45,7 +45,7 @@ for (const width of [1440, 1000, 390]) {
           page.getByRole('heading', { name: 'Processes', exact: true })
         ).toHaveCount(0);
         const requests = page.getByRole('list', {
-          name: 'Requests requiring input',
+          name: 'Open requests',
         });
         await expect(requests).toBeVisible();
         // Failures are counted by the metric card; no second list repeats them.
@@ -66,7 +66,7 @@ for (const width of [1440, 1000, 390]) {
           if (overdue) expect(sawNonOverdue).toBe(false);
           else sawNonOverdue = true;
           const review = item.getByRole('link', {
-            name: /^Review request for/,
+            name: /^Answer request for/,
           });
           await expect(review).toBeVisible();
           if (width >= 1024)

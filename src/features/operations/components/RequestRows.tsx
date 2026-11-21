@@ -1,7 +1,6 @@
 import { Link } from 'react-router';
-import { AlertTriangle, Eye } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
-import { WithTooltip } from '@/shared/components/ui/tooltip';
 import { StateValue } from './StateValue';
 import type { AttentionRequest } from '../attention-requests';
 import { contextSummary } from '../request-context';
@@ -11,15 +10,10 @@ const rowClass =
 const textClass = 'col-start-1 min-w-0 truncate lg:col-auto';
 const actionsClass =
   'col-start-2 row-span-4 row-start-1 flex shrink-0 items-center justify-end gap-1 lg:col-auto lg:row-span-1 lg:row-auto';
-const iconClass =
-  'h-8 w-8 shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-primary/10 hover:text-primary-text';
 
 export function RequestRows({ requests }: { requests: AttentionRequest[] }) {
   return (
-    <ul
-      className="divide-y divide-border/50"
-      aria-label="Requests requiring input"
-    >
+    <ul className="divide-y divide-border/50" aria-label="Open requests">
       {requests.map(({ row, workflowName, due, isOverdue }) => {
         const to = `/operations/runs/${row.workflowId}/${row.instanceId}`;
         const label = row.runLabel || row.instanceId.slice(0, 8);
@@ -73,18 +67,15 @@ export function RequestRows({ requests }: { requests: AttentionRequest[] }) {
               )}
             </div>
             <div className={actionsClass}>
-              <WithTooltip label="Review request">
-                <Button
-                  asChild
-                  variant="secondary"
-                  size="icon"
-                  className={iconClass}
+              <Button asChild variant="secondary" bordered size="sm">
+                {/* Opens the request beside the inbox, where it is answered. */}
+                <Link
+                  aria-label={`Answer request for ${label}`}
+                  to={`/operations/requests?request=${encodeURIComponent(`${row.instanceId}/${row.requestId}`)}`}
                 >
-                  <Link aria-label={`Review request for ${label}`} to={to}>
-                    <Eye className="size-4" />
-                  </Link>
-                </Button>
-              </WithTooltip>
+                  Answer
+                </Link>
+              </Button>
             </div>
           </li>
         );

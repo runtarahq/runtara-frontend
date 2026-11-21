@@ -1,8 +1,9 @@
 import { stateLabel } from '../state-label';
-import { inlineOptions } from '../answer-options';
+import { inlineOptions, isNegativeAnswer } from '../answer-options';
 import { Link } from 'react-router';
 import {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -22,7 +23,11 @@ import {
 } from '@/features/workflows/utils/form-schema-adapter';
 import { useManagedInputSubmissions } from '@/features/workflows/hooks/useManagedInputSubmissions';
 
+/** How long a one-click answer can be taken back before it is sent. */
+export const UNDO_MS = 5000;
+
 export interface AnswerController {
+  /** Answers at once: the caller has already confirmed (a bulk answer). */
   choose(value: unknown): Promise<void>;
   /** Sends the row's open form; false when the row has none to send. */
   submit(): Promise<boolean>;
@@ -37,6 +42,15 @@ export const QueueAnswer = forwardRef<
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [editing, setEditing] = useState(false);
   const choosingRef = useRef(false);
+  // A one-click answer waits here, where Undo can still drop it.
+  const [pending, setPending] = useState<{
+    value: unknown;
+    payload: Record<string, unknown>;
+  } | null>(null);
+  const pendingRef = useRef<{
+    payload: Record<string, unknown>;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
   const [analysis, setAnalysis] = useState<FormAnalysisResult | null>(null);
   const [attempt, setAttempt] = useState(0);
   const submissions = useManagedInputSubmissions();
@@ -79,9 +93,31 @@ export const QueueAnswer = forwardRef<
       row.runLabel ?? row.label
     );
   }
-  async function choose(value: unknown) {
+  function undo() {
+    if (pendingRef.current) clearTimeout(pendingRef.current.timer);
+    pendingRef.current = null;
+    setPending(null);
+    setValues({});
+    setAnalysis(null);
+  }
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  // Leaving the list before the delay is over still sends what was chosen:
+  // the choice was made, only its undo window is cut short.
+  useEffect(
+    () => () => {
+      const waiting = pendingRef.current;
+      if (!waiting) return;
+      clearTimeout(waiting.timer);
+      pendingRef.current = null;
+      void sendRef.current(waiting.payload);
+    },
+    []
+  );
+  async function choose(value: unknown, undoable = false) {
     if (
       disabled ||
+      pendingRef.current ||
       choosingRef.current ||
       !options ||
       !options.values.some((v) => JSON.stringify(v) === JSON.stringify(value))
@@ -108,7 +144,19 @@ export const QueueAnswer = forwardRef<
         setEditing(true);
         return;
       }
-      await send(payload);
+      if (!undoable) {
+        await send(payload);
+        return;
+      }
+      pendingRef.current = {
+        payload,
+        timer: setTimeout(() => {
+          pendingRef.current = null;
+          setPending(null);
+          void sendRef.current(payload);
+        }, UNDO_MS),
+      };
+      setPending({ value, payload });
     } finally {
       choosingRef.current = false;
     }
@@ -120,7 +168,7 @@ export const QueueAnswer = forwardRef<
     setAnalysis(null);
   }
   useImperativeHandle(ref, () => ({
-    choose,
+    choose: (value: unknown) => choose(value),
     submit: async () => {
       if (!editing || disabled) return false;
       await send(current);
@@ -131,9 +179,9 @@ export const QueueAnswer = forwardRef<
     return (
       <Link
         className="text-primary-text"
-        to={`/operations/runs/${row.workflowId}/${row.instanceId}`}
+        to={`/operations/requests?request=${encodeURIComponent(`${row.instanceId}/${row.requestId}`)}`}
       >
-        Review
+        Answer
       </Link>
     );
   if (retained)
@@ -148,36 +196,62 @@ export const QueueAnswer = forwardRef<
               : `Could not answer: ${retained.error ?? 'request is no longer open'}`}
       </div>
     );
+  if (pending)
+    return (
+      <div role="status" className="flex max-w-xs items-center gap-2 text-sm">
+        <span className="min-w-0 truncate">
+          Sending “{stateLabel(String(pending.value))}”…
+        </span>
+        <Button size="sm" variant="secondary" bordered onClick={undo}>
+          Undo
+        </Button>
+      </div>
+    );
   if (error) return <p role="alert">{error}</p>;
   if (loading) return <p>Preparing answer…</p>;
   return (
     <div className="min-w-40 space-y-3">
       {!editing && options ? (
         <div className="flex flex-wrap gap-2">
-          {options.values.map((value) => (
-            <Button
-              key={JSON.stringify(value)}
-              size="sm"
-              variant="secondary"
-              bordered
-              disabled={disabled}
-              onClick={() => void choose(value)}
-            >
-              {stateLabel(String(value))}
-            </Button>
-          ))}
+          {options.values.map((value, index) => {
+            const negative = isNegativeAnswer(value);
+            // The accepting choice leads; the one that turns down reads apart.
+            const primary =
+              !negative &&
+              index === options.values.findIndex((v) => !isNegativeAnswer(v)) &&
+              options.values.some(isNegativeAnswer);
+            return (
+              <Button
+                key={JSON.stringify(value)}
+                size="sm"
+                variant={
+                  primary
+                    ? 'primary'
+                    : negative
+                      ? 'secondaryDestructive'
+                      : 'secondary'
+                }
+                bordered={!primary}
+                disabled={disabled}
+                onClick={() => void choose(value, true)}
+              >
+                {stateLabel(String(value))}
+              </Button>
+            );
+          })}
         </div>
       ) : null}
       {!editing && !options ? (
         <Button
           variant="secondary"
+          bordered
           size="sm"
           onClick={() => {
             setValues(current);
             setEditing(true);
           }}
         >
-          Answer in place
+          Answer
         </Button>
       ) : null}
       {editing ? (
@@ -200,7 +274,7 @@ export const QueueAnswer = forwardRef<
             disabled={disabled || analysis?.wasmAvailable === false}
             onClick={() => void send(current)}
           >
-            Submit answer
+            Send answer
           </Button>
           <Button size="sm" variant="secondary" bordered onClick={cancel}>
             Cancel

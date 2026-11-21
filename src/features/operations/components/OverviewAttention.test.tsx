@@ -18,9 +18,9 @@ describe('Overview attention', () => {
       </MemoryRouter>
     );
     expect(
-      within(
-        screen.getByRole('region', { name: 'Requests requiring input' })
-      ).getByText('Could not load this group. Try Refresh.')
+      within(screen.getByRole('region', { name: 'Open requests' })).getByText(
+        'Could not load this group. Try Refresh.'
+      )
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'View all requests' })

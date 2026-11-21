@@ -9,6 +9,8 @@ import type {
   StateFilterDto,
 } from '@/generated/RuntaraRuntimeApi';
 import { useToken } from '@/shared/hooks';
+import { useCustomQuery } from '@/shared/hooks/api';
+import { useAuthStore } from '@/shared/stores/authStore';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import {
@@ -16,6 +18,7 @@ import {
   isRevisionConflict,
   operationsRequest,
   message,
+  queryRequests,
 } from '../queries';
 import { type StateField } from './StateValue';
 import { RUN_STATUS_OPTIONS } from '@/features/invocation-history/status-options';
@@ -50,6 +53,36 @@ export function ViewEditor({
   const fields = [
     ...new Set([...Object.keys(schema), ...(view.columns ?? [])]),
   ];
+  const tenant = useAuthStore((s) => s.orgId);
+  // The answer fields a request offers are only known from a request, so one
+  // open request of the step, when there is one, supplies the choices.
+  const step = view.where?.openRequest;
+  const sample = useCustomQuery({
+    queryKey: ['operations', tenant, 'answer-fields', view.workflow, step],
+    queryFn: async (token: string) =>
+      (
+        await queryRequests(
+          token,
+          {
+            ...view,
+            columns: [],
+            roles: {},
+            sort: null,
+            where: { openRequest: step },
+          },
+          0,
+          '',
+          1
+        )
+      ).content[0]?.inputSchema ?? null,
+    enabled: Boolean(step),
+    placeholderData: undefined,
+  });
+  const answerFields = Object.entries(
+    ((sample.data as { properties?: unknown } | null)?.properties ??
+      sample.data ??
+      {}) as Record<string, { enum?: unknown[]; title?: string }>
+  ).filter(([, field]) => Array.isArray(field?.enum));
   const update = (change: Partial<OperationViewConfig>) =>
     setView((v) => ({ ...v, ...change }));
   async function save() {
@@ -93,9 +126,9 @@ export function ViewEditor({
       </label>
       {requestSources && (
         <label className="block max-w-lg text-sm">
-          Queue contents
+          Shows
           <select
-            aria-label="Queue contents"
+            aria-label="Shows"
             className="mt-1 block h-9 w-full rounded border bg-background px-3"
             value={view.where?.openRequest ?? ''}
             onChange={(event) =>
@@ -109,7 +142,7 @@ export function ViewEditor({
               })
             }
           >
-            <option value="">Workflow runs</option>
+            <option value="">Runs of this workflow (no requests)</option>
             {view.where?.openRequest &&
               !requestSources.some(
                 (source) => source.actionKey === view.where?.openRequest
@@ -120,7 +153,7 @@ export function ViewEditor({
               )}
             {requestSources.map((source) => (
               <option key={source.actionKey} value={source.actionKey}>
-                Requests: {source.name} ({source.actionKey})
+                Requests waiting at “{source.name}”
               </option>
             ))}
           </select>
@@ -173,9 +206,9 @@ export function ViewEditor({
       )}
       <div className="flex flex-wrap items-end gap-4">
         <label className="text-sm">
-          Sort field
+          Order by
           <select
-            aria-label="Sort field"
+            aria-label="Order by"
             className="mt-1 block h-9 rounded border bg-background px-3"
             value={view.sort?.field ?? ''}
             onChange={(event) =>
@@ -189,7 +222,11 @@ export function ViewEditor({
               })
             }
           >
-            <option value="">Default order</option>
+            <option value="">
+              {view.where?.openRequest
+                ? 'Longest waiting first'
+                : 'Newest first'}
+            </option>
             {fields.map((field) => (
               <option key={field} value={field}>
                 {stateLabel(field, schema[field])}
@@ -213,10 +250,32 @@ export function ViewEditor({
         )}
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        {(['key', 'stage', 'due'] as const).map((role) => (
+        {(
+          [
+            [
+              'due',
+              'Due time',
+              'No due time',
+              'A date field of the run. Requests past it count as overdue.',
+            ],
+            [
+              'key',
+              'Shown as',
+              'Run label',
+              'What each row is called, such as an order number.',
+            ],
+            [
+              'stage',
+              'Stage',
+              'None',
+              'A field with a fixed set of values, shown as progress on the run page.',
+            ],
+          ] as const
+        ).map(([role, label, none, help]) => (
           <label key={role} className="text-sm">
-            {stateLabel(role)} field
+            {label}
             <select
+              aria-label={label}
               className="mt-1 block w-full rounded border bg-background p-2"
               value={view.roles?.[role] ?? ''}
               onChange={(e) =>
@@ -225,135 +284,140 @@ export function ViewEditor({
                 })
               }
             >
-              <option value="">{role === 'key' ? 'Run label' : 'None'}</option>
+              <option value="">{none}</option>
               {fields.map((field) => (
                 <option key={field} value={field}>
                   {stateLabel(field, schema[field])}
                 </option>
               ))}
             </select>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {help}
+            </span>
           </label>
         ))}
       </div>
-      <fieldset className="space-y-2">
-        <legend className="mb-2 text-sm font-medium">
-          Columns and display
-        </legend>
-        {fields.map((field) => {
-          const format = view.formats?.[field] ?? {};
-          return (
-            <div
-              key={field}
-              className="flex flex-wrap items-center gap-3 text-sm"
-            >
-              <label className="min-w-40">
-                <input
-                  type="checkbox"
-                  checked={view.columns?.includes(field) ?? false}
+      <details className="rounded-md border bg-background p-3">
+        <summary className="cursor-pointer text-sm font-medium">
+          Columns and formats ({view.columns?.length ?? 0} shown)
+        </summary>
+        <div className="mt-3 space-y-2">
+          {fields.map((field) => {
+            const format = view.formats?.[field] ?? {};
+            return (
+              <div
+                key={field}
+                className="flex flex-wrap items-center gap-3 text-sm"
+              >
+                <label className="min-w-40">
+                  <input
+                    type="checkbox"
+                    checked={view.columns?.includes(field) ?? false}
+                    onChange={(e) =>
+                      update({
+                        columns: e.target.checked
+                          ? [...(view.columns ?? []), field]
+                          : (view.columns ?? []).filter((f) => f !== field),
+                      })
+                    }
+                  />{' '}
+                  {stateLabel(field, schema[field])}
+                </label>
+                <Input
+                  className="w-36"
+                  aria-label={`${field} label`}
+                  placeholder="Label"
+                  value={view.labels?.[field] ?? ''}
                   onChange={(e) =>
                     update({
-                      columns: e.target.checked
-                        ? [...(view.columns ?? []), field]
-                        : (view.columns ?? []).filter((f) => f !== field),
+                      labels: { ...view.labels, [field]: e.target.value },
                     })
                   }
-                />{' '}
-                {stateLabel(field, schema[field])}
-              </label>
-              <Input
-                className="w-36"
-                aria-label={`${field} label`}
-                placeholder="Label"
-                value={view.labels?.[field] ?? ''}
-                onChange={(e) =>
-                  update({
-                    labels: { ...view.labels, [field]: e.target.value },
-                  })
-                }
-              />
-              <select
-                aria-label={`${field} display`}
-                className="rounded border bg-background p-2"
-                value={format.kind ?? ''}
-                onChange={(e) =>
-                  update({
-                    formats: {
-                      ...view.formats,
-                      [field]: {
-                        ...format,
-                        kind: (e.target.value || null) as typeof format.kind,
+                />
+                <select
+                  aria-label={`${field} display`}
+                  className="rounded border bg-background p-2"
+                  value={format.kind ?? ''}
+                  onChange={(e) =>
+                    update({
+                      formats: {
+                        ...view.formats,
+                        [field]: {
+                          ...format,
+                          kind: (e.target.value || null) as typeof format.kind,
+                        },
                       },
-                    },
-                  })
-                }
-              >
-                {['', 'text', 'number', 'date', 'datetime', 'relative'].map(
-                  (kind) => (
-                    <option key={kind} value={kind}>
-                      {kind || 'Automatic'}
-                    </option>
-                  )
-                )}
-              </select>
-              {format.kind === 'number' ? (
-                <>
-                  <Input
-                    aria-label={`${field} decimals`}
-                    className="w-24"
-                    type="number"
-                    min={0}
-                    max={20}
-                    placeholder="Decimals"
-                    value={format.decimals ?? ''}
-                    onChange={(e) =>
-                      update({
-                        formats: {
-                          ...view.formats,
-                          [field]: {
-                            ...format,
-                            decimals:
-                              e.target.value === ''
-                                ? null
-                                : Number(e.target.value),
+                    })
+                  }
+                >
+                  {['', 'text', 'number', 'date', 'datetime', 'relative'].map(
+                    (kind) => (
+                      <option key={kind} value={kind}>
+                        {kind || 'Automatic'}
+                      </option>
+                    )
+                  )}
+                </select>
+                {format.kind === 'number' ? (
+                  <>
+                    <Input
+                      aria-label={`${field} decimals`}
+                      className="w-24"
+                      type="number"
+                      min={0}
+                      max={20}
+                      placeholder="Decimals"
+                      value={format.decimals ?? ''}
+                      onChange={(e) =>
+                        update({
+                          formats: {
+                            ...view.formats,
+                            [field]: {
+                              ...format,
+                              decimals:
+                                e.target.value === ''
+                                  ? null
+                                  : Number(e.target.value),
+                            },
                           },
-                        },
-                      })
-                    }
-                  />
-                  <Input
-                    aria-label={`${field} prefix`}
-                    className="w-24"
-                    placeholder="Prefix"
-                    value={format.prefix ?? ''}
-                    onChange={(e) =>
-                      update({
-                        formats: {
-                          ...view.formats,
-                          [field]: { ...format, prefix: e.target.value },
-                        },
-                      })
-                    }
-                  />
-                  <Input
-                    aria-label={`${field} suffix`}
-                    className="w-24"
-                    placeholder="Suffix"
-                    value={format.suffix ?? ''}
-                    onChange={(e) =>
-                      update({
-                        formats: {
-                          ...view.formats,
-                          [field]: { ...format, suffix: e.target.value },
-                        },
-                      })
-                    }
-                  />
-                </>
-              ) : null}
-            </div>
-          );
-        })}
-      </fieldset>
+                        })
+                      }
+                    />
+                    <Input
+                      aria-label={`${field} prefix`}
+                      className="w-24"
+                      placeholder="Prefix"
+                      value={format.prefix ?? ''}
+                      onChange={(e) =>
+                        update({
+                          formats: {
+                            ...view.formats,
+                            [field]: { ...format, prefix: e.target.value },
+                          },
+                        })
+                      }
+                    />
+                    <Input
+                      aria-label={`${field} suffix`}
+                      className="w-24"
+                      placeholder="Suffix"
+                      value={format.suffix ?? ''}
+                      onChange={(e) =>
+                        update({
+                          formats: {
+                            ...view.formats,
+                            [field]: { ...format, suffix: e.target.value },
+                          },
+                        })
+                      }
+                    />
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </details>
       <StateFilters
         filters={view.where?.state ?? []}
         fields={fields}
@@ -361,28 +425,80 @@ export function ViewEditor({
         onChange={(state) => update({ where: { ...view.where, state } })}
       />
       {view.where?.openRequest ? (
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap items-start gap-4">
           <label className="text-sm">
-            Inline answer field
-            <Input
-              placeholder="Leave empty to review each request"
-              value={view.answers?.inline ?? ''}
-              onChange={(e) =>
-                update({
-                  answers: { ...view.answers, inline: e.target.value || null },
-                })
-              }
-            />
+            Answer buttons
+            {answerFields.length ? (
+              <select
+                aria-label="Answer buttons"
+                className="mt-1 block h-9 rounded border bg-background px-3"
+                value={view.answers?.inline ?? ''}
+                onChange={(e) =>
+                  update({
+                    answers: {
+                      bulk: e.target.value
+                        ? (view.answers?.bulk ?? false)
+                        : false,
+                      inline: e.target.value || null,
+                    },
+                  })
+                }
+              >
+                <option value="">None, open each request</option>
+                {view.answers?.inline &&
+                  !answerFields.some(
+                    ([name]) => name === view.answers?.inline
+                  ) && (
+                    <option value={view.answers.inline}>
+                      {stateLabel(view.answers.inline)}
+                    </option>
+                  )}
+                {answerFields.map(([name, field]) => (
+                  <option key={name} value={name}>
+                    {field.title ?? stateLabel(name)}:{' '}
+                    {field.enum!.map((v) => stateLabel(String(v))).join(', ')}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              // With no open request to read the choices from, the field is named.
+              <Input
+                aria-label="Answer buttons"
+                placeholder="Answer field name"
+                value={view.answers?.inline ?? ''}
+                onChange={(e) =>
+                  update({
+                    answers: {
+                      bulk: e.target.value
+                        ? (view.answers?.bulk ?? false)
+                        : false,
+                      inline: e.target.value || null,
+                    },
+                  })
+                }
+              />
+            )}
+            <span className="mt-1 block max-w-xs text-xs text-muted-foreground">
+              {answerFields.length
+                ? 'Each row gets one button per choice. A one-click answer can be undone for a few seconds.'
+                : 'The name of the answer field whose choices become buttons in each row. Leave empty to open each request.'}
+            </span>
           </label>
-          <label className="self-end text-sm">
+          <label className="mt-6 text-sm">
             <input
               type="checkbox"
-              checked={view.answers?.bulk ?? false}
+              disabled={!view.answers?.inline}
+              checked={Boolean(view.answers?.inline && view.answers?.bulk)}
               onChange={(e) =>
                 update({ answers: { ...view.answers, bulk: e.target.checked } })
               }
             />{' '}
-            Allow bulk answers
+            Answer several at once
+            <span className="mt-1 block max-w-xs text-xs text-muted-foreground">
+              {view.answers?.inline
+                ? 'Selected rows are answered together after one confirmation.'
+                : 'Needs answer buttons.'}
+            </span>
           </label>
         </div>
       ) : null}
@@ -406,6 +522,17 @@ export function ViewEditor({
   );
 }
 
+/** The server's filter operators, as a sentence reads them. */
+const OPERATORS: Record<string, string> = {
+  eq: 'is',
+  ne: 'is not',
+  lt: 'is less than / before',
+  lte: 'is at most / not after',
+  gt: 'is greater than / after',
+  gte: 'is at least / not before',
+  exists: 'is set (true or false)',
+};
+
 export function StateFilters({
   filters,
   fields,
@@ -421,7 +548,7 @@ export function StateFilters({
     onChange(filters.map((f, i) => (i === index ? { ...f, ...patch } : f)));
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">State filters</legend>
+      <legend className="text-sm font-medium">Only show when</legend>
       {filters.map((filter, index) => {
         const relative = Boolean(
           filter.value &&
@@ -448,8 +575,10 @@ export function StateFilters({
               value={filter.op}
               onChange={(e) => change(index, { op: e.target.value })}
             >
-              {['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'exists'].map((op) => (
-                <option key={op}>{op}</option>
+              {Object.entries(OPERATORS).map(([op, label]) => (
+                <option key={op} value={op}>
+                  {label}
+                </option>
               ))}
             </select>
             <Input
@@ -490,7 +619,7 @@ export function StateFilters({
                   })
                 }
               />{' '}
-              Compare with now
+              the current time
             </label>
             <Button
               variant="secondary"
@@ -517,7 +646,7 @@ export function StateFilters({
           ])
         }
       >
-        Add filter
+        Add condition
       </Button>
     </fieldset>
   );

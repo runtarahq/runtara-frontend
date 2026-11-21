@@ -244,7 +244,7 @@ export function RunPage() {
                     className="space-y-4 rounded-lg border p-4"
                   >
                     <h2 className="-mx-4 -mt-4 border-b px-4 py-3 text-sm font-semibold">
-                      Decision needed
+                      Open request
                     </h2>
                     <h3 className="text-sm font-semibold">{title}</h3>
                     {message && message !== title ? (
@@ -266,7 +266,7 @@ export function RunPage() {
                         </p>
                       ) : (
                         <ActionForm
-                          submitLabel="Send decision"
+                          submitLabel="Send answer"
                           inputSchema={request.responseSchema}
                           onSubmit={(payload) =>
                             void submissions.submit(
@@ -287,11 +287,14 @@ export function RunPage() {
                 );
               })
             ) : (
-              <OperationSection title="Decision needed">
-                <p className="p-5 text-sm text-muted-foreground">
-                  No requests waiting for an answer.
-                </p>
-              </OperationSection>
+              // Only a run that can still ask says it has nothing open.
+              !finished && (
+                <OperationSection title="Open requests">
+                  <p className="p-5 text-sm text-muted-foreground">
+                    This run is not waiting for an answer.
+                  </p>
+                </OperationSection>
+              )
             )}
             <InputRetryPanel matches={(r) => r.instanceId === instanceId} />
           </section>

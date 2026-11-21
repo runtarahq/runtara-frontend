@@ -44,9 +44,9 @@ test('Operations: edit separate bulk answers in place, resume runs, and inspect 
   await expect(first.getByText('$2.00', { exact: true })).toBeVisible();
   await first.getByRole('checkbox').check();
   await second.getByRole('checkbox').check();
-  await page
-    .getByRole('button', { name: 'Reject selected', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Reject 2', exact: true }).click();
+  // A bulk answer asks once before it acts on every selected row.
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(first.getByLabel('Reason', { exact: false })).toBeVisible();
   await expect(second.getByLabel('Reason', { exact: false })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -57,13 +57,13 @@ test('Operations: edit separate bulk answers in place, resume runs, and inspect 
     fullPage: true,
   });
   await page
-    .getByRole('button', { name: 'Submit prepared answers', exact: true })
+    .getByRole('button', { name: 'Send filled-in answers', exact: true })
     .click();
   await expect(first.getByText('Answered', { exact: true })).toBeVisible();
   await expect(second.getByText('Answered', { exact: true })).toHaveCount(0);
   await second.getByLabel('Reason', { exact: false }).fill('Second review');
   await second
-    .getByRole('button', { name: 'Submit answer', exact: true })
+    .getByRole('button', { name: 'Send answer', exact: true })
     .click();
   await expect(second.getByText('Answered', { exact: true })).toBeVisible();
   for (const id of fixture.runs.slice(1)) {
@@ -90,9 +90,8 @@ test('Operations: edit separate bulk answers in place, resume runs, and inspect 
   await expect(
     page.getByRole('heading', { name: 'State', exact: true })
   ).toBeVisible();
-  await expect(
-    page.getByText('No requests waiting for an answer.', { exact: true })
-  ).toBeVisible();
+  // A finished run has no request box at all.
+  await expect(page.getByText('Open request', { exact: false })).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath('run.png'),
     fullPage: true,
@@ -102,7 +101,11 @@ test('Operations: edit separate bulk answers in place, resume runs, and inspect 
     appPath(`/operations/queues/${fixture.workflow}/new_approval`)
   );
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(page.getByText('Answered', { exact: true })).toBeVisible();
+  // A one-click answer can be undone for a few seconds, then it is sent.
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await expect(page.getByText('Answered', { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
   await page.goto(
     appPath(
       `/operations/runs?status=failed,timeout&workflowId=${fixture.failureWorkflow}`

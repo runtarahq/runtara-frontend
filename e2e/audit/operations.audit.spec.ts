@@ -209,7 +209,7 @@ test.describe('Operations audit', () => {
     });
     await openSavedQueue(page);
 
-    const search = page.getByLabel('Search runs');
+    const search = page.getByLabel('Search requests');
     await expect(page.getByRole('link', { name: 'RUN-a' })).toBeVisible();
     await search.fill('typed before the failure');
 
@@ -227,7 +227,7 @@ test.describe('Operations audit', () => {
 
     // Control: the page is back once the poll recovers.
     failing = false;
-    await expect(page.getByLabel('Search runs')).toBeVisible({
+    await expect(page.getByLabel('Search requests')).toBeVisible({
       timeout: POLL + 5_000,
     });
   });
@@ -248,7 +248,7 @@ test.describe('Operations audit', () => {
     });
     await page.goto(`/operations/runs/${WF}/${INST}`);
 
-    await expect(page.getByText('Decision needed')).toBeVisible();
+    await expect(page.getByText('Open request', { exact: true })).toBeVisible();
     const field = page.getByRole('textbox').last();
     await field.fill('draft answer');
     await expect(field).toHaveValue('draft answer');
@@ -262,13 +262,13 @@ test.describe('Operations audit', () => {
     await page.waitForTimeout(2_000);
 
     // Fixed: the loaded run stays, draft included, with a note.
-    await expect(page.getByText('Decision needed')).toBeVisible();
+    await expect(page.getByText('Open request', { exact: true })).toBeVisible();
     await expect(field).toHaveValue('draft answer');
     await expect(page.getByText('Could not refresh this run')).toBeVisible();
 
     // Control: the page is back once the poll recovers.
     run.failInstance = false;
-    await expect(page.getByText('Decision needed')).toBeVisible({
+    await expect(page.getByText('Open request', { exact: true })).toBeVisible({
       timeout: POLL + 5_000,
     });
   });
@@ -286,14 +286,14 @@ test.describe('Operations audit', () => {
     });
     await openSavedQueue(page);
 
-    await page.getByRole('button', { name: 'Answer in place' }).click();
-    const submit = page.getByRole('button', { name: 'Submit answer' });
+    await page.getByRole('button', { name: 'Answer', exact: true }).click();
+    const submit = page.getByRole('button', { name: 'Send answer' });
     await expect(submit).toBeVisible();
 
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(submit).toHaveCount(0);
     await expect(
-      page.getByRole('button', { name: 'Answer in place' })
+      page.getByRole('button', { name: 'Answer', exact: true })
     ).toBeVisible();
   });
 
@@ -352,8 +352,8 @@ test.describe('Operations audit', () => {
     await openSavedQueue(page);
 
     await page.getByRole('checkbox', { name: /Select RUN-a/ }).check();
-    await expect(page.getByText('1 requests selected')).toBeVisible();
-    await page.getByRole('button', { name: 'Submit prepared answers' }).click();
+    await expect(page.getByText('1 request selected')).toBeVisible();
+    await page.getByRole('button', { name: 'Send filled-in answers' }).click();
 
     // Sending or explaining why not are both fine; doing nothing silently is not.
     await expect
@@ -487,7 +487,8 @@ test.describe('Operations audit', () => {
       deleted = true;
       return json(route, envelope({}));
     });
-    await openSavedQueue(page);
+    // Deleting is on the queue's settings page.
+    await page.goto(`/operations/queues/${VIEW_ID}/edit`);
 
     await page
       .getByRole('button', { name: 'Delete queue Saved queue' })
@@ -588,7 +589,8 @@ test.describe('Operations audit', () => {
       serverRevision = 2;
       return json(route, { message: 'Revision conflict' }, 409);
     });
-    await openSavedQueue(page);
+    // Deleting is on the queue's settings page.
+    await page.goto(`/operations/queues/${VIEW_ID}/edit`);
 
     await page
       .getByRole('button', { name: 'Delete queue Saved queue' })
@@ -658,7 +660,10 @@ test.describe('Operations audit', () => {
     });
     await page.goto('/operations/requests');
 
-    const known = page.getByRole('link', { name: 'RUN-r0', exact: true });
+    const known = page.getByRole('button', {
+      name: 'Open request RUN-r0',
+      exact: true,
+    });
     await expect(known).toBeVisible();
 
     const queuePolls = log.queues;
@@ -677,7 +682,7 @@ test.describe('Operations audit', () => {
     hold.open();
     await expect(known).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'RUN-r1', exact: true })
+      page.getByRole('button', { name: 'Open request RUN-r1', exact: true })
     ).toBeVisible();
   });
 
@@ -694,7 +699,7 @@ test.describe('Operations audit', () => {
     );
     await page.goto('/operations/requests');
 
-    const empty = page.getByText('No requests are waiting for an answer.');
+    const empty = page.getByText('Nothing is waiting.', { exact: false });
     await expect(empty).toBeVisible();
 
     failing = true;

@@ -55,7 +55,7 @@ function AttentionGroup({
           {columns.map((column) => (
             <span
               key={column}
-              className={column === 'Actions' ? 'text-right' : ''}
+              className={column === 'Answer' ? 'text-right' : ''}
             >
               {column}
             </span>
@@ -92,8 +92,8 @@ function EmptyGroup({
       <div>
         <p className="text-sm font-medium">{empty}</p>
         <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-          When a run pauses for a decision, it appears here with its workflow
-          and due date.
+          When a run pauses for a person, its request appears here with its
+          workflow and due time.
         </p>
       </div>
     </div>
@@ -113,13 +113,13 @@ export function OverviewAttention({
 }) {
   return (
     <AttentionGroup
-      title="Requests requiring input"
+      title="Open requests"
       count={requestCount}
       link="View all requests"
       to="/operations/requests"
       columns={
         requests.length
-          ? ['Run', 'Request', 'Workflow', 'Due', 'Actions']
+          ? ['Run', 'Request', 'Workflow', 'Due', 'Answer']
           : undefined
       }
     >
@@ -129,7 +129,7 @@ export function OverviewAttention({
         <EmptyGroup
           loading={requestsPending}
           failed={requestsError}
-          empty="No requests need input."
+          empty="No open requests."
         />
       )}
     </AttentionGroup>
