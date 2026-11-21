@@ -175,12 +175,15 @@ export function ReplayButton({
   // Closed while the request ran: the user has moved on, so the answer must
   // not navigate them away from where they are now (OP-10).
   const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  // Set on every mount: React's development double-mount runs the cleanup
+  // once, and a flag only ever cleared left a mounted dialog looking closed,
+  // so a replay neither closed it nor opened the new run.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    []
-  );
+    };
+  }, []);
   async function replay() {
     setBusy(true);
     try {
