@@ -114,11 +114,10 @@ test('Operations: edit separate bulk answers in place, resume runs, and inspect 
   await expect(
     page.getByRole('heading', { name: 'Runs', exact: true })
   ).toBeVisible();
+  // The Runs row names its run by label; its copy button no longer carries
+  // the run ID in its name.
   const failed = page.getByRole('row').filter({
-    has: page.getByRole('button', {
-      name: `Copy run ID ${fixture.failureRun}`,
-      exact: true,
-    }),
+    has: page.getByRole('link', { name: fixture.failureLabel, exact: true }),
   });
   await expect(
     failed.getByText('Intentional E2E failure to verify Replay', {

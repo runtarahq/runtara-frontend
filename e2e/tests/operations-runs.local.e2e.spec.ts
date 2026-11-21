@@ -129,6 +129,11 @@ test('Runs stays compact and exposes secondary information on demand', async ({
     .getByRole('columnheader', { name: 'Completed', exact: true })
     .click();
   await expect(page).toHaveURL(/sortBy=completedAt/);
+  // The header shows the new order a moment after the URL does; a key pressed
+  // before then would act on the order still on screen.
+  await expect(
+    table.getByRole('columnheader', { name: 'Completed', exact: true })
+  ).toHaveAttribute('aria-sort', 'descending');
   await table
     .getByRole('button', { name: 'Completed', exact: true })
     .press('Enter');
@@ -140,6 +145,9 @@ test('Runs stays compact and exposes secondary information on demand', async ({
   );
   await page.getByRole('button', { name: /^Waiting / }).click();
   await expect(rows.first()).toBeVisible();
+  // Wait for the filtered list itself: the rows of the list before it are
+  // still on screen for a moment after the click.
+  await expect(rows.filter({ hasNotText: 'Waiting' })).toHaveCount(0);
   for (const row of await rows.all()) {
     const actions = row.getByRole('cell').last();
     await expect(
