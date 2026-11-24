@@ -23,6 +23,8 @@ describe('buildConnectionUpdateInput', () => {
     expect(
       buildConnectionUpdateInput({
         id: 'connection-1',
+        integrationId: 'quickbooks_online',
+        sealedFields: ['client_secret'],
         data: {
           title: 'Renamed',
           environment: 'sandbox',
@@ -39,7 +41,7 @@ describe('buildConnectionUpdateInput', () => {
           },
           version: 'v7',
         },
-      })
+      }).update
     ).toEqual({
       id: 'connection-1',
       version: 'v7',
@@ -55,6 +57,8 @@ describe('buildConnectionUpdateInput', () => {
     expect(
       buildConnectionUpdateInput({
         id: 'connection-1',
+        integrationId: 'quickbooks_online',
+        sealedFields: ['client_secret'],
         data: {
           title: 'Original',
           environment: 'production',
@@ -64,11 +68,35 @@ describe('buildConnectionUpdateInput', () => {
         clearSecrets: ['client_secret'],
         definition,
         projection: { version: 'v8' },
-      }).parameterPatch
+      }).update.parameterPatch
     ).toEqual({
       set: { environment: 'production' },
       write: {},
       clear: ['client_secret'],
     });
+  });
+
+  it('marks a replaced secret in the patch and hands its value over apart', () => {
+    const built = buildConnectionUpdateInput({
+      id: 'connection-1',
+      integrationId: 'quickbooks_online',
+      sealedFields: ['client_secret'],
+      data: {
+        title: 'Original',
+        environment: 'production',
+        client_secret: 'synthetic-secret',
+      },
+      dirtyFieldNames: ['environment', 'client_secret'],
+      clearSecrets: [],
+      definition,
+      projection: { version: 'v9' },
+    });
+    expect(built.update.parameterPatch).toEqual({
+      set: { environment: 'production' },
+      write: { client_secret: { $entered: true } },
+      clear: [],
+    });
+    expect(built.secrets).toEqual({ client_secret: 'synthetic-secret' });
+    expect(JSON.stringify(built.update)).not.toContain('synthetic-secret');
   });
 });

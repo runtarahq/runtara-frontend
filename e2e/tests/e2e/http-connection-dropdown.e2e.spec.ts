@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createConnectionSealed } from '../../utils/sealed-connection';
 
 /**
  * HTTP Agent Connection Dropdown E2E Test
@@ -97,16 +98,19 @@ test.describe.serial('HTTP Agent Connection Dropdown', () => {
     const headers = apiHeaders(token);
 
     // 1. Create an http_bearer connection
-    const connRes = await request.post(`${RUNTIME_API}/connections`, {
-      headers,
-      data: {
+    const connRes = await createConnectionSealed(
+      request,
+      RUNTIME_API,
+      {
         title: CONNECTION_TITLE,
         integrationId: 'http_bearer',
         connectionParameters: {
+          base_url: 'https://api.example.com',
           token: 'test-e2e-token-12345',
         },
       },
-    });
+      headers
+    );
     expect(
       connRes.status(),
       `Create connection failed: ${await connRes.text()}`
@@ -150,17 +154,15 @@ test.describe.serial('HTTP Agent Connection Dropdown', () => {
     await searchInput.fill('HTTP Request');
 
     // 4. Select the HTTP Request capability
-    const capabilityResult = page.getByText('HTTP Request').first();
+    const capabilityResult = page
+      .getByText('HTTP Request', { exact: true })
+      .first();
     await expect(capabilityResult).toBeVisible({ timeout: 30000 });
     await capabilityResult.click();
 
-    // 5. NodeConfigDialog opens with "Select connection" button in the header
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible({ timeout: 5000 });
-
-    // The "Select connection" button is in the subtitle area
-    const selectConnectionBtn = dialog.getByRole('button', {
-      name: 'Select connection',
+    // 5. The step's panel opens with "Select connection" under its title
+    const selectConnectionBtn = page.getByText('Select connection', {
+      exact: true,
     });
     await expect(selectConnectionBtn).toBeVisible({ timeout: 10000 });
 

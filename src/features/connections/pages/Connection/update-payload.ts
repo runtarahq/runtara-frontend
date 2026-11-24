@@ -4,9 +4,20 @@ import {
   buildConnectionParameterPatch,
   type EditProjection,
 } from '@/features/connections/components/Forms/DynamicConnectionForm/adapter';
+import {
+  enterPatchSecrets,
+  type EnteredSecrets,
+} from '@/features/connections/sealing/enter-secrets';
 
+/**
+ * The update a save of the edit form sends, and the secrets it enters. Each
+ * of those holds a marker in the patch where its value was: the values are
+ * sealed as the update is saved (`updateConnection`), never sent readable.
+ */
 export function buildConnectionUpdateInput({
   id,
+  integrationId,
+  sealedFields,
   data,
   dirtyFieldNames,
   clearSecrets,
@@ -14,12 +25,15 @@ export function buildConnectionUpdateInput({
   projection,
 }: {
   id: string;
+  integrationId: string | null | undefined;
+  /** The connection type's `sealedFields`: what is sent sealed. */
+  sealedFields: readonly string[];
   data: Record<string, unknown>;
   dirtyFieldNames: readonly string[];
   clearSecrets: readonly string[];
   definition: FormDefinition;
   projection: EditProjection;
-}): UpdateConnectionInput {
+}): { update: UpdateConnectionInput; secrets: EnteredSecrets } {
   if (!projection.version) {
     throw new Error('Connection edit version is unavailable');
   }
@@ -39,11 +53,18 @@ export function buildConnectionUpdateInput({
   const parameterDirtyFields = new Set(
     dirtyFieldNames.filter((name) => name in definition.fields)
   );
-  const { set, write, clear } = buildConnectionParameterPatch(
-    definition,
-    parameters,
-    parameterDirtyFields,
-    clearSecrets
+  const {
+    patch: { set, write, clear },
+    secrets,
+  } = enterPatchSecrets(
+    integrationId,
+    sealedFields,
+    buildConnectionParameterPatch(
+      definition,
+      parameters,
+      parameterDirtyFields,
+      clearSecrets
+    )
   );
   const parameterPatch =
     Object.keys(set).length > 0 ||
@@ -71,7 +92,7 @@ export function buildConnectionUpdateInput({
       : null
     : undefined;
 
-  return {
+  const update: UpdateConnectionInput = {
     id,
     version: projection.version,
     title: dirtyFields.has('title') ? (title as string | undefined) : undefined,
@@ -88,4 +109,5 @@ export function buildConnectionUpdateInput({
         : []
       : undefined,
   };
+  return { update, secrets };
 }

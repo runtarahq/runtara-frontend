@@ -17,6 +17,7 @@ const hubspot = buildConnectionType({
     defaultScopes: 'oauth',
   },
   fieldBehaviors: {},
+  sealedFields: ['client_secret'],
   formDefinition: {
     schemaVersion: 1,
     fields: {
