@@ -4,7 +4,15 @@ import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { useCustomMutation, useCustomQuery } from '@/shared/hooks/api';
 import { queryKeys } from '@/shared/queries/query-keys';
-import { ConnectionTypeDto } from '@/generated/RuntaraRuntimeApi';
+import {
+  ConnectionTypeDto,
+  type CreateConnectionRequest,
+} from '@/generated/RuntaraRuntimeApi';
+import {
+  enterSecrets,
+  sealedFieldsOf,
+  type EnteredSecrets,
+} from '@/features/connections/sealing/enter-secrets';
 import { PageLoader } from '@/shared/components/loader.tsx';
 import { DynamicConnectionForm } from '@/features/connections/components/Forms/DynamicConnectionForm';
 import {
@@ -133,9 +141,19 @@ export function CreateConnection() {
     [token, openOAuthPopup, navigate, go]
   );
 
+  // The secrets the create in flight enters. Kept here, and not in what the
+  // mutation is given, so that no readable secret reaches the query client's
+  // cache. Dropped once saved.
+  const secretsRef = useRef<EnteredSecrets>({});
+  // The connection exists: the form's secret inputs are emptied.
+  const [created, setCreated] = useState(false);
+
   const { mutate, isPending } = useCustomMutation({
-    mutationFn: createConnection,
+    mutationFn: (token: string, request: CreateConnectionRequest) =>
+      createConnection(token, request, secretsRef.current),
     onSuccess: (connectionId: string) => {
+      secretsRef.current = {};
+      setCreated(true);
       queryClient.invalidateQueries({ queryKey: queryKeys.connections.all });
       if (isOAuthType && connectionId) {
         // The authorization is still to come: leaving now asks first, as it
@@ -191,11 +209,27 @@ export function CreateConnection() {
         }
       : undefined;
 
+    // Each secret is sealed as the connection is saved: the request holds a
+    // marker where its value was.
+    let entered: ReturnType<typeof enterSecrets>;
+    try {
+      entered = enterSecrets(
+        currentConnectionType?.integrationId,
+        sealedFieldsOf(currentConnectionType),
+        parameters
+      );
+    } catch (error) {
+      // A secret that cannot be taken apart to seal: nothing is sent.
+      toast.error(error instanceof Error ? error.message : 'Could not save.');
+      return;
+    }
+
     if (!createOnce.begin()) return;
+    secretsRef.current = entered.secrets;
     mutate(
       {
         title: title as string,
-        connectionParameters: parameters,
+        connectionParameters: { ...entered.parameters, ...entered.beside },
         integrationId: currentConnectionType?.integrationId,
         rateLimitConfig,
         isDefaultFileStorage: isDefaultFileStorage
@@ -232,6 +266,7 @@ export function CreateConnection() {
       onSubmit={handleSubmit}
       mode="create"
       oauthCreateHint={isOAuthType}
+      secretsSaved={created}
     />
   );
 }

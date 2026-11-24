@@ -1,0 +1,893 @@
+[
+  {
+    "integrationId": "http_api_key",
+    "sealedFields": ["api_key"],
+    "formDefinition": {
+      "fields": {
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "api_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "value_format": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "header_name": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "http_bearer",
+    "sealedFields": ["token"],
+    "formDefinition": {
+      "fields": {
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "http_basic",
+    "sealedFields": ["password"],
+    "formDefinition": {
+      "fields": {
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "password": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "username": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "http_mtls",
+    "sealedFields": ["client_private_key_pem"],
+    "formDefinition": {
+      "fields": {
+        "server_ca_pem": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_private_key_pem": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "client_certificate_pem": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "shopify_access_token",
+    "sealedFields": ["access_token"],
+    "formDefinition": {
+      "fields": {
+        "shop_domain": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "api_version": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "access_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "shopify_client_credentials",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "scope_read_locations": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "scope_read_fulfillments": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "scope_read_customers": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "scope_read_inventory": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "scope_write_customers": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "scope_write_orders": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "shop_domain": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "scope_write_products": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "api_version": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "scope_write_inventory": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "scope_write_fulfillments": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "client_id": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "scope_read_orders": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "scope_read_products": {
+          "type": "boolean",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "openai_api_key",
+    "sealedFields": ["api_key"],
+    "formDefinition": {
+      "fields": {
+        "api_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "organization_id": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "aws_credentials",
+    "sealedFields": ["aws_secret_access_key", "aws_session_token"],
+    "formDefinition": {
+      "fields": {
+        "aws_access_key_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "aws_region": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "aws_secret_access_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "aws_session_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "endpoint": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "telegram_bot",
+    "sealedFields": ["bot_token", "webhook_secret"],
+    "formDefinition": {
+      "fields": {
+        "bot_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "webhook_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "slack_bot",
+    "sealedFields": ["bot_token", "signing_secret"],
+    "formDefinition": {
+      "fields": {
+        "bot_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "signing_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "teams_bot",
+    "sealedFields": ["app_password"],
+    "formDefinition": {
+      "fields": {
+        "azure_tenant_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "app_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "app_password": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "app_type": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "authority_host": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "microsoft_entra_client_credentials",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "authority_host": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "tenant_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "scope": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "http_oauth2_client_credentials",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "token_auth": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "scope": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "audience": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "token_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "resource": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "http_oauth2_authorization_code",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "refresh_rotates": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "pkce": {
+          "type": "boolean",
+          "access": "read_write"
+        },
+        "token_auth": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "revocation_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "scopes": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "token_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "base_url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "auth_url": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "mailgun",
+    "sealedFields": ["api_key", "webhook_signing_key"],
+    "formDefinition": {
+      "fields": {
+        "region": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "webhook_signing_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "domain": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "api_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "hubspot_private_app",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "scopes": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "hubspot_access_token",
+    "sealedFields": ["access_token"],
+    "formDefinition": {
+      "fields": {
+        "access_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "quickbooks_online",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "environment": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "realm_id": {
+          "type": "string",
+          "access": "read"
+        },
+        "scopes": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "xero_oauth",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "scopes": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "tenant_id": {
+          "type": "string",
+          "access": "read"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "tenant_name": {
+          "type": "string",
+          "access": "read"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "zoho_crm_oauth",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "org_name": {
+          "type": "string",
+          "access": "read"
+        },
+        "data_center": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "environment": {
+          "type": "string",
+          "access": "read"
+        },
+        "org_id": {
+          "type": "string",
+          "access": "read"
+        },
+        "scopes": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "ebay_oauth",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "environment": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "ru_name": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "scopes": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "postgres",
+    "sealedFields": ["database_url"],
+    "formDefinition": {
+      "fields": {
+        "database_url": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "s3_compatible",
+    "sealedFields": ["secret_access_key"],
+    "formDefinition": {
+      "fields": {
+        "access_key_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "endpoint": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "secret_access_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "region": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "path_style": {
+          "type": "boolean",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "azure_blob_storage",
+    "sealedFields": ["account_key"],
+    "formDefinition": {
+      "fields": {
+        "endpoint_override": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "endpoint_suffix": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "account_name": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "account_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "stripe_api_key",
+    "sealedFields": ["secret_key"],
+    "formDefinition": {
+      "fields": {
+        "secret_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "pipedrive_api_token",
+    "sealedFields": ["api_token"],
+    "formDefinition": {
+      "fields": {
+        "api_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "shippo_api_token",
+    "sealedFields": ["api_token"],
+    "formDefinition": {
+      "fields": {
+        "api_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "bigcommerce_api_token",
+    "sealedFields": ["access_token"],
+    "formDefinition": {
+      "fields": {
+        "access_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "store_hash": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "magento_access_token",
+    "sealedFields": ["access_token"],
+    "formDefinition": {
+      "fields": {
+        "access_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "store_url": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "gemini_api_key",
+    "sealedFields": ["api_key"],
+    "formDefinition": {
+      "fields": {
+        "api_key": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "zendesk_client_credentials",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "subdomain": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "scope": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "jira_api_token",
+    "sealedFields": ["api_token"],
+    "formDefinition": {
+      "fields": {
+        "api_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "cloud_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "site": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "email": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "ups_client_credentials",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "environment": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "paypal_client_credentials",
+    "sealedFields": ["client_secret"],
+    "formDefinition": {
+      "fields": {
+        "client_secret": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "environment": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "client_id": {
+          "type": "string",
+          "access": "read_write"
+        }
+      }
+    }
+  },
+  {
+    "integrationId": "mcp",
+    "sealedFields": ["bearer_token", "api_key_value"],
+    "formDefinition": {
+      "fields": {
+        "api_key_header": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "url": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "extra_headers": {
+          "type": "object",
+          "access": "read_write"
+        },
+        "auth_mode": {
+          "type": "string",
+          "access": "read_write"
+        },
+        "tool_scope": {
+          "type": "array",
+          "access": "read_write"
+        },
+        "tool_hints": {
+          "type": "object",
+          "access": "read_write"
+        },
+        "api_key_value": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        },
+        "bearer_token": {
+          "type": "string",
+          "access": "write",
+          "secret": true
+        }
+      }
+    }
+  }
+]

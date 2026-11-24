@@ -87,6 +87,7 @@
     "recharts": "^2.15.1",
     "remark-gfm": "^4.0.1",
     "runtara-validation-wasm": "https://github.com/runtarahq/runtara/releases/download/v10.0.0/runtara-validation-wasm-10.0.0.tgz",
+    "seal-wasm": "https://github.com/runtarahq/seal/releases/download/v0.3.1/seal-wasm.tar.gz",
     "sonner": "^2.0.3",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",

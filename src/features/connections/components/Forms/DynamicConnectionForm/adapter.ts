@@ -79,6 +79,32 @@ export function buildConnectionFormDefinition(
   return { ...descriptor, fields, sections };
 }
 
+/**
+ * `definition` with no secret required: for a form whose secrets were saved
+ * and emptied while it stays open, which must not then ask for them.
+ */
+export function withSecretsOptional(
+  definition: FormDefinition
+): FormDefinition {
+  return {
+    ...definition,
+    fields: Object.fromEntries(
+      Object.entries(definition.fields).map(([name, field]) => [
+        name,
+        field.secret
+          ? {
+              ...field,
+              required: false,
+              conditions: field.conditions
+                ? { ...field.conditions, required: undefined }
+                : undefined,
+            }
+          : field,
+      ])
+    ),
+  };
+}
+
 export function buildConnectionParameterValues(
   definition: FormDefinition,
   initValues: Record<string, unknown> | undefined,

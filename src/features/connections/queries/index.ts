@@ -1,6 +1,8 @@
 import * as RuntimeAPI from '@/generated/RuntaraRuntimeApi.ts';
 import { RuntimeREST } from '@/shared/queries';
 import { createAuthHeaders } from '@/shared/queries/utils';
+import type { EnteredSecrets } from '../sealing/enter-secrets';
+import { saveSealed } from '../sealing/sealed-save';
 
 export async function getConnections(token: string) {
   try {
@@ -97,15 +99,62 @@ export async function getConnectionsByOperator(
   return result.data.connections || [];
 }
 
-export async function createConnection(
+/** What to seal a new connection's secrets under: asked with the request
+ *  that will create it, a marker in place of each secret. */
+export async function offerForCreate(
   token: string,
-  connection: RuntimeAPI.CreateConnectionRequest
-): Promise<string> {
-  const result = await RuntimeREST.api.createConnectionHandler(
-    connection,
+  request: RuntimeAPI.CreateConnectionRequest
+): Promise<RuntimeAPI.ConnectionOfferResponse> {
+  const result = await RuntimeREST.api.offerForCreateHandler(
+    request,
     createAuthHeaders(token)
   );
-  return result.data.connectionId;
+  return result.data;
+}
+
+/** What to seal the secrets an update enters under: asked with the request
+ *  that will update the connection. */
+export async function offerForUpdate(
+  token: string,
+  id: string,
+  request: RuntimeAPI.UpdateConnectionRequest
+): Promise<RuntimeAPI.ConnectionOfferResponse> {
+  const result = await RuntimeREST.api.offerForUpdateHandler(
+    id,
+    request,
+    createAuthHeaders(token)
+  );
+  return result.data;
+}
+
+/**
+ * Creates a connection. `connection` holds a marker in place of each secret
+ * (`enterSecrets`), and `secrets` their values: sealed here, under an offer
+ * made for this request, and never sent readable.
+ */
+export async function createConnection(
+  token: string,
+  connection: RuntimeAPI.CreateConnectionRequest,
+  secrets: EnteredSecrets = {}
+): Promise<string> {
+  return saveSealed({
+    body: connection,
+    secrets,
+    requestOffer: (body) => offerForCreate(token, body),
+    save: async (body, sealed) => {
+      const result = await RuntimeREST.api.createConnectionHandler(
+        sealed
+          ? {
+              ...body,
+              connectionId: sealed.connectionId,
+              sealedSecrets: sealed.envelope,
+            }
+          : body,
+        createAuthHeaders(token)
+      );
+      return result.data.connectionId;
+    },
+  });
 }
 
 export interface UpdateConnectionInput {
@@ -122,9 +171,15 @@ export interface UpdateConnectionInput {
   defaultFor?: string[];
 }
 
+/**
+ * Updates a connection. A secret the update enters holds a marker in the
+ * patch (`enterPatchSecrets`), and `secrets` has its value: sealed here, under
+ * an offer made for this request, and never sent readable.
+ */
 export async function updateConnection(
   token: string,
-  connection: UpdateConnectionInput
+  connection: UpdateConnectionInput,
+  secrets: EnteredSecrets = {}
 ) {
   const {
     id,
@@ -145,11 +200,17 @@ export async function updateConnection(
     defaultFor,
   };
 
-  await RuntimeREST.api.updateConnectionHandler(
-    id,
-    requestBody,
-    createAuthHeaders(token)
-  );
+  await saveSealed({
+    body: requestBody,
+    secrets,
+    requestOffer: (body) => offerForUpdate(token, id, body),
+    save: (body, sealed) =>
+      RuntimeREST.api.updateConnectionHandler(
+        id,
+        sealed ? { ...body, sealedSecrets: sealed.envelope } : body,
+        createAuthHeaders(token)
+      ),
+  });
 }
 
 export async function removeConnection(token: string, connectionId: string) {

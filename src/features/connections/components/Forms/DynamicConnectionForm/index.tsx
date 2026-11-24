@@ -41,6 +41,7 @@ import {
   buildConnectionFormDefinition,
   buildConnectionCreateParameters,
   buildConnectionParameterValues,
+  withSecretsOptional,
   type ConnectionTypeWithForm,
   type EditProjection,
 } from './adapter';
@@ -68,6 +69,9 @@ type DynamicConnectionFormProps = {
   reconnectNotice?: ReactNode;
   /** Create mode, interactive-OAuth type: hints the post-create authorize step. */
   oauthCreateHint?: boolean;
+  /** Create mode: the connection was saved while this form stays open (its
+   *  authorization is still to come), so its secret inputs are emptied. */
+  secretsSaved?: boolean;
 };
 
 export interface ConnectionFormOperations {
@@ -147,6 +151,7 @@ export function DynamicConnectionForm({
   conflictNotice,
   reconnectNotice,
   oauthCreateHint,
+  secretsSaved,
 }: DynamicConnectionFormProps) {
   const editProjection = initValues?.editProjection as
     EditProjection | undefined;
@@ -182,8 +187,17 @@ export function DynamicConnectionForm({
       secretState,
       clearedSecrets
     );
-    return platformApp ? withoutPlatformAppCredentials(built) : built;
-  }, [clearedSecrets, connectionType, mode, secretState, platformApp]);
+    const shown = platformApp ? withoutPlatformAppCredentials(built) : built;
+    // Saved secrets are emptied below, and are not asked for again.
+    return secretsSaved ? withSecretsOptional(shown) : shown;
+  }, [
+    clearedSecrets,
+    connectionType,
+    mode,
+    secretState,
+    platformApp,
+    secretsSaved,
+  ]);
   const canonicalDefaults = useMemo(
     () => buildConnectionParameterValues(baseDefinition, initValues, mode),
     [baseDefinition, initValues, mode]
@@ -265,6 +279,18 @@ export function DynamicConnectionForm({
     // may discard in-progress edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editProjection?.version]);
+
+  // A secret is held no longer than its save takes. The edit form empties on
+  // its own save above; a created connection's form stays dirty, since
+  // leaving it must still ask while it is being authorized.
+  useEffect(() => {
+    if (!secretsSaved) return;
+    for (const [name, field] of Object.entries(definition.fields)) {
+      if (field.secret) form.setValue(name, '', { shouldDirty: true });
+    }
+    // Only the save landing empties them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secretsSaved]);
 
   useEffect(() => {
     setBlocker(hasPendingChanges, () => {

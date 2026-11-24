@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
+import { createConnectionSealed } from '../../utils/sealed-connection';
 
 const runId = Date.now();
 const originalTitle = `E2E Schema Form MCP ${runId}`;
@@ -26,7 +27,7 @@ async function createApiConnection(
   request: APIRequestContext,
   body: Record<string, unknown>
 ): Promise<string> {
-  const response = await request.post(`${apiBase}/connections`, { data: body });
+  const response = await createConnectionSealed(request, apiBase, body);
   expect(response.status(), await response.text()).toBe(201);
   const payload = (await response.json()) as { connectionId: string };
   apiConnectionIds.add(payload.connectionId);
@@ -325,9 +326,13 @@ test.describe.serial('Connection schema form local UI', () => {
         },
       },
     ]) {
-      const response = await request.post(`${apiBase}/connections`, {
-        data: unsafeCreate,
-      });
+      // Sealed as a client must, so that the refusal is of what is unsafe
+      // and not of a readable secret.
+      const response = await createConnectionSealed(
+        request,
+        apiBase,
+        unsafeCreate
+      );
       expect([400, 422]).toContain(response.status());
     }
 
@@ -467,6 +472,18 @@ test.describe.serial('Connection schema form local UI', () => {
     expect(concurrent.status(), await concurrent.text()).toBe(200);
 
     await page.getByLabel('Server URL').fill('https://draft.example.com');
+    // A token is held for the one server it was entered for: a new URL needs
+    // it entered again. It is sealed for each save, so the save repeated
+    // after the conflict asks for an offer of its own.
+    await page
+      .locator('[data-field="bearer_token"] input[type="password"]')
+      .fill('replacement-secret');
+    const offers: string[] = [];
+    page.on('request', (sent) => {
+      if (sent.method() === 'POST' && sent.url().endsWith(`/${id}/offer`)) {
+        offers.push(sent.postData() ?? '');
+      }
+    });
     await page.getByRole('button', { name: 'Save changes' }).click();
     const notice = page.getByRole('alert').filter({
       hasText: 'Review newer connection changes',
@@ -481,6 +498,8 @@ test.describe.serial('Connection schema form local UI', () => {
       .getByRole('button', { name: 'Apply my submitted changes' })
       .click();
     await expect(page.getByText('Connection saved.').first()).toBeVisible();
+    expect(offers).toHaveLength(2);
+    expect(offers.join()).not.toContain('replacement-secret');
     const reapplied = await getApiConnection(request, id);
     expect(reapplied.title).toBe(serverTitle);
     expect(reapplied.editProjection.values.url).toBe(
@@ -628,8 +647,12 @@ test.describe.serial('Connection schema form local UI', () => {
 
   test('prompts a reconnect after a save that resets authorization', async ({
     page,
+    context,
     request,
   }) => {
+    // Save & Reconnect opens the sign-in window once the save lands; it is
+    // closed at once, as someone who puts the reconnect off would.
+    context.on('page', (popup) => void popup.close().catch(() => {}));
     const title = `E2E reconnect handoff QBO ${runId}`;
     const id = await createApiConnection(request, {
       title,
@@ -655,7 +678,7 @@ test.describe.serial('Connection schema form local UI', () => {
     await saveAndReconnect.click();
 
     // The save stays on the page and hands off to a reconnect prompt naming
-    // the changed field, without auto-opening a popup.
+    // the changed field.
     const notice = page.getByRole('alert').filter({
       hasText: 'Saved — reconnection needed',
     });
@@ -674,6 +697,13 @@ test.describe.serial('Connection schema form local UI', () => {
     expect(saved.editProjection.secretState.client_secret.configured).toBe(
       true
     );
+
+    // The reconnect it started is given up: its window was closed.
+    await page
+      .locator('[data-sonner-toast]')
+      .filter({ hasText: 'Waiting for the sign-in to finish' })
+      .getByRole('button', { name: 'Cancel' })
+      .click();
 
     // "Later" dismisses the prompt but the card keeps a Connect affordance.
     await notice.getByRole('button', { name: 'Later' }).click();
@@ -765,13 +795,31 @@ test.describe.serial('Connection schema form local UI', () => {
     // The managed Realm ID field is left blank (populated only by OAuth).
     await page.getByRole('button', { name: 'Create & Connect' }).click();
 
+    // The form waits for the closed sign-in window, its secret emptied and
+    // not asked for again.
+    const waiting = page
+      .locator('[data-sonner-toast]')
+      .filter({ hasText: 'Waiting for the sign-in to finish' });
+    await expect(waiting).toBeVisible();
+    await expect(
+      page.locator('[data-field="client_secret"] input')
+    ).toHaveValue('');
+    await expect(page.getByText('Client Secret is required')).toHaveCount(0);
+    await waiting.getByRole('button', { name: 'Cancel' }).click();
+
     // Lands on the new connection's edit page after the popup is abandoned.
     await expect(page).toHaveURL(/\/connections\/[0-9a-f-]{36}$/);
+    // The secret was sealed in the browser: the request holds a marker.
+    expect(createBody?.sealedSecrets).toBeTruthy();
+    expect(JSON.stringify(createBody)).not.toContain('e2e-client-secret');
     // The create payload must not carry the server-managed read field.
     const params =
       (createBody?.connectionParameters as Record<string, unknown>) ?? {};
     expect(params).not.toHaveProperty('realm_id');
-    expect(params).toMatchObject({ client_id: 'e2e-client-id' });
+    expect(params).toMatchObject({
+      client_id: 'e2e-client-id',
+      client_secret: { $entered: true },
+    });
 
     // Clean up (not created via the API helper, so track it explicitly).
     const id = page.url().split('/').pop() as string;

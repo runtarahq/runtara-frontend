@@ -32,6 +32,10 @@ import {
   patchStripsAuthorization,
   reauthorizationFieldLabels,
 } from '@/features/connections/utils/reauthorization';
+import {
+  sealedFieldsOf,
+  type EnteredSecrets,
+} from '@/features/connections/sealing/enter-secrets';
 import { buildConnectionUpdateInput } from './update-payload';
 import { ConnectionConflictNotice } from './ConnectionConflictNotice';
 import { ReconnectPromptNotice } from './ReconnectPromptNotice';
@@ -92,6 +96,11 @@ export function Connection() {
   const [pendingReauthLabels, setPendingReauthLabels] = useState<
     string[] | null
   >(null);
+  // The secrets the save in flight enters. Kept here, and not in what the
+  // mutation is given, so that no readable secret reaches the query client's
+  // cache; a save repeated after a conflict seals them again. Dropped once
+  // saved.
+  const secretsRef = useRef<EnteredSecrets>({});
 
   const connection = useCustomQuery({
     queryKey: queryKeys.connections.byId(id ?? ''),
@@ -180,9 +189,11 @@ export function Connection() {
   };
 
   const mutation = useCustomMutation({
-    mutationFn: updateConnection,
+    mutationFn: (token: string, update: UpdateConnectionInput) =>
+      updateConnection(token, update, secretsRef.current),
     suppressConflictToasts: true,
     onSuccess: () => {
+      secretsRef.current = {};
       setConflict(null);
       setPendingReauthLabels(
         reauthLabelsRef.current.length > 0 ? reauthLabelsRef.current : null
@@ -287,15 +298,26 @@ export function Connection() {
       ? reauthorizationFieldLabels(behaviors, labels, touched)
       : [];
 
-    const update = buildConnectionUpdateInput({
-      id: id as string,
-      data,
-      dirtyFieldNames: operations.dirtyFields,
-      clearSecrets: operations.clearSecrets,
-      definition: descriptor,
-      projection,
-    });
-    mutation.mutate(update);
+    let built: ReturnType<typeof buildConnectionUpdateInput>;
+    try {
+      built = buildConnectionUpdateInput({
+        id: id as string,
+        integrationId: currentConnectionType?.integrationId,
+        sealedFields: sealedFieldsOf(currentConnectionType),
+        data,
+        dirtyFieldNames: operations.dirtyFields,
+        clearSecrets: operations.clearSecrets,
+        definition: descriptor,
+        projection,
+      });
+    } catch (error) {
+      // A secret that cannot be taken apart to seal: nothing is sent.
+      reconnectAfterSaveRef.current = false;
+      toast.error(error instanceof Error ? error.message : 'Could not save.');
+      return;
+    }
+    secretsRef.current = built.secrets;
+    mutation.mutate(built.update);
   };
 
   // Show loading indicator while fetching initial data

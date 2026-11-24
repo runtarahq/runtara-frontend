@@ -604,6 +604,20 @@ export interface AiAgentMemory {
  * tool/branch to execute, collects the result, and loops until it produces a
  * final text response or reaches max_iterations.
  *
+ * Each tool is shown to the LLM as the edge label (its name), the target
+ * step's `name` (its description; else the capability's or child
+ * workflow's), and the JSON Schema of its arguments: the target Agent
+ * capability's inputs, or the target EmbedWorkflow's child input schema. A
+ * `connection` input and what the host fills (`_connection`, `timeout_ms`
+ * when the step sets a timeout) are not shown. The LLM's arguments become
+ * that input. A WaitForSignal tool takes no arguments.
+ *
+ * A tool step's `inputMapping` holds fixed arguments: evaluated when the
+ * tool is called and merged over the LLM's (objects deeply, the mapped value
+ * winning), and an input mapped as a whole is not shown to the LLM (W094
+ * names them). A tool's required inputs need no mapping, except a
+ * connection, which the LLM cannot give.
+ *
  * Without tool edges, it acts as a simple LLM completion step.
  *
  * # Reserved edge labels
@@ -1806,6 +1820,35 @@ export interface ConnectionGrantState {
   tokenExpiresAt?: string | null;
 }
 
+/** What to seal a request's secrets under, before it is saved. */
+export interface ConnectionOfferResponse {
+  /**
+   * The connection the secrets are sealed for. For a new connection, the
+   * id to save it with (`connectionId`).
+   */
+  connectionId: string;
+  /**
+   * Each secret the request marks as entered, with the name to give it
+   * in the object that is sealed. They are the same, except that an MCP
+   * connection's extra header `extra_headers.<name>` has a name made for
+   * it.
+   */
+  fields?: Partial<Record<string, string>>;
+  /**
+   * When the offer stops being taken, in seconds since the Unix epoch.
+   * @format int64
+   * @min 0
+   */
+  notAfter?: number | null;
+  /**
+   * seal's offer, to pass to the sealer as it is: `public_key`, `kid`,
+   * `keyset`, `item`, `field` and `policy`. Null if the request marks no
+   * secret as entered, and then it is saved with no `sealedSecrets`.
+   */
+  offer?: object | null;
+  success: boolean;
+}
+
 /** Explicit descriptor-aware connection parameter operations. */
 export interface ConnectionParameterPatch {
   /** Fields to remove explicitly. Blank strings never imply clearing. */
@@ -1903,6 +1946,14 @@ export interface ConnectionTypeDto {
   managedApps?: OAuthAppSummary[];
   /** OAuth2 configuration (only for auth_type = oauth2_authorization_code) */
   oauthConfig?: null | OAuthConfigDto;
+  /**
+   * The fields a caller sends sealed: each is saved as `{"$entered": true}`
+   * with its value in `sealedSecrets`, and refused readable. Not every
+   * field the form marks secret is one: a certificate or a client's id is
+   * kept off the screen and still sent as it is. Besides these, each value
+   * of an MCP connection's `extra_headers` is sent sealed.
+   */
+  sealedFields: string[];
 }
 
 /** Response for getting a single connection type */
@@ -2089,6 +2140,12 @@ export type CreateApiKeyResponse = ApiKey & {
 
 /** Create connection request */
 export interface CreateConnectionRequest {
+  /**
+   * The id the connection will have: the one an offer gave
+   * (`POST /connections/offer`). Required when the request enters a
+   * secret, since the secrets were sealed for that connection.
+   */
+  connectionId?: string | null;
   connectionParameters?: any;
   connectionSubtype?: string | null;
   defaultFor?: string[] | null;
@@ -2096,6 +2153,13 @@ export interface CreateConnectionRequest {
   integrationId?: string | null;
   isDefaultFileStorage?: boolean | null;
   rateLimitConfig?: null | RateLimitConfigDto;
+  /**
+   * The secrets this request enters, sealed under the offer made for it:
+   * one envelope holding a JSON object of field name to value. A secret is
+   * never sent readable: its field in `connectionParameters` holds
+   * `{"$entered": true}` and its value is in here.
+   */
+  sealedSecrets?: object | null;
   title: string;
   validUntil?: string | null;
 }
@@ -3882,12 +3946,19 @@ export interface PendingInputPage {
 }
 
 export interface PendingInputResponse {
+  /** The queue a wait step's `action.key` names, when it gives one. */
+  actionKey?: string | null;
   aiAgentStepId?: string | null;
   /**
    * @format int64
    * @min 0
    */
   callNumber?: number | null;
+  /**
+   * What the wait step's `action.context` says for whoever answers it,
+   * such as the tool a builder proposes.
+   */
+  context?: any;
   /**
    * @format int64
    * @min 0
@@ -5225,6 +5296,12 @@ export interface UpdateConnectionRequest {
   defaultFor?: string[] | null;
   isDefaultFileStorage?: boolean | null;
   rateLimitConfig?: null | RateLimitConfigDto;
+  /**
+   * The secrets this request enters, sealed under the offer made for it
+   * (`POST /connections/{id}/offer`). A secret is never sent readable: its
+   * field in the patch holds `{"$entered": true}` and its value is in here.
+   */
+  sealedSecrets?: object | null;
   title?: string | null;
   validUntil?: string | null;
   /**
@@ -6694,6 +6771,27 @@ export class Api<
       }),
 
     /**
+     * @description Takes the request that will create the connection, with `{"$entered": true}` in place of each secret and no `sealedSecrets`. Answers with seal's offer and the id the connection will have. The secrets are sealed under the offer as one JSON object of field name to value, and the same request is then saved with that envelope as `sealedSecrets` and the id as `connectionId`.
+     *
+     * @tags connections-controller
+     * @name OfferForCreateHandler
+     * @summary What to seal a new connection's secrets under
+     * @request POST:/api/runtime/connections/offer
+     */
+    offerForCreateHandler: (
+      data: CreateConnectionRequest,
+      params: RequestParams = {},
+    ) =>
+      this.request<ConnectionOfferResponse, ErrorResponse>({
+        path: `/api/runtime/connections/offer`,
+        method: "POST",
+        body: data,
+        type: "application/json",
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description Automatically searches for connections that match the operator using: - Direct match: connection_type = operatorName (case-insensitive) - Integration match: integration_id IN operator.integrationIds For example, "Shopify" operator finds connections with: - connection_type = "shopify" (direct Shopify connections) - integration_id = "shopify_access_token" (HTTP connections for Shopify) The operator's supported integration_ids are automatically looked up from the operator registry. SECURITY: Does NOT return connection_parameters field
      *
      * @tags connections-controller
@@ -6909,6 +7007,28 @@ export class Api<
         method: "POST",
         body: data,
         type: "application/json",
+        ...params,
+      }),
+
+    /**
+     * @description Takes the request that will update the connection, with `{"$entered": true}` in place of each secret and no `sealedSecrets`. The secrets are sealed under the offer as one JSON object of field name to value, and the same request is then saved with that envelope as `sealedSecrets`.
+     *
+     * @tags connections-controller
+     * @name OfferForUpdateHandler
+     * @summary What to seal the secrets an update enters under
+     * @request POST:/api/runtime/connections/{id}/offer
+     */
+    offerForUpdateHandler: (
+      id: string,
+      data: UpdateConnectionRequest,
+      params: RequestParams = {},
+    ) =>
+      this.request<ConnectionOfferResponse, ErrorResponse>({
+        path: `/api/runtime/connections/${id}/offer`,
+        method: "POST",
+        body: data,
+        type: "application/json",
+        format: "json",
         ...params,
       }),
 
@@ -8949,6 +9069,22 @@ export class Api<
         method: "PUT",
         body: data,
         type: "application/json",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags workflow-controller
+     * @name UnpublishWorkflowAgentHandler
+     * @summary Unpublish a workflow-agent: take the workflow's published agent out of the tenant's catalog, so no workflow can be compiled with it any more. The workflow stays, with its slug; parents that already composed the agent keep their copy, as when the workflow is deleted. Unpublishing what is not published does nothing.
+     * @request POST:/api/runtime/workflows/{id}/unpublish-agent
+     */
+    unpublishWorkflowAgentHandler: (id: string, params: RequestParams = {}) =>
+      this.request<any, any>({
+        path: `/api/runtime/workflows/${id}/unpublish-agent`,
+        method: "POST",
         format: "json",
         ...params,
       }),

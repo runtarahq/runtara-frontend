@@ -9,6 +9,9 @@ builds against a runtara release and never against its source.
   `npm run generate-api-runtime-release`, never by hand.
 - The validation WASM is the `runtara-validation-wasm` dependency, a tarball
   from a runtara release. Change it by bumping its URL in `package.json`.
+- A connection's secrets are sealed in the browser before they are sent
+  (`docs/sealed-secrets.md`), by the `seal-wasm` dependency: a tarball from a
+  seal release, which must be of the seal the server runs.
 - A runtara distribution adds pages and controls through the `@edition` alias
   (`RUNTARA_EDITION_DIR`, see `src/shared/edition/types.ts`), never by patching
   this repository.
